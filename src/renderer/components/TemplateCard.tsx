@@ -14,7 +14,8 @@ import {
   EditOutlined,
   DeleteOutlined,
   RocketOutlined,
-  CodeOutlined
+  CodeOutlined,
+  ExportOutlined
 } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import type { Template } from '../types/template'
@@ -61,6 +62,28 @@ const TemplateCard: React.FC<TemplateCardProps> = ({
     if (onDelete) {
       onDelete(template.id)
     }
+  }
+
+  const handleExport = () => {
+    const exportData = {
+      name: template.name,
+      description: template.description,
+      category: template.category,
+      dockerCompose: template.dockerCompose,
+      envSchema: template.envSchema
+    }
+
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `template-${template.name.replace(/[^a-zA-Z0-9_-]/g, '-')}.json`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+
+    message.success(t('template.exportSuccess'))
   }
 
   const handleEditSave = (values: Partial<Template>) => {
@@ -116,6 +139,15 @@ const TemplateCard: React.FC<TemplateCardProps> = ({
               onClick={() => setPreviewVisible(true)}
             >
               {t('template.preview')}
+            </Button>
+          </Tooltip>,
+          <Tooltip key="export" title={t('template.export')}>
+            <Button
+              type="text"
+              icon={<ExportOutlined />}
+              onClick={handleExport}
+            >
+              {t('template.export')}
             </Button>
           </Tooltip>,
           isBuiltIn ? (

@@ -11,13 +11,21 @@ import {
   message,
   Spin,
   Typography,
-  Alert
+  Alert,
+  Table,
+  Tag,
+  Popconfirm
 } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
-import { UploadOutlined, FileTextOutlined } from '@ant-design/icons'
+import { UploadOutlined, FileTextOutlined, PlusOutlined, DeleteOutlined } from '@ant-design/icons'
 import type { Server } from '../types/server'
-import type { Template } from '../types/template'
+import type { Template, EnvVariableSchema } from '../types/template'
+
+interface EnvVariable {
+  name: string
+  value: string
+}
 
 const { TextArea } = Input
 const { Text } = Typography
@@ -26,19 +34,45 @@ interface DeployFormProps {
   servers: Server[]
   templates: Template[]
   defaultTemplateId?: string
+  onTemplateChange?: (templateId: string) => void
+  templateEnvSchema?: EnvVariableSchema[]
   onDeploy: (values: {
     serverId: string
     appName: string
     templateId?: string
     dockerCompose: string
     projectPath: string
+    envVariables: EnvVariable[]
   }) => Promise<{ success: boolean; message: string }>
+}
+
+const extractEnvVariables = (dockerComposeContent: string): EnvVariable[] => {
+  const envPattern = /\$\{([^}]+)\}/g
+  const matches = dockerComposeContent.match(envPattern) || []
+  const variables = new Set<string>()
+  
+  matches.forEach(match => {
+    const varName = match.replace(/\$\{|\}/g, '')
+    const defaultValueMatch = varName.match(/(.+?):-(.+)/)
+    if (defaultValueMatch) {
+      variables.add(defaultValueMatch[1])
+    } else {
+      variables.add(varName)
+    }
+  })
+
+  return Array.from(variables).map(name => ({
+    name,
+    value: ''
+  }))
 }
 
 const DeployForm: React.FC<DeployFormProps> = ({
   servers,
   templates,
   defaultTemplateId,
+  onTemplateChange,
+  templateEnvSchema,
   onDeploy
 }) => {
   const { t } = useTranslation()
@@ -49,6 +83,7 @@ const DeployForm: React.FC<DeployFormProps> = ({
   const [dockerCompose, setDockerCompose] = useState('')
   const [deploying, setDeploying] = useState(false)
   const [deployProgress, setDeployProgress] = useState('')
+  const [envVariables, setEnvVariables] = useState<EnvVariable[]>([])
 
   const onlineServers = servers.filter(s => s.status === 'online')
 
@@ -76,9 +111,28 @@ const DeployForm: React.FC<DeployFormProps> = ({
     }
   }, [selectedTemplate, form])
 
+  useEffect(() => {
+    if (templateEnvSchema && templateEnvSchema.length > 0) {
+      const schemaVars = templateEnvSchema.map(schema => ({
+        name: schema.name,
+        value: schema.defaultValue || ''
+      }))
+      setEnvVariables(schemaVars)
+    } else if (dockerCompose) {
+      const extractedVars = extractEnvVariables(dockerCompose)
+      const existingNames = new Set(envVariables.map(v => v.name))
+      const newVars = extractedVars.map(v => {
+        const existing = envVariables.find(ev => ev.name === v.name)
+        return existing || v
+      })
+      setEnvVariables(newVars)
+    }
+  }, [dockerCompose, templateEnvSchema])
+
   const handleTemplateChange = (templateId: string) => {
     const template = templates.find(t => t.id === templateId)
     setSelectedTemplate(template || null)
+    onTemplateChange?.(templateId)
   }
 
   const handleFileUpload = (file: File) => {
@@ -90,6 +144,20 @@ const DeployForm: React.FC<DeployFormProps> = ({
     }
     reader.readAsText(file)
     return false
+  }
+
+  const handleEnvVariableChange = (index: number, field: 'name' | 'value', value: string) => {
+    const newVariables = [...envVariables]
+    newVariables[index] = { ...newVariables[index], [field]: value }
+    setEnvVariables(newVariables)
+  }
+
+  const addEnvVariable = () => {
+    setEnvVariables([...envVariables, { name: '', value: '' }])
+  }
+
+  const removeEnvVariable = (index: number) => {
+    setEnvVariables(envVariables.filter((_, i) => i !== index))
   }
 
   const handleDeploy = async () => {
@@ -111,7 +179,8 @@ const DeployForm: React.FC<DeployFormProps> = ({
         appName: values.appName,
         templateId: values.templateId,
         dockerCompose: values.dockerCompose,
-        projectPath
+        projectPath,
+        envVariables
       })
 
       if (result.success) {
@@ -288,6 +357,93 @@ const DeployForm: React.FC<DeployFormProps> = ({
               placeholder={`/opt/docker-apps/${form.getFieldValue('appName') || '<app-name>'}`}
               disabled={deploying}
             />
+          </Form.Item>
+
+          <Form.Item
+            label={t('app.envVariables')}
+            extra={
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                {t('app.envVariablesTip')}
+              </Text>
+            }
+          >
+            <Card
+              title={t('app.envVariables')}
+              extra={
+                <Button
+                  type="dashed"
+                  size="small"
+                  icon={<PlusOutlined />}
+                  onClick={addEnvVariable}
+                  disabled={deploying}
+                >
+                  {t('app.addEnvVariable')}
+                </Button>
+              }
+              style={{ marginBottom: 16 }}
+            >
+              {envVariables.length === 0 ? (
+                <p style={{ textAlign: 'center', color: '#999', padding: '16px' }}>
+                  {t('app.noEnvVariables')}
+                </p>
+              ) : (
+                <Table
+                  dataSource={envVariables}
+                  pagination={false}
+                  bordered
+                  rowKey={(record, index) => index.toString()}
+                  columns={[
+                    {
+                      title: t('app.variableName'),
+                      dataIndex: 'name',
+                      width: '30%',
+                      render: (_, record, index) => (
+                        <Input
+                          value={record.name}
+                          onChange={(e) => handleEnvVariableChange(index, 'name', e.target.value)}
+                          placeholder={t('app.variableNamePlaceholder')}
+                          disabled={deploying}
+                        />
+                      )
+                    },
+                    {
+                      title: t('app.variableValue'),
+                      dataIndex: 'value',
+                      width: '50%',
+                      render: (_, record, index) => (
+                        <Input
+                          value={record.value}
+                          onChange={(e) => handleEnvVariableChange(index, 'value', e.target.value)}
+                          placeholder={t('app.variableValuePlaceholder')}
+                          disabled={deploying}
+                        />
+                      )
+                    },
+                    {
+                      title: t('common.actions'),
+                      width: '20%',
+                      render: (_, __, index) => (
+                        <Popconfirm
+                          title={t('app.confirmDeleteEnvVariable')}
+                          onConfirm={() => removeEnvVariable(index)}
+                          okText={t('common.yes')}
+                          cancelText={t('common.no')}
+                        >
+                          <Button
+                            type="text"
+                            danger
+                            icon={<DeleteOutlined />}
+                            disabled={deploying}
+                          >
+                            {t('common.delete')}
+                          </Button>
+                        </Popconfirm>
+                      )
+                    }
+                  ]}
+                />
+              )}
+            </Card>
           </Form.Item>
 
           <Form.Item>

@@ -26,6 +26,13 @@ export interface DockerCheckResult {
   error?: string
 }
 
+export interface EnvVariableSchema {
+  name: string
+  defaultValue?: string
+  description?: string
+  required?: boolean
+}
+
 export interface Template {
   id: string
   name: string
@@ -33,6 +40,7 @@ export interface Template {
   category: 'web' | 'database' | 'cache' | 'cms' | 'app'
   dockerCompose: string
   isBuiltIn: boolean
+  envSchema: EnvVariableSchema[]
   createdAt: string
 }
 
@@ -41,6 +49,7 @@ export interface TemplateFormData {
   description: string
   category: 'web' | 'database' | 'cache' | 'cms' | 'app'
   dockerCompose: string
+  envSchema: EnvVariableSchema[]
 }
 
 export interface ServerConnectionResult {
@@ -67,12 +76,18 @@ export interface App {
   updatedAt: string
 }
 
+export interface EnvVariable {
+  name: string
+  value: string
+}
+
 export interface DeployOptions {
   serverId: string
   appName: string
   dockerCompose: string
   projectPath: string
   templateId?: string
+  envVariables?: EnvVariable[]
 }
 
 export interface DeployResult {

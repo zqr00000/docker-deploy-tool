@@ -3,12 +3,18 @@ import { sshService } from './ssh'
 import { appQueries, serverQueries } from './database'
 import { randomUUID } from 'crypto'
 
+export interface EnvVariable {
+  name: string
+  value: string
+}
+
 export interface DeployOptions {
   serverId: string
   appName: string
   dockerCompose: string
   projectPath: string
   templateId?: string
+  envVariables?: EnvVariable[]
 }
 
 export interface DeployResult {
@@ -85,14 +91,28 @@ class AppDeployService {
         return { success: false, appId, message: `Failed to upload docker-compose.yml: ${uploadResult.message}` }
       }
 
+      if (envVariables && envVariables.length > 0) {
+        log.info(`Generating .env file for ${appName}`)
+        const envContent = envVariables
+          .filter(v => v.name.trim())
+          .map(v => `${v.name}=${v.value || ''}`)
+          .join('\n')
+        
+        const envUploadResult = await sshService.uploadContent(serverId, envContent, `${projectPath}/.env`)
+        if (!envUploadResult.success) {
+          this.updateAppStatus(appId, 'error', '[]')
+          return { success: false, appId, message: `Failed to upload .env file: ${envUploadResult.message}` }
+        }
+      }
+
       log.info(`Pulling Docker images for ${appName}`)
-      const pullResult = await sshService.executeCommand(serverId, `cd ${projectPath} && docker-compose pull`)
+      const pullResult = await sshService.executeCommand(serverId, `cd ${projectPath} && docker-compose --env-file .env pull 2>/dev/null || docker-compose pull`)
       if (!pullResult.success) {
         log.warn(`Docker pull warning: ${pullResult.stderr}`)
       }
 
       log.info(`Starting containers for ${appName}`)
-      const deployResult = await sshService.executeCommand(serverId, `cd ${projectPath} && docker-compose up -d`)
+      const deployResult = await sshService.executeCommand(serverId, `cd ${projectPath} && docker-compose --env-file .env up -d 2>/dev/null || docker-compose up -d`)
       if (!deployResult.success) {
         this.updateAppStatus(appId, 'error', '[]')
         return { success: false, appId, message: `Failed to start containers: ${deployResult.stderr}` }

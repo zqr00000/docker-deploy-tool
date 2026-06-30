@@ -299,6 +299,7 @@ function registerIpcHandlers(): void {
         category: row.category,
         dockerCompose: row.dockerCompose,
         isBuiltIn: row.isBuiltIn === 1,
+        envSchema: row.envSchema ? JSON.parse(row.envSchema) : [],
         createdAt: row.createdAt
       }))
     } catch (error) {
@@ -318,6 +319,7 @@ function registerIpcHandlers(): void {
         category: row.category,
         dockerCompose: row.dockerCompose,
         isBuiltIn: row.isBuiltIn === 1,
+        envSchema: row.envSchema ? JSON.parse(row.envSchema) : [],
         createdAt: row.createdAt
       }
     } catch (error) {
@@ -335,13 +337,15 @@ function registerIpcHandlers(): void {
         description: templateData.description || null,
         category: templateData.category || 'app',
         dockerCompose: templateData.dockerCompose,
-        isBuiltIn: 0
+        isBuiltIn: 0,
+        envSchema: JSON.stringify(templateData.envSchema || [])
       })
       return {
         id,
         ...templateData,
         category: templateData.category || 'app',
         isBuiltIn: false,
+        envSchema: templateData.envSchema || [],
         createdAt: new Date().toISOString()
       }
     } catch (error) {
@@ -352,7 +356,11 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('template:update', (_, id: string, updates) => {
     try {
-      templateQueries.update(id, updates)
+      const processedUpdates = { ...updates }
+      if (processedUpdates.envSchema !== undefined) {
+        processedUpdates.envSchema = JSON.stringify(processedUpdates.envSchema)
+      }
+      templateQueries.update(id, processedUpdates)
     } catch (error) {
       log.error('template:update error:', error)
       throw error

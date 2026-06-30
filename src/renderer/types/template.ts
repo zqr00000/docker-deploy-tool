@@ -1,5 +1,12 @@
 export type TemplateCategory = 'web' | 'database' | 'cache' | 'cms' | 'app'
 
+export interface EnvVariableSchema {
+  name: string
+  defaultValue?: string
+  description?: string
+  required?: boolean
+}
+
 export interface Template {
   id: string
   name: string
@@ -7,6 +14,7 @@ export interface Template {
   category: TemplateCategory
   dockerCompose: string
   isBuiltIn: boolean
+  envSchema: EnvVariableSchema[]
   createdAt: string
 }
 
@@ -15,6 +23,7 @@ export interface TemplateFormData {
   description: string
   category: TemplateCategory
   dockerCompose: string
+  envSchema: EnvVariableSchema[]
 }
 
 export const CATEGORY_LABELS: Record<TemplateCategory, { zh: string; en: string }> = {

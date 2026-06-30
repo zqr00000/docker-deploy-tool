@@ -3,7 +3,6 @@ import { app } from 'electron'
 import { join } from 'path'
 import { existsSync, mkdirSync } from 'fs'
 import log from 'electron-log'
-import { DEFAULT_TEMPLATES } from './default-templates'
 
 let db: Database.Database | null = null
 
@@ -122,6 +121,9 @@ function migrateTemplatesTable(): void {
     if (!columnNames.includes('isBuiltIn')) {
       db.exec('ALTER TABLE templates ADD COLUMN isBuiltIn INTEGER NOT NULL DEFAULT 0')
     }
+    if (!columnNames.includes('envSchema')) {
+      db.exec('ALTER TABLE templates ADD COLUMN envSchema TEXT DEFAULT \'[]\'')
+    }
 
     log.info('Templates table migration completed')
   } catch (error) {
@@ -129,34 +131,118 @@ function migrateTemplatesTable(): void {
   }
 }
 
+
+
+const DEFAULT_TEMPLATES = [
+  {
+    id: 'nginx',
+    name: 'Nginx Web Server',
+    description: '高性能 HTTP 和反向代理服务器',
+    category: 'web',
+    dockerCompose: 'version: "3.8"\nservices:\n  nginx:\n    image: nginx:${NGINX_VERSION:-latest}\n    ports:\n      - "${HTTP_PORT:-80}:80"\n      - "${HTTPS_PORT:-443}:443"\n    volumes:\n      - ./conf:/etc/nginx/conf.d\n      - ./html:/usr/share/nginx/html\n      - ./logs:/var/log/nginx\n    restart: unless-stopped',
+    envSchema: [
+      { name: 'NGINX_VERSION', defaultValue: 'latest', description: 'Nginx 版本', required: false },
+      { name: 'HTTP_PORT', defaultValue: '80', description: 'HTTP 端口', required: false },
+      { name: 'HTTPS_PORT', defaultValue: '443', description: 'HTTPS 端口', required: false }
+    ]
+  },
+  {
+    id: 'mysql',
+    name: 'MySQL 数据库',
+    description: 'MySQL 8.0 数据库服务器，适合中小型应用数据存储',
+    category: 'database',
+    dockerCompose: 'version: "3.8"\nservices:\n  mysql:\n    image: mysql:${MYSQL_VERSION:-8.0}\n    ports:\n      - "${MYSQL_PORT:-3306}:3306"\n    environment:\n      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}\n      MYSQL_DATABASE: ${MYSQL_DATABASE:-app}\n      MYSQL_USER: ${MYSQL_USER:-app_user}\n      MYSQL_PASSWORD: ${MYSQL_PASSWORD}\n    volumes:\n      - mysql_data:/var/lib/mysql\n    restart: unless-stopped\n\nvolumes:\n  mysql_data:',
+    envSchema: [
+      { name: 'MYSQL_VERSION', defaultValue: '8.0', description: 'MySQL 版本', required: false },
+      { name: 'MYSQL_PORT', defaultValue: '3306', description: 'MySQL 端口', required: false },
+      { name: 'MYSQL_ROOT_PASSWORD', defaultValue: '', description: 'Root 密码', required: true },
+      { name: 'MYSQL_DATABASE', defaultValue: 'app', description: '数据库名', required: false },
+      { name: 'MYSQL_USER', defaultValue: 'app_user', description: '用户名', required: false },
+      { name: 'MYSQL_PASSWORD', defaultValue: '', description: '用户密码', required: true }
+    ]
+  },
+  {
+    id: 'postgresql',
+    name: 'PostgreSQL 数据库',
+    description: 'PostgreSQL 数据库服务器，支持 JSON、地理空间数据等高级特性',
+    category: 'database',
+    dockerCompose: 'version: "3.8"\nservices:\n  postgres:\n    image: postgres:${POSTGRES_VERSION:-15}\n    ports:\n      - "${POSTGRES_PORT:-5432}:5432"\n    environment:\n      POSTGRES_USER: ${POSTGRES_USER:-postgres}\n      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}\n      POSTGRES_DB: ${POSTGRES_DB:-app}\n    volumes:\n      - postgres_data:/var/lib/postgresql/data\n    restart: unless-stopped\n\nvolumes:\n  postgres_data:',
+    envSchema: [
+      { name: 'POSTGRES_VERSION', defaultValue: '15', description: 'PostgreSQL 版本', required: false },
+      { name: 'POSTGRES_PORT', defaultValue: '5432', description: 'PostgreSQL 端口', required: false },
+      { name: 'POSTGRES_USER', defaultValue: 'postgres', description: '用户名', required: false },
+      { name: 'POSTGRES_PASSWORD', defaultValue: '', description: '密码', required: true },
+      { name: 'POSTGRES_DB', defaultValue: 'app', description: '数据库名', required: false }
+    ]
+  },
+  {
+    id: 'redis',
+    name: 'Redis 缓存',
+    description: '高性能键值存储系统，常用于缓存、会话存储等场景',
+    category: 'cache',
+    dockerCompose: 'version: "3.8"\nservices:\n  redis:\n    image: redis:${REDIS_VERSION:-7}\n    ports:\n      - "${REDIS_PORT:-6379}:6379"\n    volumes:\n      - redis_data:/data\n    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}\n    restart: unless-stopped\n\nvolumes:\n  redis_data:',
+    envSchema: [
+      { name: 'REDIS_VERSION', defaultValue: '7', description: 'Redis 版本', required: false },
+      { name: 'REDIS_PORT', defaultValue: '6379', description: 'Redis 端口', required: false },
+      { name: 'REDIS_PASSWORD', defaultValue: '', description: 'Redis 密码', required: false }
+    ]
+  },
+  {
+    id: 'wordpress',
+    name: 'WordPress CMS',
+    description: '最流行的开源内容管理系统，包含 MySQL 数据库',
+    category: 'cms',
+    dockerCompose: 'version: "3.8"\nservices:\n  wordpress:\n    image: wordpress:${WORDPRESS_VERSION:-latest}\n    ports:\n      - "${WORDPRESS_PORT:-80}:80"\n    environment:\n      WORDPRESS_DB_HOST: db\n      WORDPRESS_DB_USER: ${DB_USER:-wordpress}\n      WORDPRESS_DB_PASSWORD: ${DB_PASSWORD}\n      WORDPRESS_DB_NAME: ${DB_NAME:-wordpress}\n    volumes:\n      - wordpress_data:/var/www/html\n    depends_on:\n      - db\n    restart: unless-stopped\n\n  db:\n    image: mysql:${MYSQL_VERSION:-5.7}\n    environment:\n      MYSQL_DATABASE: ${DB_NAME:-wordpress}\n      MYSQL_USER: ${DB_USER:-wordpress}\n      MYSQL_PASSWORD: ${DB_PASSWORD}\n      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}\n    volumes:\n      - db_data:/var/lib/mysql\n    restart: unless-stopped\n\nvolumes:\n  wordpress_data:\n  db_data:',
+    envSchema: [
+      { name: 'WORDPRESS_VERSION', defaultValue: 'latest', description: 'WordPress 版本', required: false },
+      { name: 'WORDPRESS_PORT', defaultValue: '80', description: 'WordPress 端口', required: false },
+      { name: 'MYSQL_VERSION', defaultValue: '5.7', description: 'MySQL 版本', required: false },
+      { name: 'DB_USER', defaultValue: 'wordpress', description: '数据库用户名', required: false },
+      { name: 'DB_PASSWORD', defaultValue: '', description: '数据库密码', required: true },
+      { name: 'DB_NAME', defaultValue: 'wordpress', description: '数据库名', required: false },
+      { name: 'DB_ROOT_PASSWORD', defaultValue: '', description: '数据库 Root 密码', required: true }
+    ]
+  },
+  {
+    id: 'nginx-php',
+    name: 'Nginx + PHP-FPM',
+    description: '经典的 Web 开发环境，支持 PHP 应用部署',
+    category: 'web',
+    dockerCompose: 'version: "3.8"\nservices:\n  web:\n    image: nginx:${NGINX_VERSION:-latest}\n    ports:\n      - "${HTTP_PORT:-80}:80"\n    volumes:\n      - ./nginx.conf:/etc/nginx/nginx.conf\n      - ./www:/var/www/html\n    depends_on:\n      - php\n    restart: unless-stopped\n\n  php:\n    image: php:${PHP_VERSION:-8.2}-fpm\n    volumes:\n      - ./www:/var/www/html\n    environment:\n      PHP_MEMORY_LIMIT: ${PHP_MEMORY_LIMIT:-256M}\n    restart: unless-stopped',
+    envSchema: [
+      { name: 'NGINX_VERSION', defaultValue: 'latest', description: 'Nginx 版本', required: false },
+      { name: 'PHP_VERSION', defaultValue: '8.2', description: 'PHP 版本', required: false },
+      { name: 'HTTP_PORT', defaultValue: '80', description: 'HTTP 端口', required: false },
+      { name: 'PHP_MEMORY_LIMIT', defaultValue: '256M', description: 'PHP 内存限制', required: false }
+    ]
+  }
+]
+
 export function initDefaultTemplates(): void {
   if (!db) return
 
-  const existingCount = db.prepare('SELECT COUNT(*) as count FROM templates WHERE isBuiltIn = 1').get() as { count: number }
-  if (existingCount.count > 0) {
-    log.info(`Default templates already initialized (${existingCount.count} built-in templates)`)
-    return
-  }
-
+  const now = new Date().toISOString()
+  
   const insertStmt = db.prepare(`
-    INSERT OR IGNORE INTO templates (id, name, description, category, dockerCompose, isBuiltIn, createdAt, updatedAt)
-    VALUES (@id, @name, @description, @category, @dockerCompose, @isBuiltIn, @createdAt, @updatedAt)
+    INSERT OR REPLACE INTO templates (id, name, description, category, dockerCompose, isBuiltIn, envSchema, createdAt, updatedAt)
+    VALUES (@id, @name, @description, @category, @dockerCompose, @isBuiltIn, @envSchema, @createdAt, @updatedAt)
   `)
 
-  const now = new Date().toISOString()
   const insertMany = db.transaction(() => {
     for (const tpl of DEFAULT_TEMPLATES) {
+      const existing = db.prepare('SELECT createdAt FROM templates WHERE id = ?').get(tpl.id) as { createdAt?: string }
       insertStmt.run({
         ...tpl,
+        envSchema: JSON.stringify(tpl.envSchema),
         isBuiltIn: 1,
-        createdAt: now,
+        createdAt: existing?.createdAt || now,
         updatedAt: now
       })
     }
   })
 
   insertMany()
-  log.info(`Initialized ${DEFAULT_TEMPLATES.length} default templates in database`)
+  log.info(`Initialized/updated ${DEFAULT_TEMPLATES.length} default templates in database`)
 }
 
 export function closeDatabase(): void {
@@ -181,6 +267,13 @@ export interface ServerRow {
   updatedAt: string
 }
 
+export interface EnvVariableSchema {
+  name: string
+  defaultValue?: string
+  description?: string
+  required?: boolean
+}
+
 export interface TemplateRow {
   id: string
   name: string
@@ -188,6 +281,7 @@ export interface TemplateRow {
   category: string
   dockerCompose: string
   isBuiltIn: number
+  envSchema: string
   createdAt: string
   updatedAt: string
 }
@@ -272,9 +366,9 @@ export const templateQueries = {
     const db = getDatabase()
     const now = new Date().toISOString()
     db.prepare(`
-      INSERT INTO templates (id, name, description, category, dockerCompose, isBuiltIn, createdAt, updatedAt)
-      VALUES (@id, @name, @description, @category, @dockerCompose, @isBuiltIn, @createdAt, @updatedAt)
-    `).run({ ...template, createdAt: now, updatedAt: now })
+      INSERT INTO templates (id, name, description, category, dockerCompose, isBuiltIn, envSchema, createdAt, updatedAt)
+      VALUES (@id, @name, @description, @category, @dockerCompose, @isBuiltIn, @envSchema, @createdAt, @updatedAt)
+    `).run({ ...template, envSchema: template.envSchema || '[]', createdAt: now, updatedAt: now })
   },
 
   update: (id: string, updates: Partial<TemplateRow>): void => {

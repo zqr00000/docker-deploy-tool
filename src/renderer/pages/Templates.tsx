@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
 import {
   Card,
   Typography,
@@ -7,17 +7,35 @@ import {
   Button,
   Tag,
   message,
-  Spin
+  Spin,
+  Upload,
+  Modal
 } from 'antd'
-import { PlusOutlined, SearchOutlined, ReloadOutlined } from '@ant-design/icons'
+import { PlusOutlined, SearchOutlined, ReloadOutlined, ImportOutlined, ExportOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import TemplateCard from '../components/TemplateCard'
 import TemplateEditor from '../components/TemplateEditor'
-import type { Template, TemplateFormData, TemplateCategory } from '../types/template'
+import type { Template, TemplateFormData, TemplateCategory, EnvVariableSchema } from '../types/template'
 import { CATEGORY_LABELS, ALL_CATEGORIES } from '../types/template'
 
 const { Title, Text } = Typography
+
+interface ExportTemplate {
+  name: string
+  description: string
+  category: TemplateCategory
+  dockerCompose: string
+  envSchema: EnvVariableSchema[]
+}
+
+interface ImportTemplate {
+  name: string
+  description: string
+  category: TemplateCategory
+  dockerCompose: string
+  envSchema?: EnvVariableSchema[]
+}
 
 const Templates: React.FC = () => {
   const { t, i18n } = useTranslation()
@@ -29,6 +47,9 @@ const Templates: React.FC = () => {
   const [editorVisible, setEditorVisible] = useState(false)
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null)
   const [initialized, setInitialized] = useState(false)
+  const [importModalVisible, setImportModalVisible] = useState(false)
+  const [importTemplates, setImportTemplates] = useState<ImportTemplate[]>([])
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     loadTemplates()
@@ -106,6 +127,115 @@ const Templates: React.FC = () => {
     }
   }
 
+  const handleExport = () => {
+    const exportData: ExportTemplate[] = templates
+      .filter(t => !t.isBuiltIn)
+      .map(t => ({
+        name: t.name,
+        description: t.description,
+        category: t.category,
+        dockerCompose: t.dockerCompose,
+        envSchema: t.envSchema
+      }))
+    
+    if (exportData.length === 0) {
+      message.warning(t('template.noExportTemplates'))
+      return
+    }
+
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `docker-deploy-templates-${new Date().toISOString().split('T')[0]}.json`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    
+    message.success(t('template.exportSuccess'))
+  }
+
+  const handleImportClick = () => {
+    fileInputRef.current?.click()
+  }
+
+  const validateTemplateData = (item: unknown): item is ImportTemplate => {
+    if (typeof item !== 'object' || item === null) return false
+    const obj = item as Record<string, unknown>
+    return typeof obj.name === 'string' && typeof obj.category === 'string' && typeof obj.dockerCompose === 'string'
+  }
+
+  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      try {
+        const content = event.target?.result as string
+        const data = JSON.parse(content)
+        
+        let items: unknown[]
+        if (Array.isArray(data)) {
+          items = data
+        } else if (validateTemplateData(data)) {
+          items = [data]
+        } else {
+          throw new Error(t('template.invalidExportFormat'))
+        }
+
+        const validTemplates: ImportTemplate[] = []
+        for (const item of items) {
+          if (validateTemplateData(item)) {
+            validTemplates.push({
+              name: item.name,
+              description: item.description || '',
+              category: item.category,
+              dockerCompose: item.dockerCompose,
+              envSchema: item.envSchema || []
+            })
+          }
+        }
+
+        if (validTemplates.length === 0) {
+          message.error(t('template.noValidTemplates'))
+          return
+        }
+
+        setImportTemplates(validTemplates)
+        setImportModalVisible(true)
+      } catch {
+        message.error(t('template.invalidExportFormat'))
+      }
+    }
+    reader.readAsText(file)
+    e.target.value = ''
+  }
+
+  const handleConfirmImport = async () => {
+    let successCount = 0
+    for (const tpl of importTemplates) {
+      try {
+        const formData: TemplateFormData = {
+          name: tpl.name,
+          description: tpl.description,
+          category: tpl.category,
+          dockerCompose: tpl.dockerCompose,
+          envSchema: tpl.envSchema || []
+        }
+        const newTemplate = await window.electronAPI.template.create(formData) as Template
+        setTemplates(prev => [...prev, newTemplate])
+        successCount++
+      } catch {
+        console.error(`Failed to import template: ${tpl.name}`)
+      }
+    }
+    setImportModalVisible(false)
+    setImportTemplates([])
+    message.success(t('template.importSuccess', { count: successCount }))
+  }
+
   const getCategoryColor = (category: string) => {
     const colors: Record<string, string> = {
       web: 'blue',
@@ -130,6 +260,12 @@ const Templates: React.FC = () => {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <Title level={4} style={{ margin: 0 }}>{t('template.title')}</Title>
         <Space>
+          <Button icon={<ExportOutlined />} onClick={handleExport}>
+            {t('template.export')}
+          </Button>
+          <Button icon={<ImportOutlined />} onClick={handleImportClick}>
+            {t('template.import')}
+          </Button>
           <Button icon={<ReloadOutlined />} onClick={loadTemplates}>
             {t('common.refresh')}
           </Button>
@@ -197,6 +333,42 @@ const Templates: React.FC = () => {
         onSave={handleSave}
         onCancel={() => setEditorVisible(false)}
       />
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".json"
+        style={{ display: 'none' }}
+        onChange={handleImportFile}
+      />
+
+      <Modal
+        title={t('template.import')}
+        open={importModalVisible}
+        onOk={handleConfirmImport}
+        onCancel={() => {
+          setImportModalVisible(false)
+          setImportTemplates([])
+        }}
+        width={600}
+      >
+        <div>
+          <Text strong>{t('template.importConfirm', { count: importTemplates.length })}</Text>
+          <ul style={{ marginTop: 16, maxHeight: 300, overflowY: 'auto' }}>
+            {importTemplates.map((tpl, index) => (
+              <li key={index} style={{ marginBottom: 8 }}>
+                <Tag color={getCategoryColor(tpl.category)}>{CATEGORY_LABELS[tpl.category][i18n.language === 'zh-CN' ? 'zh' : 'en']}</Tag>
+                <span style={{ marginLeft: 8 }}>{tpl.name}</span>
+                {tpl.envSchema && tpl.envSchema.length > 0 && (
+                  <Text type="secondary" style={{ marginLeft: 8 }}>
+                    ({tpl.envSchema.length} {t('template.envSchema')})
+                  </Text>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </Modal>
     </div>
   )
 }

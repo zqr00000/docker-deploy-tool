@@ -150,9 +150,30 @@
     "dockerComposeRequired": "请输入 Docker Compose 配置",
     "dockerComposePlaceholder": "请输入 docker-compose.yml 内容",
     "dockerComposeTip": "支持 docker-compose v2/v3 语法",
+    "envSchema": "环境变量 Schema",
+    "envSchemaTip": "定义模板的环境变量，部署时将使用这些定义",
+    "addEnvVariable": "添加环境变量",
+    "noEnvSchema": "暂无环境变量定义",
+    "variableName": "变量名",
+    "variableNamePlaceholder": "请输入变量名",
+    "defaultValue": "默认值",
+    "defaultValuePlaceholder": "请输入默认值",
+    "required": "必填",
+    "confirmDeleteEnvVariable": "确定删除该环境变量吗？",
+    "extractVariables": "从配置自动提取",
+    "noNewVariables": "没有新的变量可以提取",
+    "variablesExtracted": "已提取 {{count}} 个新变量",
+    "export": "导出",
+    "import": "导入",
+    "exportSuccess": "模板导出成功",
+    "importSuccess": "成功导入 {{count}} 个模板",
+    "noExportTemplates": "没有可导出的模板",
+    "invalidExportFormat": "导出文件格式无效",
+    "noValidTemplates": "没有有效的模板数据",
+    "importConfirm": "确定要导入 {{count}} 个模板吗？",
     "form": {
-      "namePlaceholder": "请输入模板名称",
-      "descriptionPlaceholder": "请输入模板描述"
+      "namePlaceholder": "Enter template name",
+      "descriptionPlaceholder": "Enter template description"
     }
   },
   "app": {
@@ -254,7 +275,16 @@
       "containerName": "容器名称",
       "containerStopped": "容器已停止",
       "containerStoppedDescription": "无法获取资源统计数据，容器已停止运行"
-    }
+    },
+    "envVariables": "环境变量",
+    "envVariablesTip": "系统会自动从 docker-compose 配置中提取 ${VAR} 格式的环境变量，您可以在这里设置它们的值",
+    "addEnvVariable": "添加环境变量",
+    "noEnvVariables": "未检测到环境变量",
+    "variableName": "变量名",
+    "variableNamePlaceholder": "请输入变量名",
+    "variableValue": "变量值",
+    "variableValuePlaceholder": "请输入变量值",
+    "confirmDeleteEnvVariable": "确定删除该环境变量吗？"
   },
   "settings": {
     "title": "设置",
@@ -285,6 +315,7 @@
     "warning": "警告",
     "info": "提示",
     "yes": "是",
+    "actions": "操作",
     "no": "否",
     "ok": "确定",
     "close": "关闭",
