@@ -508,3 +508,22 @@ body {
   padding-top: 16px;
   border-top: 1px solid var(--app-border-color);
 }
+
+/* xterm.js Terminal Styling */
+.xterm {
+  height: 100%;
+  padding: 4px;
+}
+
+.xterm .xterm-viewport {
+  overflow-y: auto !important;
+}
+
+.xterm .xterm-screen {
+  background-color: #1e1e1e;
+}
+
+/* Fix xterm fit addon */
+.xterm-helper-textarea {
+  opacity: 0;
+}

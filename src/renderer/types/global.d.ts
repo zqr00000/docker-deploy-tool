@@ -1,4 +1,4 @@
-import type { Template, TemplateFormData, Server, ServerFormData, App, DeployOptions, DeployResult, ContainerInfo, ContainerStats, SystemInfo, HardwareInfo, NetworkInfo, PortInfo, SystemCheckResult, HardwareRequirements } from '../preload/index'
+import type { Template, TemplateFormData, Server, ServerFormData, App, DeployOptions, DeployResult, ContainerInfo, ContainerStats, SystemInfo, HardwareInfo, NetworkInfo, PortInfo, SystemCheckResult, HardwareRequirements, ConfigImportResult, DialogResult, DockerImage, VolumeInfo, VolumeDetail, PruneResult, AuditLogRow, AuditLogFilter, AuditLogResult, TerminalSession, DockerNetworkInfo, DockerNetworkDetail, DockerNetworkCreateOptions, DockerNetworkPruneResult, ResourceMetricRow, ResourceMetricsQuery, MetricsSummary, ResourceMetricsResult } from '../preload/index'
 
 export interface ElectronAPI {
   getAppVersion: () => Promise<string>
@@ -49,6 +49,97 @@ export interface ElectronAPI {
     startContainer: (serverId: string, containerId: string) => Promise<{ success: boolean; message: string }>
     stopContainer: (serverId: string, containerId: string) => Promise<{ success: boolean; message: string }>
     restartContainer: (serverId: string, containerId: string) => Promise<{ success: boolean; message: string }>
+  }
+  config: {
+    exportConfig: (filePath: string) => Promise<{ success: boolean; message: string }>
+    importConfig: (filePath: string) => Promise<ConfigImportResult>
+    showSaveDialog: () => Promise<DialogResult>
+    showOpenDialog: () => Promise<DialogResult>
+  }
+  image: {
+    getAll: (serverId: string) => Promise<DockerImage[]>
+    pull: (serverId: string, imageName: string) => Promise<{ success: boolean; message: string }>
+    remove: (serverId: string, imageId: string) => Promise<{ success: boolean; message: string }>
+    prune: (serverId: string) => Promise<PruneResult>
+    getInfo: (serverId: string, imageId: string) => Promise<string>
+  }
+  volume: {
+    getAll: (serverId: string) => Promise<VolumeInfo[]>
+    create: (serverId: string, name: string, driver?: string, labels?: Record<string, string>, options?: Record<string, string>) => Promise<{ success: boolean; message: string }>
+    remove: (serverId: string, name: string, force?: boolean) => Promise<{ success: boolean; message: string }>
+    prune: (serverId: string, force?: boolean, all?: boolean) => Promise<PruneResult>
+    getInfo: (serverId: string, name: string) => Promise<VolumeDetail | null>
+    getSize: (serverId: string, name: string) => Promise<string>
+  }
+  network: {
+    getAll: (serverId: string) => Promise<DockerNetworkInfo[]>
+    create: (serverId: string, options: DockerNetworkCreateOptions) => Promise<{ success: boolean; message: string; networkId?: string }>
+    remove: (serverId: string, networkId: string) => Promise<{ success: boolean; message: string }>
+    getInfo: (serverId: string, networkId: string) => Promise<DockerNetworkDetail | null>
+    connect: (serverId: string, networkId: string, containerId: string, ip?: string, ipv6?: string, aliases?: string[]) => Promise<{ success: boolean; message: string }>
+    disconnect: (serverId: string, networkId: string, containerId: string, force?: boolean) => Promise<{ success: boolean; message: string }>
+    prune: (serverId: string, force?: boolean) => Promise<DockerNetworkPruneResult>
+    getContainers: (serverId: string) => Promise<Array<{ id: string; name: string; status: string }>>
+  }
+  auditLog: {
+    query: (filter: AuditLogFilter) => Promise<AuditLogResult>
+    getActions: () => Promise<string[]>
+    getTargetTypes: () => Promise<string[]>
+    exportCSV: (filter: AuditLogFilter) => Promise<{ success: boolean; message: string }>
+    cleanup: (days?: number) => Promise<{ success: boolean; deleted: number }>
+    clear: () => Promise<{ success: boolean }>
+  }
+  terminal: {
+    open: (serverId: string, containerId: string, cols?: number, rows?: number) => Promise<{ success: boolean; sessionId?: string; message?: string }>
+    write: (sessionId: string, data: string) => Promise<{ success: boolean; message?: string }>
+    resize: (sessionId: string, cols: number, rows: number) => Promise<{ success: boolean; message?: string }>
+    close: (sessionId: string) => Promise<{ success: boolean; message?: string }>
+    getAllSessions: () => Promise<TerminalSession[]>
+    onData: (callback: (sessionId: string, data: string) => void) => void
+    onClose: (callback: (sessionId: string) => void) => void
+    onError: (callback: (sessionId: string, error: string) => void) => void
+  }
+  alertRule: {
+    getAll: () => Promise<AlertRule[]>
+    getById: (id: string) => Promise<AlertRule | undefined>
+    create: (rule: AlertRuleFormData) => Promise<AlertRule>
+    update: (id: string, updates: Partial<AlertRuleFormData>) => Promise<AlertRule | undefined>
+    delete: (id: string) => Promise<void>
+    toggle: (id: string, enabled: boolean) => Promise<AlertRule | undefined>
+  }
+  alertHistory: {
+    getAll: (limit?: number) => Promise<AlertHistoryEntry[]>
+    getActive: () => Promise<AlertHistoryEntry[]>
+    resolve: (id: string) => Promise<{ success: boolean }>
+    resolveAll: () => Promise<{ success: boolean }>
+    delete: (id: string) => Promise<{ success: boolean }>
+    clear: () => Promise<{ success: boolean }>
+    cleanup: (days?: number) => Promise<{ success: boolean; deleted: number }>
+  }
+  alert: {
+    getStats: () => Promise<AlertStats>
+  }
+  resourceReport: {
+    collectMetrics: (serverId: string, appId: string, containerId: string) => Promise<{
+      containerId: string
+      containerName: string
+      cpuPercent: number
+      memoryUsage: number
+      memoryLimit: number
+      networkRx: number
+      networkTx: number
+      blockRead: number
+      blockWrite: number
+    } | null>
+    getMetrics: (params: ResourceMetricsQuery) => Promise<ResourceMetricsResult>
+    getSummary: (serverId?: string, appId?: string, period?: string) => Promise<MetricsSummary>
+    exportCSV: (metrics: ResourceMetricRow[]) => Promise<{ success: boolean; message: string }>
+    cleanup: (days?: number) => Promise<{ success: boolean; deleted: number }>
+    startPeriodicCollection: (serverId: string, containerIds: string[], interval?: number) => Promise<{ success: boolean }>
+    stopPeriodicCollection: (serverId: string, containerIds?: string[]) => Promise<{ success: boolean }>
+    getActiveCollectionCount: () => Promise<number>
+    getLatestMetrics: (serverId: string) => Promise<ResourceMetricRow | null>
+    getLatestMetricsByContainer: (containerId: string) => Promise<ResourceMetricRow | null>
   }
 }
 

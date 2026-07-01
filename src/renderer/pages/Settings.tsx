@@ -1,15 +1,18 @@
-import React from 'react'
-import { Card, Form, Select, Button, message, Typography, Space } from 'antd'
+import React, { useState } from 'react'
+import { Card, Form, Select, Button, message, Typography, Space, Modal } from 'antd'
+import { ExportOutlined, ImportOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import i18n from '../i18n'
 
-const { Title, Text } = Typography
+const { Title, Text, Paragraph } = Typography
 
 type ThemeMode = 'system' | 'dark' | 'light'
 
 const Settings: React.FC = () => {
   const { t } = useTranslation()
   const [form] = Form.useForm()
+  const [exportLoading, setExportLoading] = useState(false)
+  const [importLoading, setImportLoading] = useState(false)
 
   const getSavedTheme = (): ThemeMode => {
     return (localStorage.getItem('themeMode') as ThemeMode) || 'system'
@@ -39,6 +42,77 @@ const Settings: React.FC = () => {
     i18n.changeLanguage(value)
     localStorage.setItem('language', value)
     message.success(t('settings.saveSuccess'))
+  }
+
+  const handleExport = async () => {
+    try {
+      setExportLoading(true)
+      const dialogResult = await window.electronAPI.config.showSaveDialog()
+      
+      if (dialogResult.canceled || !dialogResult.filePath) {
+        setExportLoading(false)
+        return
+      }
+
+      const result = await window.electronAPI.config.exportConfig(dialogResult.filePath)
+      
+      if (result.success) {
+        message.success(t('settings.configExportSuccess'))
+      } else {
+        message.error(result.message)
+      }
+    } catch (error) {
+      message.error(`${t('settings.configExportFailed')}: ${(error as Error).message}`)
+    } finally {
+      setExportLoading(false)
+    }
+  }
+
+  const handleImport = async () => {
+    try {
+      setImportLoading(true)
+      const dialogResult = await window.electronAPI.config.showOpenDialog()
+      
+      if (dialogResult.canceled || !dialogResult.filePath) {
+        setImportLoading(false)
+        return
+      }
+
+      const result = await window.electronAPI.config.importConfig(dialogResult.filePath)
+      
+      if (result.success) {
+        Modal.success({
+          title: t('settings.configImportSuccess'),
+          content: (
+            <div>
+              <p>{result.message}</p>
+            </div>
+          )
+        })
+      } else {
+        Modal.error({
+          title: t('settings.configImportFailed'),
+          content: result.message
+        })
+      }
+    } catch (error) {
+      Modal.error({
+        title: t('settings.configImportFailed'),
+        content: (error as Error).message
+      })
+    } finally {
+      setImportLoading(false)
+    }
+  }
+
+  const showImportConfirm = () => {
+    Modal.confirm({
+      title: t('settings.configImportConfirmTitle'),
+      content: t('settings.configImportConfirmContent'),
+      okText: t('common.confirm'),
+      cancelText: t('common.cancel'),
+      onOk: handleImport
+    })
   }
 
   return (
@@ -73,6 +147,31 @@ const Settings: React.FC = () => {
               />
             </Form.Item>
           </Form>
+        </Card>
+
+        <Card title={t('settings.configManagement')}>
+          <Space direction="vertical" style={{ width: '100%' }}>
+            <Paragraph type="secondary">
+              {t('settings.configManagementDesc')}
+            </Paragraph>
+            <Space wrap>
+              <Button
+                type="primary"
+                icon={<ExportOutlined />}
+                onClick={handleExport}
+                loading={exportLoading}
+              >
+                {t('settings.configExport')}
+              </Button>
+              <Button
+                icon={<ImportOutlined />}
+                onClick={showImportConfirm}
+                loading={importLoading}
+              >
+                {t('settings.configImport')}
+              </Button>
+            </Space>
+          </Space>
         </Card>
 
         <Card title={t('app.title')}>

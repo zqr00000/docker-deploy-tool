@@ -176,6 +176,441 @@ export interface ContainerStats {
   pids: number
 }
 
+export interface VolumeInfo {
+  name: string
+  mountpoint: string
+  driver: string
+  size: string
+  scope: string
+  createdAt: string
+  labels: string
+  options: string
+}
+
+export interface VolumeDetail {
+  name: string
+  driver: string
+  mountpoint: string
+  scope: string
+  createdAt: string
+  labels: Record<string, string>
+  options: Record<string, string>
+  status?: Record<string, string>
+  usageData?: {
+    size: string
+    refCount: number
+  }
+}
+
+export interface PruneResult {
+  success: boolean
+  deletedVolumes: string[]
+  spaceReclaimed: string
+  message: string
+}
+
+export interface ConfigImportResult {
+  success: boolean
+  message: string
+  serversImported: number
+  templatesImported: number
+  appsImported: number
+}
+
+export interface DialogResult {
+  canceled: boolean
+  filePath?: string
+  filePaths?: string[]
+}
+
+export interface DockerImage {
+  id: string
+  repository: string
+  tag: string
+  size: string
+  created: string
+}
+
+export interface PruneResult {
+  success: boolean
+  message: string
+  deletedImages?: string[]
+  spaceReclaimed?: string
+}
+
+export interface DockerNetworkInfo {
+  id: string
+  name: string
+  driver: string
+  scope: string
+  subnet: string
+  gateway: string
+  createdAt: string
+  internal: boolean
+  labels: string
+}
+
+export interface DockerNetworkDetail {
+  id: string
+  name: string
+  driver: string
+  scope: string
+  created: string
+  internal: boolean
+  enableIPv6: boolean
+  ipam: {
+    driver: string
+    config: Array<{
+      subnet: string
+      gateway: string
+      ipRange?: string
+    }>
+    options?: Record<string, string>
+  }
+  options: Record<string, string>
+  labels: Record<string, string>
+  containers: Array<{
+    name: string
+    id: string
+    ipv4Address: string
+    ipv6Address: string
+    macAddress: string
+  }>
+}
+
+export interface DockerNetworkCreateOptions {
+  name: string
+  driver?: string
+  subnet?: string
+  gateway?: string
+  internal?: boolean
+  labels?: Record<string, string>
+  options?: Record<string, string>
+  ipamOptions?: Record<string, string>
+  enableIPv6?: boolean
+  ipRange?: string
+  auxAddresses?: Record<string, string>
+}
+
+export interface DockerNetworkPruneResult {
+  success: boolean
+  deletedNetworks: string[]
+  message: string
+}
+
+export interface AuditLogRow {
+  id: string
+  timestamp: string
+  action: string
+  targetType: string
+  targetId: string | null
+  targetName: string | null
+  status: string
+  details: string | null
+  serverId: string | null
+  createdAt: string
+}
+
+export interface AuditLogFilter {
+  action?: string
+  targetType?: string
+  status?: string
+  serverId?: string
+  startDate?: string
+  endDate?: string
+  search?: string
+  page?: number
+  pageSize?: number
+}
+
+export interface AuditLogResult {
+  logs: AuditLogRow[]
+  total: number
+  page: number
+  pageSize: number
+}
+
+export interface ServerGroup {
+  id: string
+  name: string
+  description: string | null
+  createdAt: string
+  updatedAt: string
+  serverCount?: number
+}
+
+export interface BatchDeployOptions {
+  serverIds: string[]
+  appName: string
+  dockerCompose: string
+  projectPath: string
+  templateId?: string
+  envVariables?: { name: string; value: string }[]
+  parallelLimit?: number
+}
+
+export interface BatchDeployResult {
+  success: boolean
+  totalServers: number
+  successCount: number
+  failureCount: number
+  results: {
+    serverId: string
+    serverName: string
+    success: boolean
+    message: string
+    appId?: string
+    containerIds?: string[]
+  }[]
+  message: string
+}
+
+export interface BatchOperationResult {
+  success: boolean
+  total: number
+  successCount: number
+  failureCount: number
+  results: {
+    appId: string
+    appName: string
+    serverId: string
+    success: boolean
+    message: string
+  }[]
+  message: string
+}
+
+export interface ServerStatusInfo {
+  serverId: string
+  serverName: string
+  serverHost: string
+  status: 'online' | 'offline' | 'connecting' | 'error'
+  apps: {
+    appId: string
+    appName: string
+    appStatus: 'running' | 'stopped' | 'deploying' | 'error'
+    containerCount: number
+  }[]
+}
+
+export interface TerminalSession {
+  sessionId: string
+  serverId: string
+  containerId: string
+  shell: string
+  createdAt: string
+}
+
+export interface DeployHistoryRecord {
+  id: string
+  appId: string
+  appName: string
+  serverId: string
+  version: number
+  dockerCompose: string
+  envVariables: string | null
+  deployedAt: string
+  status: string
+}
+
+export interface RollbackResult {
+  success: boolean
+  message: string
+  appId?: string
+}
+
+export type AlertRuleType = 'container_exit' | 'container_restart_loop' | 'high_cpu' | 'high_memory' | 'high_disk'
+export type AlertSeverity = 'info' | 'warning' | 'critical'
+export type AlertStatus = 'active' | 'resolved'
+export type NotifyChannel = 'system' | 'webhook'
+
+export interface AlertRule {
+  id: string
+  name: string
+  ruleType: AlertRuleType
+  serverId?: string
+  appId?: string
+  threshold?: number
+  enabled: boolean
+  notifyChannels: NotifyChannel[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface AlertHistoryEntry {
+  id: string
+  ruleId: string
+  ruleName: string
+  alertType: AlertRuleType
+  message: string
+  severity: AlertSeverity
+  status: AlertStatus
+  triggeredAt: string
+  resolvedAt?: string
+}
+
+export interface AlertRuleFormData {
+  name: string
+  ruleType: AlertRuleType
+  serverId?: string
+  appId?: string
+  threshold?: number
+  enabled?: boolean
+  notifyChannels?: NotifyChannel[]
+}
+
+export interface AlertStats {
+  totalRules: number
+  activeRules: number
+  activeAlerts: number
+  totalAlerts: number
+}
+
+export type ScheduledTaskType = 'restart_container' | 'update_container' | 'backup_database' | 'backup_volume' | 'cleanup_images' | 'cleanup_volumes'
+
+export interface ScheduledTask {
+  id: string
+  name: string
+  description: string | null
+  taskType: ScheduledTaskType
+  cronExpression: string
+  serverId: string
+  appId: string | null
+  enabled: number
+  lastRun: string | null
+  lastStatus: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ScheduledTaskFormData {
+  name: string
+  description?: string
+  taskType: ScheduledTaskType
+  cronExpression: string
+  serverId: string
+  appId?: string
+  enabled?: boolean
+}
+
+export interface ContainerHealthStatus {
+  containerId: string
+  containerName: string
+  status: 'healthy' | 'unhealthy' | 'starting' | 'none' | 'unknown'
+  healthStatus: string
+  uptime: string
+  restartCount: number
+  exitCode: number
+  errorMessage?: string
+  responseTime?: number
+}
+
+export interface AppHealthStatus {
+  appId: string
+  appName: string
+  serverId: string
+  projectPath: string
+  overallStatus: 'healthy' | 'unhealthy' | 'partial' | 'unknown'
+  containers: ContainerHealthStatus[]
+  lastCheckTime: string
+  autoRestartEnabled: boolean
+  restartCount: number
+}
+
+export interface HealthCheckConfig {
+  id: string
+  appId: string
+  autoRestart: boolean
+  maxRestarts: number
+  restartWindow: number
+  notifyOnRestart: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface HealthCheckHistoryRecord {
+  id: string
+  appId: string
+  containerId: string | null
+  containerName: string | null
+  checkTime: string
+  status: string
+  healthStatus: string | null
+  restartCount: number
+  autoRestarted: number
+  errorMessage: string | null
+  responseTime: number | null
+  createdAt: string
+}
+
+export interface HealthCheckReport {
+  appId: string
+  appName: string
+  serverId: string
+  totalChecks: number
+  healthyCount: number
+  unhealthyCount: number
+  autoRestarts: number
+  uptime: number
+  lastCheckTime: string
+  containers: {
+    name: string
+    status: string
+    healthStatus: string
+    restartCount: number
+  }[]
+}
+
+export interface HealthCheckConfigFormData {
+  autoRestart?: boolean
+  maxRestarts?: number
+  restartWindow?: number
+  notifyOnRestart?: boolean
+}
+
+export interface ResourceMetricRow {
+  id: string
+  serverId: string
+  appId: string | null
+  containerId: string | null
+  cpuPercent: number | null
+  memoryUsage: number | null
+  memoryLimit: number | null
+  networkRx: number | null
+  networkTx: number | null
+  blockRead: number | null
+  blockWrite: number | null
+  timestamp: string
+}
+
+export interface ResourceMetricsQuery {
+  serverId?: string
+  appId?: string
+  containerId?: string
+  startTime?: string
+  endTime?: string
+  limit?: number
+  offset?: number
+}
+
+export interface MetricsSummary {
+  avgCpuPercent: number
+  maxCpuPercent: number
+  avgMemoryUsage: number
+  maxMemoryUsage: number
+  avgNetworkRx: number
+  avgNetworkTx: number
+  totalBlockRead: number
+  totalBlockWrite: number
+  dataPoints: number
+  period: string
+}
+
+export interface ResourceMetricsResult {
+  metrics: ResourceMetricRow[]
+  total: number
+}
+
 export interface ElectronAPI {
   getAppVersion: () => Promise<string>
   getAppName: () => Promise<string>
@@ -225,6 +660,110 @@ export interface ElectronAPI {
     startContainer: (serverId: string, containerId: string) => Promise<{ success: boolean; message: string }>
     stopContainer: (serverId: string, containerId: string) => Promise<{ success: boolean; message: string }>
     restartContainer: (serverId: string, containerId: string) => Promise<{ success: boolean; message: string }>
+  }
+  config: {
+    exportConfig: (filePath: string) => Promise<{ success: boolean; message: string }>
+    importConfig: (filePath: string) => Promise<ConfigImportResult>
+    showSaveDialog: () => Promise<DialogResult>
+    showOpenDialog: () => Promise<DialogResult>
+  }
+  image: {
+    getAll: (serverId: string) => Promise<DockerImage[]>
+    pull: (serverId: string, imageName: string) => Promise<{ success: boolean; message: string }>
+    remove: (serverId: string, imageId: string) => Promise<{ success: boolean; message: string }>
+    prune: (serverId: string) => Promise<PruneResult>
+    getInfo: (serverId: string, imageId: string) => Promise<string>
+  }
+  volume: {
+    getAll: (serverId: string) => Promise<VolumeInfo[]>
+    create: (serverId: string, name: string, driver?: string, labels?: Record<string, string>, options?: Record<string, string>) => Promise<{ success: boolean; message: string }>
+    remove: (serverId: string, name: string, force?: boolean) => Promise<{ success: boolean; message: string }>
+    prune: (serverId: string, force?: boolean, all?: boolean) => Promise<PruneResult>
+    getInfo: (serverId: string, name: string) => Promise<VolumeDetail | null>
+    getSize: (serverId: string, name: string) => Promise<string>
+  }
+  network: {
+    getAll: (serverId: string) => Promise<DockerNetworkInfo[]>
+    create: (serverId: string, options: DockerNetworkCreateOptions) => Promise<{ success: boolean; message: string; networkId?: string }>
+    remove: (serverId: string, networkId: string) => Promise<{ success: boolean; message: string }>
+    getInfo: (serverId: string, networkId: string) => Promise<DockerNetworkDetail | null>
+    connect: (serverId: string, networkId: string, containerId: string, ip?: string, ipv6?: string, aliases?: string[]) => Promise<{ success: boolean; message: string }>
+    disconnect: (serverId: string, networkId: string, containerId: string, force?: boolean) => Promise<{ success: boolean; message: string }>
+    prune: (serverId: string, force?: boolean) => Promise<DockerNetworkPruneResult>
+    getContainers: (serverId: string) => Promise<Array<{ id: string; name: string; status: string }>>
+  }
+  auditLog: {
+    query: (filter: AuditLogFilter) => Promise<AuditLogResult>
+    getActions: () => Promise<string[]>
+    getTargetTypes: () => Promise<string[]>
+    exportCSV: (filter: AuditLogFilter) => Promise<{ success: boolean; message: string }>
+    cleanup: (days?: number) => Promise<{ success: boolean; deleted: number }>
+    clear: () => Promise<{ success: boolean }>
+  }
+  terminal: {
+    open: (serverId: string, containerId: string, cols?: number, rows?: number) => Promise<{ success: boolean; sessionId?: string; message?: string }>
+    write: (sessionId: string, data: string) => Promise<{ success: boolean; message?: string }>
+    resize: (sessionId: string, cols: number, rows: number) => Promise<{ success: boolean; message?: string }>
+    close: (sessionId: string) => Promise<{ success: boolean; message?: string }>
+    getAllSessions: () => Promise<TerminalSession[]>
+    onData: (callback: (sessionId: string, data: string) => void) => void
+    onClose: (callback: (sessionId: string) => void) => void
+    onError: (callback: (sessionId: string, error: string) => void) => void
+  }
+  alertRule: {
+    getAll: () => Promise<AlertRule[]>
+    getById: (id: string) => Promise<AlertRule | undefined>
+    create: (rule: AlertRuleFormData) => Promise<AlertRule>
+    update: (id: string, updates: Partial<AlertRuleFormData>) => Promise<AlertRule | undefined>
+    delete: (id: string) => Promise<void>
+    toggle: (id: string, enabled: boolean) => Promise<AlertRule | undefined>
+  }
+  alertHistory: {
+    getAll: (limit?: number) => Promise<AlertHistoryEntry[]>
+    getActive: () => Promise<AlertHistoryEntry[]>
+    resolve: (id: string) => Promise<{ success: boolean }>
+    resolveAll: () => Promise<{ success: boolean }>
+    delete: (id: string) => Promise<{ success: boolean }>
+    clear: () => Promise<{ success: boolean }>
+    cleanup: (days?: number) => Promise<{ success: boolean; deleted: number }>
+  }
+  alert: {
+    getStats: () => Promise<AlertStats>
+  }
+  healthCheck: {
+    getContainerHealth: (serverId: string, containerId: string) => Promise<ContainerHealthStatus | null>
+    getAppHealth: (serverId: string, projectPath: string) => Promise<AppHealthStatus | null>
+    updateConfig: (appId: string, config: HealthCheckConfigFormData) => Promise<HealthCheckConfig>
+    getConfig: (appId: string) => Promise<HealthCheckConfig | null>
+    performCheck: (appId?: string) => Promise<AppHealthStatus[]>
+    getHistory: (appId: string, limit?: number) => Promise<HealthCheckHistoryRecord[]>
+    getReport: (appId: string) => Promise<HealthCheckReport | null>
+    getAllReports: () => Promise<HealthCheckReport[]>
+    cleanupHistory: (days?: number) => Promise<{ success: boolean; deleted: number }>
+    startPeriodic: (intervalMs?: number) => Promise<{ success: boolean }>
+    stopPeriodic: () => Promise<{ success: boolean }>
+  }
+  resourceReport: {
+    collectMetrics: (serverId: string, appId: string, containerId: string) => Promise<{
+      containerId: string
+      containerName: string
+      cpuPercent: number
+      memoryUsage: number
+      memoryLimit: number
+      networkRx: number
+      networkTx: number
+      blockRead: number
+      blockWrite: number
+    } | null>
+    getMetrics: (params: ResourceMetricsQuery) => Promise<ResourceMetricsResult>
+    getSummary: (serverId?: string, appId?: string, period?: string) => Promise<MetricsSummary>
+    exportCSV: (metrics: ResourceMetricRow[]) => Promise<{ success: boolean; message: string }>
+    cleanup: (days?: number) => Promise<{ success: boolean; deleted: number }>
+    startPeriodicCollection: (serverId: string, containerIds: string[], interval?: number) => Promise<{ success: boolean }>
+    stopPeriodicCollection: (serverId: string, containerIds?: string[]) => Promise<{ success: boolean }>
+    getActiveCollectionCount: () => Promise<number>
+    getLatestMetrics: (serverId: string) => Promise<ResourceMetricRow | null>
+    getLatestMetricsByContainer: (containerId: string) => Promise<ResourceMetricRow | null>
   }
 }
 
@@ -281,6 +820,152 @@ const electronAPI: ElectronAPI = {
     startContainer: (serverId: string, containerId: string): Promise<{ success: boolean; message: string }> => ipcRenderer.invoke('app:startContainer', serverId, containerId),
     stopContainer: (serverId: string, containerId: string): Promise<{ success: boolean; message: string }> => ipcRenderer.invoke('app:stopContainer', serverId, containerId),
     restartContainer: (serverId: string, containerId: string): Promise<{ success: boolean; message: string }> => ipcRenderer.invoke('app:restartContainer', serverId, containerId)
+  },
+  config: {
+    exportConfig: (filePath: string): Promise<{ success: boolean; message: string }> => ipcRenderer.invoke('config:export', filePath),
+    importConfig: (filePath: string): Promise<ConfigImportResult> => ipcRenderer.invoke('config:import', filePath),
+    showSaveDialog: (): Promise<DialogResult> => ipcRenderer.invoke('config:showSaveDialog'),
+    showOpenDialog: (): Promise<DialogResult> => ipcRenderer.invoke('config:showOpenDialog')
+  },
+  image: {
+    getAll: (serverId: string): Promise<DockerImage[]> => ipcRenderer.invoke('image:getAll', serverId),
+    pull: (serverId: string, imageName: string): Promise<{ success: boolean; message: string }> => ipcRenderer.invoke('image:pull', serverId, imageName),
+    remove: (serverId: string, imageId: string): Promise<{ success: boolean; message: string }> => ipcRenderer.invoke('image:remove', serverId, imageId),
+    prune: (serverId: string): Promise<PruneResult> => ipcRenderer.invoke('image:prune', serverId),
+    getInfo: (serverId: string, imageId: string): Promise<string> => ipcRenderer.invoke('image:getInfo', serverId, imageId)
+  },
+  volume: {
+    getAll: (serverId: string): Promise<VolumeInfo[]> => ipcRenderer.invoke('volume:getAll', serverId),
+    create: (serverId: string, name: string, driver?: string, labels?: Record<string, string>, options?: Record<string, string>): Promise<{ success: boolean; message: string }> => ipcRenderer.invoke('volume:create', serverId, name, driver, labels, options),
+    remove: (serverId: string, name: string, force?: boolean): Promise<{ success: boolean; message: string }> => ipcRenderer.invoke('volume:remove', serverId, name, force),
+    prune: (serverId: string, force?: boolean, all?: boolean): Promise<PruneResult> => ipcRenderer.invoke('volume:prune', serverId, force, all),
+    getInfo: (serverId: string, name: string): Promise<VolumeDetail | null> => ipcRenderer.invoke('volume:getInfo', serverId, name),
+    getSize: (serverId: string, name: string): Promise<string> => ipcRenderer.invoke('volume:getSize', serverId, name)
+  },
+  network: {
+    getAll: (serverId: string): Promise<DockerNetworkInfo[]> => ipcRenderer.invoke('network:getAll', serverId),
+    create: (serverId: string, options: DockerNetworkCreateOptions): Promise<{ success: boolean; message: string; networkId?: string }> => ipcRenderer.invoke('network:create', serverId, options),
+    remove: (serverId: string, networkId: string): Promise<{ success: boolean; message: string }> => ipcRenderer.invoke('network:remove', serverId, networkId),
+    getInfo: (serverId: string, networkId: string): Promise<DockerNetworkDetail | null> => ipcRenderer.invoke('network:getInfo', serverId, networkId),
+    connect: (serverId: string, networkId: string, containerId: string, ip?: string, ipv6?: string, aliases?: string[]): Promise<{ success: boolean; message: string }> => ipcRenderer.invoke('network:connect', serverId, networkId, containerId, ip, ipv6, aliases),
+    disconnect: (serverId: string, networkId: string, containerId: string, force?: boolean): Promise<{ success: boolean; message: string }> => ipcRenderer.invoke('network:disconnect', serverId, networkId, containerId, force),
+    prune: (serverId: string, force?: boolean): Promise<DockerNetworkPruneResult> => ipcRenderer.invoke('network:prune', serverId, force),
+    getContainers: (serverId: string): Promise<Array<{ id: string; name: string; status: string }>> => ipcRenderer.invoke('network:getContainers', serverId)
+  },
+  auditLog: {
+    query: (filter: AuditLogFilter): Promise<AuditLogResult> => ipcRenderer.invoke('auditLog:query', filter),
+    getActions: (): Promise<string[]> => ipcRenderer.invoke('auditLog:getActions'),
+    getTargetTypes: (): Promise<string[]> => ipcRenderer.invoke('auditLog:getTargetTypes'),
+    exportCSV: (filter: AuditLogFilter): Promise<{ success: boolean; message: string }> => ipcRenderer.invoke('auditLog:exportCSV', filter),
+    cleanup: (days?: number): Promise<{ success: boolean; deleted: number }> => ipcRenderer.invoke('auditLog:cleanup', days),
+    clear: (): Promise<{ success: boolean }> => ipcRenderer.invoke('auditLog:clear')
+  },
+  terminal: {
+    open: (serverId: string, containerId: string, cols?: number, rows?: number): Promise<{ success: boolean; sessionId?: string; message?: string }> => ipcRenderer.invoke('terminal:open', serverId, containerId, cols, rows),
+    write: (sessionId: string, data: string): Promise<{ success: boolean; message?: string }> => ipcRenderer.invoke('terminal:write', sessionId, data),
+    resize: (sessionId: string, cols: number, rows: number): Promise<{ success: boolean; message?: string }> => ipcRenderer.invoke('terminal:resize', sessionId, cols, rows),
+    close: (sessionId: string): Promise<{ success: boolean; message?: string }> => ipcRenderer.invoke('terminal:close', sessionId),
+    getAllSessions: (): Promise<TerminalSession[]> => ipcRenderer.invoke('terminal:getAllSessions'),
+    onData: (callback: (sessionId: string, data: string) => void): void => {
+      ipcRenderer.on('terminal:data', (_, sessionId: string, data: string) => callback(sessionId, data))
+    },
+    onClose: (callback: (sessionId: string) => void): void => {
+      ipcRenderer.on('terminal:close', (_, sessionId: string) => callback(sessionId))
+    },
+    onError: (callback: (sessionId: string, error: string) => void): void => {
+      ipcRenderer.on('terminal:error', (_, sessionId: string, error: string) => callback(sessionId, error))
+    }
+  },
+  deployHistory: {
+    getByAppId: (appId: string): Promise<DeployHistoryRecord[]> => ipcRenderer.invoke('deployHistory:getByAppId', appId),
+    getAll: (): Promise<DeployHistoryRecord[]> => ipcRenderer.invoke('deployHistory:getAll'),
+    getById: (id: string): Promise<DeployHistoryRecord | undefined> => ipcRenderer.invoke('deployHistory:getById', id),
+    rollback: (historyId: string): Promise<RollbackResult> => ipcRenderer.invoke('deployHistory:rollback', historyId),
+    compare: (historyId1: string, historyId2: string): Promise<{ version1: number; version2: number; compose1: string; compose2: string } | null> => ipcRenderer.invoke('deployHistory:compare', historyId1, historyId2)
+  },
+  serverGroup: {
+    getAll: (): Promise<ServerGroup[]> => ipcRenderer.invoke('serverGroup:getAll'),
+    getById: (id: string): Promise<ServerGroup | undefined> => ipcRenderer.invoke('serverGroup:getById', id),
+    create: (group: { name: string; description?: string }): Promise<ServerGroup> => ipcRenderer.invoke('serverGroup:create', group),
+    update: (id: string, updates: Partial<{ name: string; description: string }>): Promise<void> => ipcRenderer.invoke('serverGroup:update', id, updates),
+    delete: (id: string): Promise<void> => ipcRenderer.invoke('serverGroup:delete', id),
+    getServers: (groupId: string): Promise<Server[]> => ipcRenderer.invoke('serverGroup:getServers', groupId),
+    addServer: (groupId: string, serverId: string): Promise<{ success: boolean; message?: string }> => ipcRenderer.invoke('serverGroup:addServer', groupId, serverId),
+    removeServer: (groupId: string, serverId: string): Promise<{ success: boolean; message?: string }> => ipcRenderer.invoke('serverGroup:removeServer', groupId, serverId),
+    getServerGroups: (serverId: string): Promise<ServerGroup[]> => ipcRenderer.invoke('serverGroup:getServerGroups', serverId)
+  },
+  batch: {
+    deploy: (options: BatchDeployOptions): Promise<BatchDeployResult> => ipcRenderer.invoke('batch:deploy', options),
+    start: (appIds: string[]): Promise<BatchOperationResult> => ipcRenderer.invoke('batch:start', appIds),
+    stop: (appIds: string[]): Promise<BatchOperationResult> => ipcRenderer.invoke('batch:stop', appIds),
+    restart: (appIds: string[]): Promise<BatchOperationResult> => ipcRenderer.invoke('batch:restart', appIds),
+    getServerStatuses: (serverIds: string[]): Promise<ServerStatusInfo[]> => ipcRenderer.invoke('batch:getServerStatuses', serverIds),
+    getAllServerStatuses: (): Promise<ServerStatusInfo[]> => ipcRenderer.invoke('batch:getAllServerStatuses')
+  },
+  alertRule: {
+    getAll: (): Promise<AlertRule[]> => ipcRenderer.invoke('alertRule:getAll'),
+    getById: (id: string): Promise<AlertRule | undefined> => ipcRenderer.invoke('alertRule:getById', id),
+    create: (rule: AlertRuleFormData): Promise<AlertRule> => ipcRenderer.invoke('alertRule:create', rule),
+    update: (id: string, updates: Partial<AlertRuleFormData>): Promise<AlertRule | undefined> => ipcRenderer.invoke('alertRule:update', id, updates),
+    delete: (id: string): Promise<void> => ipcRenderer.invoke('alertRule:delete', id),
+    toggle: (id: string, enabled: boolean): Promise<AlertRule | undefined> => ipcRenderer.invoke('alertRule:toggle', id, enabled)
+  },
+  alertHistory: {
+    getAll: (limit?: number): Promise<AlertHistoryEntry[]> => ipcRenderer.invoke('alertHistory:getAll', limit),
+    getActive: (): Promise<AlertHistoryEntry[]> => ipcRenderer.invoke('alertHistory:getActive'),
+    resolve: (id: string): Promise<{ success: boolean }> => ipcRenderer.invoke('alertHistory:resolve', id),
+    resolveAll: (): Promise<{ success: boolean }> => ipcRenderer.invoke('alertHistory:resolveAll'),
+    delete: (id: string): Promise<{ success: boolean }> => ipcRenderer.invoke('alertHistory:delete', id),
+    clear: (): Promise<{ success: boolean }> => ipcRenderer.invoke('alertHistory:clear'),
+    cleanup: (days?: number): Promise<{ success: boolean; deleted: number }> => ipcRenderer.invoke('alertHistory:cleanup', days)
+  },
+  alert: {
+    getStats: (): Promise<AlertStats> => ipcRenderer.invoke('alert:getStats')
+  },
+  scheduledTask: {
+    getAll: (): Promise<ScheduledTask[]> => ipcRenderer.invoke('scheduledTask:getAll'),
+    getById: (id: string): Promise<ScheduledTask | undefined> => ipcRenderer.invoke('scheduledTask:getById', id),
+    create: (task: ScheduledTaskFormData): Promise<ScheduledTask> => ipcRenderer.invoke('scheduledTask:create', task),
+    update: (id: string, updates: Partial<ScheduledTaskFormData>): Promise<ScheduledTask | undefined> => ipcRenderer.invoke('scheduledTask:update', id, updates),
+    delete: (id: string): Promise<{ success: boolean }> => ipcRenderer.invoke('scheduledTask:delete', id),
+    toggle: (id: string, enabled: boolean): Promise<{ success: boolean; message?: string }> => ipcRenderer.invoke('scheduledTask:toggle', id, enabled),
+    runNow: (id: string): Promise<{ success: boolean; message: string }> => ipcRenderer.invoke('scheduledTask:runNow', id),
+    getActiveCount: (): Promise<number> => ipcRenderer.invoke('scheduledTask:getActiveCount')
+  },
+  healthCheck: {
+    getContainerHealth: (serverId: string, containerId: string): Promise<ContainerHealthStatus | null> => ipcRenderer.invoke('healthCheck:getContainerHealth', serverId, containerId),
+    getAppHealth: (serverId: string, projectPath: string): Promise<AppHealthStatus | null> => ipcRenderer.invoke('healthCheck:getAppHealth', serverId, projectPath),
+    updateConfig: (appId: string, config: HealthCheckConfigFormData): Promise<HealthCheckConfig> => ipcRenderer.invoke('healthCheck:updateConfig', appId, config),
+    getConfig: (appId: string): Promise<HealthCheckConfig | null> => ipcRenderer.invoke('healthCheck:getConfig', appId),
+    performCheck: (appId?: string): Promise<AppHealthStatus[]> => ipcRenderer.invoke('healthCheck:performCheck', appId),
+    getHistory: (appId: string, limit?: number): Promise<HealthCheckHistoryRecord[]> => ipcRenderer.invoke('healthCheck:getHistory', appId, limit),
+    getReport: (appId: string): Promise<HealthCheckReport | null> => ipcRenderer.invoke('healthCheck:getReport', appId),
+    getAllReports: (): Promise<HealthCheckReport[]> => ipcRenderer.invoke('healthCheck:getAllReports'),
+    cleanupHistory: (days?: number): Promise<{ success: boolean; deleted: number }> => ipcRenderer.invoke('healthCheck:cleanupHistory', days),
+    startPeriodic: (intervalMs?: number): Promise<{ success: boolean }> => ipcRenderer.invoke('healthCheck:startPeriodic', intervalMs),
+    stopPeriodic: (): Promise<{ success: boolean }> => ipcRenderer.invoke('healthCheck:stopPeriodic')
+  },
+  resourceReport: {
+    collectMetrics: (serverId: string, appId: string, containerId: string): Promise<{
+      containerId: string
+      containerName: string
+      cpuPercent: number
+      memoryUsage: number
+      memoryLimit: number
+      networkRx: number
+      networkTx: number
+      blockRead: number
+      blockWrite: number
+    } | null> => ipcRenderer.invoke('resourceReport:collectMetrics', serverId, appId, containerId),
+    getMetrics: (params: ResourceMetricsQuery): Promise<ResourceMetricsResult> => ipcRenderer.invoke('resourceReport:getMetrics', params),
+    getSummary: (serverId?: string, appId?: string, period?: string): Promise<MetricsSummary> => ipcRenderer.invoke('resourceReport:getSummary', serverId, appId, period),
+    exportCSV: (metrics: ResourceMetricRow[]): Promise<{ success: boolean; message: string }> => ipcRenderer.invoke('resourceReport:exportCSV', metrics),
+    cleanup: (days?: number): Promise<{ success: boolean; deleted: number }> => ipcRenderer.invoke('resourceReport:cleanup', days),
+    startPeriodicCollection: (serverId: string, containerIds: string[], interval?: number): Promise<{ success: boolean }> => ipcRenderer.invoke('resourceReport:startPeriodicCollection', serverId, containerIds, interval),
+    stopPeriodicCollection: (serverId: string, containerIds?: string[]): Promise<{ success: boolean }> => ipcRenderer.invoke('resourceReport:stopPeriodicCollection', serverId, containerIds),
+    getActiveCollectionCount: (): Promise<number> => ipcRenderer.invoke('resourceReport:getActiveCollectionCount'),
+    getLatestMetrics: (serverId: string): Promise<ResourceMetricRow | null> => ipcRenderer.invoke('resourceReport:getLatestMetrics', serverId),
+    getLatestMetricsByContainer: (containerId: string): Promise<ResourceMetricRow | null> => ipcRenderer.invoke('resourceReport:getLatestMetricsByContainer', containerId)
   }
 }
 

@@ -5,11 +5,24 @@ import { useTranslation } from 'react-i18next'
 import LayoutComponent from './components/Layout'
 import ServerList from './pages/ServerList'
 import ServerDetail from './pages/ServerDetail'
+import ServerGroups from './pages/ServerGroups'
 import Templates from './pages/Templates'
 import Apps from './pages/Apps'
 import AppDetail from './pages/AppDetail'
 import Deploy from './pages/Deploy'
+import BatchDeploy from './pages/BatchDeploy'
+import Images from './pages/Images'
+import Volumes from './pages/Volumes'
+import Networks from './pages/Networks'
+import ContainerTerminal from './pages/ContainerTerminal'
 import Settings from './pages/Settings'
+import AuditLog from './pages/AuditLog'
+import Alerts from './pages/Alerts'
+import DeployHistory from './pages/DeployHistory'
+import ScheduledTasks from './pages/ScheduledTasks'
+import HealthCheck from './pages/HealthCheck'
+import ComposeEditor from './pages/ComposeEditor'
+import ResourceReports from './pages/ResourceReports'
 import { ServerProvider } from './context/ServerContext'
 import i18n from './i18n'
 
@@ -88,10 +101,23 @@ const App: React.FC = () => {
                 <Route path="/" element={<Navigate to="/servers" replace />} />
                 <Route path="/servers" element={<ServerList />} />
                 <Route path="/servers/:id" element={<ServerDetail />} />
+                <Route path="/server-groups" element={<ServerGroups />} />
                 <Route path="/templates" element={<Templates />} />
                 <Route path="/apps" element={<Apps />} />
                 <Route path="/apps/deploy" element={<Deploy />} />
+                <Route path="/batch-deploy" element={<BatchDeploy />} />
                 <Route path="/apps/:id" element={<AppDetail />} />
+                <Route path="/images" element={<Images />} />
+                <Route path="/volumes" element={<Volumes />} />
+                <Route path="/networks" element={<Networks />} />
+                <Route path="/terminal" element={<ContainerTerminal />} />
+                <Route path="/deploy-history" element={<DeployHistory />} />
+                <Route path="/audit-logs" element={<AuditLog />} />
+                <Route path="/alerts" element={<Alerts />} />
+                <Route path="/scheduled-tasks" element={<ScheduledTasks />} />
+                <Route path="/health-check" element={<HealthCheck />} />
+                <Route path="/resource-reports" element={<ResourceReports />} />
+                <Route path="/compose-editor" element={<ComposeEditor />} />
                 <Route path="/settings" element={<Settings />} />
               </Routes>
             </LayoutComponent>

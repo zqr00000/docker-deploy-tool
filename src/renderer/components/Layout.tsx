@@ -6,7 +6,20 @@ import {
   CloudServerOutlined,
   FileTextOutlined,
   AppstoreOutlined,
-  SettingOutlined
+  SettingOutlined,
+  HddOutlined,
+  DatabaseOutlined,
+  AuditOutlined,
+  TeamOutlined,
+  RocketOutlined,
+  CodeOutlined,
+  HistoryOutlined,
+  BellOutlined,
+  ApiOutlined,
+  ScheduleOutlined,
+  HeartOutlined,
+  BuildOutlined,
+  LineChartOutlined
 } from '@ant-design/icons'
 import LanguageSwitcher from './LanguageSwitcher'
 
@@ -49,6 +62,61 @@ const LayoutComponent: React.FC<LayoutProps> = ({ children }) => {
       key: 'apps',
       icon: <AppstoreOutlined />,
       label: t('menu.apps')
+    },
+    {
+      key: 'images',
+      icon: <HddOutlined />,
+      label: t('menu.images')
+    },
+    {
+      key: 'volumes',
+      icon: <DatabaseOutlined />,
+      label: t('menu.volumes')
+    },
+    {
+      key: 'networks',
+      icon: <ApiOutlined />,
+      label: t('menu.networks')
+    },
+    {
+      key: 'compose-editor',
+      icon: <BuildOutlined />,
+      label: t('menu.composeEditor')
+    },
+    {
+      key: 'terminal',
+      icon: <CodeOutlined />,
+      label: t('menu.terminal')
+    },
+    {
+      key: 'deploy-history',
+      icon: <HistoryOutlined />,
+      label: t('menu.deployHistory')
+    },
+    {
+      key: 'audit-logs',
+      icon: <AuditOutlined />,
+      label: t('menu.auditLogs')
+    },
+    {
+      key: 'alerts',
+      icon: <BellOutlined />,
+      label: t('menu.alerts')
+    },
+    {
+      key: 'health-check',
+      icon: <HeartOutlined />,
+      label: t('menu.healthCheck')
+    },
+    {
+      key: 'scheduled-tasks',
+      icon: <ScheduleOutlined />,
+      label: t('menu.scheduledTasks')
+    },
+    {
+      key: 'resource-reports',
+      icon: <LineChartOutlined />,
+      label: t('menu.resourceReports')
     },
     {
       key: 'settings',

@@ -8,18 +8,34 @@ import {
   Tag,
   message,
   Spin,
-  Upload,
-  Modal
+  Modal,
+  Tabs,
+  Row,
+  Col,
+  Badge,
+  Tooltip,
+  Empty,
+  Segmented
 } from 'antd'
-import { PlusOutlined, SearchOutlined, ReloadOutlined, ImportOutlined, ExportOutlined } from '@ant-design/icons'
+import {
+  PlusOutlined,
+  SearchOutlined,
+  ReloadOutlined,
+  ImportOutlined,
+  ExportOutlined,
+  AppstoreOutlined,
+  LaptopOutlined,
+  CloudServerOutlined,
+  ClusterOutlined
+} from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import TemplateCard from '../components/TemplateCard'
 import TemplateEditor from '../components/TemplateEditor'
 import type { Template, TemplateFormData, TemplateCategory, EnvVariableSchema } from '../types/template'
-import { CATEGORY_LABELS, ALL_CATEGORIES } from '../types/template'
+import { CATEGORY_LABELS, ALL_CATEGORIES, CATEGORY_COLORS } from '../types/template'
 
-const { Title, Text } = Typography
+const { Title, Text, Paragraph } = Typography
 
 interface ExportTemplate {
   name: string
@@ -49,6 +65,9 @@ const Templates: React.FC = () => {
   const [initialized, setInitialized] = useState(false)
   const [importModalVisible, setImportModalVisible] = useState(false)
   const [importTemplates, setImportTemplates] = useState<ImportTemplate[]>([])
+  const [activeTab, setActiveTab] = useState<'all' | 'stack'>('all')
+  const [detailModalVisible, setDetailModalVisible] = useState(false)
+  const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -70,15 +89,24 @@ const Templates: React.FC = () => {
     }
   }
 
+  const stackTemplates = useMemo(() => {
+    return templates.filter(t => t.category === 'stack')
+  }, [templates])
+
+  const singleTemplates = useMemo(() => {
+    return templates.filter(t => t.category !== 'stack')
+  }, [templates])
+
   const filteredTemplates = useMemo(() => {
-    return templates.filter(template => {
+    const sourceList = activeTab === 'stack' ? stackTemplates : singleTemplates
+    return sourceList.filter(template => {
       const matchesSearch =
         template.name.toLowerCase().includes(searchText.toLowerCase()) ||
         template.description.toLowerCase().includes(searchText.toLowerCase())
       const matchesCategory = selectedCategory === 'all' || template.category === selectedCategory
       return matchesSearch && matchesCategory
     })
-  }, [templates, searchText, selectedCategory])
+  }, [singleTemplates, stackTemplates, searchText, selectedCategory, activeTab])
 
   const handleUseTemplate = (template: Template) => {
     navigate('/apps/deploy', { state: { templateId: template.id } })
@@ -137,7 +165,7 @@ const Templates: React.FC = () => {
         dockerCompose: t.dockerCompose,
         envSchema: t.envSchema
       }))
-    
+
     if (exportData.length === 0) {
       message.warning(t('template.noExportTemplates'))
       return
@@ -152,7 +180,7 @@ const Templates: React.FC = () => {
     a.click()
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
-    
+
     message.success(t('template.exportSuccess'))
   }
 
@@ -175,7 +203,7 @@ const Templates: React.FC = () => {
       try {
         const content = event.target?.result as string
         const data = JSON.parse(content)
-        
+
         let items: unknown[]
         if (Array.isArray(data)) {
           items = data
@@ -236,16 +264,24 @@ const Templates: React.FC = () => {
     message.success(t('template.importSuccess', { count: successCount }))
   }
 
-  const getCategoryColor = (category: string) => {
-    const colors: Record<string, string> = {
-      web: 'blue',
-      database: 'green',
-      cache: 'orange',
-      cms: 'purple',
-      app: 'cyan'
-    }
-    return colors[category] || 'default'
+  const handleShowDetail = (template: Template) => {
+    setSelectedTemplate(template)
+    setDetailModalVisible(true)
   }
+
+  const getCategoryColor = (category: string) => {
+    return CATEGORY_COLORS[category as TemplateCategory] || 'default'
+  }
+
+  const getCategoryCount = (category: TemplateCategory | 'all') => {
+    const sourceList = activeTab === 'stack' ? stackTemplates : singleTemplates
+    if (category === 'all') return sourceList.length
+    return sourceList.filter(t => t.category === category).length
+  }
+
+  const displayCategories = activeTab === 'stack'
+    ? (['all', 'stack'] as (TemplateCategory | 'all')[])
+    : (['all', ...ALL_CATEGORIES.filter(c => c !== 'stack')] as (TemplateCategory | 'all')[])
 
   if (loading && !initialized) {
     return (
@@ -257,8 +293,15 @@ const Templates: React.FC = () => {
 
   return (
     <div className="templates-page">
+      {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Title level={4} style={{ margin: 0 }}>{t('template.title')}</Title>
+        <div>
+          <Title level={4} style={{ margin: 0 }}>
+            <AppstoreOutlined style={{ marginRight: 8 }} />
+            {t('template.title')}
+          </Title>
+          <Text type="secondary">{t('template.subtitle')}</Text>
+        </div>
         <Space>
           <Button icon={<ExportOutlined />} onClick={handleExport}>
             {t('template.export')}
@@ -275,6 +318,59 @@ const Templates: React.FC = () => {
         </Space>
       </div>
 
+      {/* Stats Cards */}
+      <Row gutter={16} style={{ marginBottom: 16 }}>
+        <Col span={6}>
+          <Card>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <Text type="secondary">{t('template.totalTemplates')}</Text>
+                <div style={{ fontSize: 24, fontWeight: 'bold' }}>{templates.length}</div>
+              </div>
+              <AppstoreOutlined style={{ fontSize: 32, color: '#1890ff' }} />
+            </div>
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <Text type="secondary">{t('template.appStacks')}</Text>
+                <div style={{ fontSize: 24, fontWeight: 'bold', color: '#f5222d' }}>{stackTemplates.length}</div>
+              </div>
+              <ClusterOutlined style={{ fontSize: 32, color: '#f5222d' }} />
+            </div>
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <Text type="secondary">{t('template.builtInTemplates')}</Text>
+                <div style={{ fontSize: 24, fontWeight: 'bold', color: '#52c41a' }}>
+                  {templates.filter(t => t.isBuiltIn).length}
+                </div>
+              </div>
+              <CloudServerOutlined style={{ fontSize: 32, color: '#52c41a' }} />
+            </div>
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <Text type="secondary">{t('template.customTemplates')}</Text>
+                <div style={{ fontSize: 24, fontWeight: 'bold', color: '#faad14' }}>
+                  {templates.filter(t => !t.isBuiltIn).length}
+                </div>
+              </div>
+              <LaptopOutlined style={{ fontSize: 32, color: '#faad14' }} />
+            </div>
+          </Card>
+        </Col>
+      </Row>
+
+      {/* Search and Filter */}
       <Card style={{ marginBottom: 16 }}>
         <Space direction="vertical" style={{ width: '100%' }} size="middle">
           <Input
@@ -283,35 +379,48 @@ const Templates: React.FC = () => {
             value={searchText}
             onChange={e => setSearchText(e.target.value)}
             allowClear
+            size="large"
           />
-          <Space wrap>
-            <Text>{t('template.categoryFilter')}:</Text>
-            <Tag
-              color={selectedCategory === 'all' ? 'blue' : 'default'}
-              onClick={() => setSelectedCategory('all')}
-              style={{ cursor: 'pointer' }}
-            >
-              {t('template.all')}
-            </Tag>
-            {ALL_CATEGORIES.map(cat => (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Space wrap>
+              <Text strong>{t('template.categoryFilter')}:</Text>
               <Tag
-                key={cat}
-                color={selectedCategory === cat ? getCategoryColor(cat) : 'default'}
-                onClick={() => setSelectedCategory(cat)}
-                style={{ cursor: 'pointer' }}
+                color={selectedCategory === 'all' ? 'blue' : 'default'}
+                onClick={() => setSelectedCategory('all')}
+                style={{ cursor: 'pointer', padding: '4px 12px' }}
               >
-                {CATEGORY_LABELS[cat][i18n.language === 'zh-CN' ? 'zh' : 'en']}
+                {t('template.all')} ({getCategoryCount('all')})
               </Tag>
-            ))}
-          </Space>
+              {displayCategories.filter(c => c !== 'all').map(cat => (
+                <Tag
+                  key={cat}
+                  color={selectedCategory === cat ? getCategoryColor(cat) : 'default'}
+                  onClick={() => setSelectedCategory(cat)}
+                  style={{ cursor: 'pointer', padding: '4px 12px' }}
+                >
+                  {CATEGORY_LABELS[cat][i18n.language === 'zh-CN' ? 'zh' : 'en']} ({getCategoryCount(cat)})
+                </Tag>
+              ))}
+            </Space>
+            <Segmented
+              value={activeTab}
+              onChange={(val) => {
+                setActiveTab(val as 'all' | 'stack')
+                setSelectedCategory('all')
+              }}
+              options={[
+                { label: t('template.allTemplates'), value: 'all' },
+                { label: t('template.appStacksOnly'), value: 'stack' }
+              ]}
+            />
+          </div>
         </Space>
       </Card>
 
+      {/* Template Grid */}
       {filteredTemplates.length === 0 ? (
         <Card>
-          <div style={{ textAlign: 'center', padding: '40px 0' }}>
-            <Text type="secondary">{t('common.noData')}</Text>
-          </div>
+          <Empty description={t('common.noData')} />
         </Card>
       ) : (
         <div className="templates-grid">
@@ -322,11 +431,13 @@ const Templates: React.FC = () => {
               onUseTemplate={handleUseTemplate}
               onEdit={handleEdit}
               onDelete={handleDelete}
+              onShowDetail={handleShowDetail}
             />
           ))}
         </div>
       )}
 
+      {/* Template Editor Modal */}
       <TemplateEditor
         open={editorVisible}
         template={editingTemplate}
@@ -334,6 +445,7 @@ const Templates: React.FC = () => {
         onCancel={() => setEditorVisible(false)}
       />
 
+      {/* Hidden file input for import */}
       <input
         ref={fileInputRef}
         type="file"
@@ -342,6 +454,7 @@ const Templates: React.FC = () => {
         onChange={handleImportFile}
       />
 
+      {/* Import Confirmation Modal */}
       <Modal
         title={t('template.import')}
         open={importModalVisible}
@@ -357,7 +470,9 @@ const Templates: React.FC = () => {
           <ul style={{ marginTop: 16, maxHeight: 300, overflowY: 'auto' }}>
             {importTemplates.map((tpl, index) => (
               <li key={index} style={{ marginBottom: 8 }}>
-                <Tag color={getCategoryColor(tpl.category)}>{CATEGORY_LABELS[tpl.category][i18n.language === 'zh-CN' ? 'zh' : 'en']}</Tag>
+                <Tag color={getCategoryColor(tpl.category)}>
+                  {CATEGORY_LABELS[tpl.category]?.[i18n.language === 'zh-CN' ? 'zh' : 'en'] || tpl.category}
+                </Tag>
                 <span style={{ marginLeft: 8 }}>{tpl.name}</span>
                 {tpl.envSchema && tpl.envSchema.length > 0 && (
                   <Text type="secondary" style={{ marginLeft: 8 }}>
@@ -368,6 +483,88 @@ const Templates: React.FC = () => {
             ))}
           </ul>
         </div>
+      </Modal>
+
+      {/* Template Detail Modal */}
+      <Modal
+        title={
+          <Space>
+            <AppstoreOutlined />
+            <span>{selectedTemplate?.name}</span>
+            {selectedTemplate?.isBuiltIn && <Tag color="gold">{t('template.builtIn')}</Tag>}
+            {selectedTemplate?.category === 'stack' && <Tag color="red">{t('template.appStackTag')}</Tag>}
+          </Space>
+        }
+        open={detailModalVisible}
+        onCancel={() => {
+          setDetailModalVisible(false)
+          setSelectedTemplate(null)
+        }}
+        footer={[
+          <Button key="close" onClick={() => setDetailModalVisible(false)}>
+            {t('common.close')}
+          </Button>,
+          <Button
+            key="deploy"
+            type="primary"
+            icon={<CloudServerOutlined />}
+            onClick={() => {
+              if (selectedTemplate) {
+                handleUseTemplate(selectedTemplate)
+                setDetailModalVisible(false)
+              }
+            }}
+          >
+            {t('template.deploy')}
+          </Button>
+        ]}
+        width={800}
+      >
+        {selectedTemplate && (
+          <div>
+            <div style={{ marginBottom: 16 }}>
+              <Tag color={getCategoryColor(selectedTemplate.category)}>
+                {CATEGORY_LABELS[selectedTemplate.category]?.[i18n.language === 'zh-CN' ? 'zh' : 'en']}
+              </Tag>
+            </div>
+            <Paragraph>{selectedTemplate.description}</Paragraph>
+
+            <div style={{ marginBottom: 16 }}>
+              <Text strong>{t('template.envVariables')}:</Text>
+              {selectedTemplate.envSchema.length > 0 ? (
+                <div style={{ marginTop: 8 }}>
+                  {selectedTemplate.envSchema.map((env, idx) => (
+                    <Tag
+                      key={idx}
+                      color={env.required ? 'red' : 'blue'}
+                      style={{ marginBottom: 4 }}
+                    >
+                      {env.name}{env.required ? ' *' : ''}
+                    </Tag>
+                  ))}
+                </div>
+              ) : (
+                <Text type="secondary" style={{ marginLeft: 8 }}>{t('template.noEnvSchema')}</Text>
+              )}
+            </div>
+
+            <Text strong>{t('template.dockerCompose')}:</Text>
+            <pre
+              style={{
+                background: '#f5f5f5',
+                padding: 16,
+                borderRadius: 4,
+                marginTop: 8,
+                overflow: 'auto',
+                maxHeight: 400,
+                fontSize: 12,
+                fontFamily: 'Monaco, Consolas, monospace'
+              }}
+            >
+              {selectedTemplate.dockerCompose}
+            </pre>
+          </div>
+        )}
       </Modal>
     </div>
   )

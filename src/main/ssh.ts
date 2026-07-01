@@ -19,6 +19,7 @@ interface ConnectionEntry {
   connectedAt: Date
   authenticated: boolean
   keepAliveTimer?: NodeJS.Timeout
+  connectConfig?: ConnectConfig
 }
 
 class SSHService {
@@ -100,7 +101,8 @@ class SSHService {
         client,
         serverId,
         connectedAt: new Date(),
-        authenticated: false
+        authenticated: false,
+        connectConfig: { ...connectConfig }
       }
 
       const timeout = setTimeout(() => {

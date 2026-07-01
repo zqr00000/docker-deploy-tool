@@ -495,7 +495,12 @@ class SystemCheckService {
       networkOk: false,
       systemOk: false,
       hardwareOk: false,
-      dockerOk: false
+      dockerOk: false,
+      dockerInstalled: false,
+      dockerRunning: false,
+      dockerVersion: '',
+      composeInstalled: false,
+      composeVersion: ''
     }
 
     const connectionStatus = sshService.getConnectionStatus(serverId)
