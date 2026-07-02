@@ -409,47 +409,52 @@ const HealthCheckPage: React.FC = () => {
   const totalRestarts = reports.reduce((sum, r) => sum + r.autoRestarts, 0)
 
   return (
-    <div>
-      <Space direction="vertical" size="large" style={{ width: '100%' }}>
-        <Card>
-          <Row gutter={16}>
-            <Col span={6}>
-              <Statistic
-                title="应用总数"
-                value={totalApps}
-                prefix={<Badge status="default" />}
-              />
-            </Col>
-            <Col span={6}>
-              <Statistic
-                title="健康应用"
-                value={healthyApps}
-                valueStyle={{ color: '#52c41a' }}
-                prefix={<CheckCircleOutlined />}
-              />
-            </Col>
-            <Col span={6}>
-              <Statistic
-                title="异常应用"
-                value={unhealthyApps}
-                valueStyle={{ color: '#ff4d4f' }}
-                prefix={<CloseCircleOutlined />}
-              />
-            </Col>
-            <Col span={6}>
-              <Statistic
-                title="自动重启次数"
-                value={totalRestarts}
-                valueStyle={{ color: totalRestarts > 0 ? '#faad14' : '#52c41a' }}
-              />
-            </Col>
-          </Row>
-        </Card>
+    <div className="page-content">
+      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+        <Col xs={12} sm={12} md={6}>
+          <Card>
+            <Statistic
+              title="应用总数"
+              value={totalApps}
+              prefix={<Badge status="default" />}
+            />
+          </Card>
+        </Col>
+        <Col xs={12} sm={12} md={6}>
+          <Card>
+            <Statistic
+              title="健康应用"
+              value={healthyApps}
+              valueStyle={{ color: '#52c41a' }}
+              prefix={<CheckCircleOutlined />}
+            />
+          </Card>
+        </Col>
+        <Col xs={12} sm={12} md={6}>
+          <Card>
+            <Statistic
+              title="异常应用"
+              value={unhealthyApps}
+              valueStyle={{ color: '#ff4d4f' }}
+              prefix={<CloseCircleOutlined />}
+            />
+          </Card>
+        </Col>
+        <Col xs={12} sm={12} md={6}>
+          <Card>
+            <Statistic
+              title="自动重启次数"
+              value={totalRestarts}
+              valueStyle={{ color: totalRestarts > 0 ? '#faad14' : '#52c41a' }}
+            />
+          </Card>
+        </Col>
+      </Row>
 
         <Card
           title="健康检查报告"
           extra={
-            <Space>
+            <Space wrap>
               <Button
                 icon={periodicRunning ? <PauseCircleOutlined /> : <PlayCircleOutlined />}
                 onClick={handleTogglePeriodic}
@@ -479,9 +484,9 @@ const HealthCheckPage: React.FC = () => {
             loading={loading}
             pagination={{ pageSize: 10 }}
             locale={{ emptyText: <Empty description="暂无健康检查数据" /> }}
+            scroll={{ x: 800 }}
           />
         </Card>
-      </Space>
 
       {/* 健康详情模态框 */}
       <Modal

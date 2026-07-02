@@ -323,9 +323,9 @@ const ContainerTerminalPage: React.FC = () => {
   }
 
   return (
-    <div>
+    <div className="page-content">
       <div className="page-header">
-        <div>
+        <div className="page-header-left">
           <Title level={4} style={{ margin: 0 }}>
             <CodeOutlined style={{ marginRight: 8 }} />
             {t('terminal.title')}

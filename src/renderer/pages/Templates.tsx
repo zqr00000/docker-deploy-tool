@@ -285,24 +285,24 @@ const Templates: React.FC = () => {
 
   if (loading && !initialized) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 400 }}>
+      <div className="loading-container">
         <Spin size="large" />
       </div>
     )
   }
 
   return (
-    <div className="templates-page">
+    <div className="page-content">
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <div>
+      <div className="page-header">
+        <div className="page-header-left">
           <Title level={4} style={{ margin: 0 }}>
             <AppstoreOutlined style={{ marginRight: 8 }} />
             {t('template.title')}
           </Title>
           <Text type="secondary">{t('template.subtitle')}</Text>
         </div>
-        <Space>
+        <div className="page-header-right">
           <Button icon={<ExportOutlined />} onClick={handleExport}>
             {t('template.export')}
           </Button>
@@ -315,12 +315,12 @@ const Templates: React.FC = () => {
           <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
             {t('template.add')}
           </Button>
-        </Space>
+        </div>
       </div>
 
-      {/* Stats Cards */}
-      <Row gutter={16} style={{ marginBottom: 16 }}>
-        <Col span={6}>
+      {/* Stats Cards - Responsive Row/Col */}
+      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+        <Col xs={12} sm={12} md={6}>
           <Card>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div>
@@ -331,7 +331,7 @@ const Templates: React.FC = () => {
             </div>
           </Card>
         </Col>
-        <Col span={6}>
+        <Col xs={12} sm={12} md={6}>
           <Card>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div>
@@ -342,7 +342,7 @@ const Templates: React.FC = () => {
             </div>
           </Card>
         </Col>
-        <Col span={6}>
+        <Col xs={12} sm={12} md={6}>
           <Card>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div>
@@ -355,7 +355,7 @@ const Templates: React.FC = () => {
             </div>
           </Card>
         </Col>
-        <Col span={6}>
+        <Col xs={12} sm={12} md={6}>
           <Card>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div>
@@ -381,7 +381,7 @@ const Templates: React.FC = () => {
             allowClear
             size="large"
           />
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
             <Space wrap>
               <Text strong>{t('template.categoryFilter')}:</Text>
               <Tag

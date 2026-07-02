@@ -35,14 +35,11 @@ import {
   UploadOutlined,
   DownloadOutlined,
   CopyOutlined,
-  EyeOutlined,
   EditOutlined,
   ContainerOutlined,
-  GlobalOutlined,
-  SettingOutlined
+  GlobalOutlined
 } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
-import Editor from '@monaco-editor/react'
 
 const { Header, Sider, Content } = Layout
 const { Title, Text } = Typography
@@ -336,8 +333,6 @@ const ComposeEditor: React.FC = () => {
   const [yamlValid, setYamlValid] = useState(true)
   const [importModalVisible, setImportModalVisible] = useState(false)
   const [importYaml, setImportYaml] = useState('')
-  const [previewModalVisible, setPreviewModalVisible] = useState(false)
-  const [activeTab, setActiveTab] = useState('editor')
 
   // 实时生成 YAML
   useEffect(() => {
@@ -1252,9 +1247,9 @@ const ComposeEditor: React.FC = () => {
   return (
     <Layout style={{ height: '100%', background: '#f0f2f5' }}>
       {/* 顶部工具栏 */}
-      <Header style={{ background: '#fff', padding: '0 16px', borderBottom: '1px solid #f0f2f5', height: 48, lineHeight: '48px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Space>
+      <Header style={{ background: '#fff', padding: '0 16px', borderBottom: '1px solid #f0f2f5', height: 'auto', lineHeight: 'normal', paddingTop: 8, paddingBottom: 8 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+          <Space wrap>
             <FileOutlined style={{ fontSize: 18, color: '#1677ff' }} />
             <Text strong>{t('composeEditor.title')}</Text>
             {yamlContent && (
@@ -1263,7 +1258,7 @@ const ComposeEditor: React.FC = () => {
               </Tag>
             )}
           </Space>
-          <Space>
+          <Space wrap>
             <Tooltip title={t('composeEditor.import')}>
               <Button size="small" icon={<UploadOutlined />} onClick={() => setImportModalVisible(true)}>
                 {t('composeEditor.import')}
@@ -1277,11 +1272,6 @@ const ComposeEditor: React.FC = () => {
             <Tooltip title={t('composeEditor.validate')}>
               <Button size="small" icon={<CheckCircleOutlined />} onClick={handleValidate}>
                 {t('composeEditor.validate')}
-              </Button>
-            </Tooltip>
-            <Tooltip title={t('composeEditor.preview')}>
-              <Button size="small" icon={<EyeOutlined />} onClick={() => setPreviewModalVisible(true)}>
-                {t('composeEditor.preview')}
               </Button>
             </Tooltip>
             <Button size="small" type="primary" icon={<SaveOutlined />} onClick={handleSave}>
@@ -1300,248 +1290,200 @@ const ComposeEditor: React.FC = () => {
         {/* 中间编辑区域 */}
         <Layout>
           <Content style={{ background: '#fff', overflow: 'auto' }}>
-            {selectedId ? (
-              selectedType === 'service' && getSelectedService()
-                ? renderServiceProperties(getSelectedService()!)
-                : selectedType === 'network' && getSelectedNetwork()
-                ? renderNetworkProperties(getSelectedNetwork()!)
-                : selectedType === 'volume' && getSelectedVolume()
-                ? renderVolumeProperties(getSelectedVolume()!)
-                : renderEmptyProperties()
-            ) : (
-              <div style={{ padding: 24 }}>
-                <Card>
-                  <Empty
-                    image={<FileOutlined style={{ fontSize: 48, color: '#1677ff' }} />}
-                    description={
-                      <Space direction="vertical">
-                        <Text strong style={{ fontSize: 16 }}>{t('composeEditor.welcomeTitle')}</Text>
-                        <Text type="secondary">{t('composeEditor.welcomeDesc')}</Text>
-                      </Space>
-                    }
-                  >
-                    <Space>
-                      <Button type="primary" icon={<PlusOutlined />} onClick={() => handleAddComponent('service')}>
-                        {t('composeEditor.addService')}
-                      </Button>
-                      <Button icon={<UploadOutlined />} onClick={() => setImportModalVisible(true)}>
-                        {t('composeEditor.importYaml')}
-                      </Button>
+            <div style={{ padding: 16 }}>
+              <Card>
+                <Empty
+                  image={<FileOutlined style={{ fontSize: 48, color: '#1677ff' }} />}
+                  description={
+                    <Space direction="vertical">
+                      <Text strong style={{ fontSize: 16 }}>{t('composeEditor.welcomeTitle')}</Text>
+                      <Text type="secondary">{t('composeEditor.welcomeDesc')}</Text>
                     </Space>
-                  </Empty>
-                </Card>
+                  }
+                >
+                  <Space>
+                    <Button type="primary" icon={<PlusOutlined />} onClick={() => handleAddComponent('service')}>
+                      {t('composeEditor.addService')}
+                    </Button>
+                    <Button icon={<UploadOutlined />} onClick={() => setImportModalVisible(true)}>
+                      {t('composeEditor.importYaml')}
+                    </Button>
+                  </Space>
+                </Empty>
+              </Card>
 
-                {/* 快速模板 */}
-                <Card title={t('composeEditor.quickTemplates')} style={{ marginTop: 16 }}>
-                  <Row gutter={[16, 16]}>
-                    <Col span={8}>
-                      <Card
-                        size="small"
-                        hoverable
-                        onClick={() => {
-                          const nginx = createEmptyService()
-                          nginx.name = 'nginx'
-                          nginx.image = 'nginx:latest'
-                          nginx.ports = [{ id: generateId(), hostPort: '80', containerPort: '80', protocol: 'tcp' }]
-                          setProject(prev => ({ ...prev, services: [...prev.services, nginx] }))
-                          setSelectedId(nginx.id)
-                          setSelectedType('service')
-                        }}
-                      >
-                        <Space>
-                          <CloudServerOutlined style={{ color: '#1677ff' }} />
-                          <Text>Nginx</Text>
-                        </Space>
-                      </Card>
-                    </Col>
-                    <Col span={8}>
-                      <Card
-                        size="small"
-                        hoverable
-                        onClick={() => {
-                          const mysql = createEmptyService()
-                          mysql.name = 'mysql'
-                          mysql.image = 'mysql:8.0'
-                          mysql.ports = [{ id: generateId(), hostPort: '3306', containerPort: '3306', protocol: 'tcp' }]
-                          mysql.environment = [
-                            { id: generateId(), key: 'MYSQL_ROOT_PASSWORD', value: 'root123' }
-                          ]
-                          setProject(prev => ({ ...prev, services: [...prev.services, mysql] }))
-                          setSelectedId(mysql.id)
-                          setSelectedType('service')
-                        }}
-                      >
-                        <Space>
-                          <CloudServerOutlined style={{ color: '#1677ff' }} />
-                          <Text>MySQL</Text>
-                        </Space>
-                      </Card>
-                    </Col>
-                    <Col span={8}>
-                      <Card
-                        size="small"
-                        hoverable
-                        onClick={() => {
-                          const redis = createEmptyService()
-                          redis.name = 'redis'
-                          redis.image = 'redis:7'
-                          redis.ports = [{ id: generateId(), hostPort: '6379', containerPort: '6379', protocol: 'tcp' }]
-                          setProject(prev => ({ ...prev, services: [...prev.services, redis] }))
-                          setSelectedId(redis.id)
-                          setSelectedType('service')
-                        }}
-                      >
-                        <Space>
-                          <CloudServerOutlined style={{ color: '#1677ff' }} />
-                          <Text>Redis</Text>
-                        </Space>
-                      </Card>
-                    </Col>
-                    <Col span={8}>
-                      <Card
-                        size="small"
-                        hoverable
-                        onClick={() => {
-                          const postgres = createEmptyService()
-                          postgres.name = 'postgres'
-                          postgres.image = 'postgres:15'
-                          postgres.ports = [{ id: generateId(), hostPort: '5432', containerPort: '5432', protocol: 'tcp' }]
-                          postgres.environment = [
-                            { id: generateId(), key: 'POSTGRES_PASSWORD', value: 'postgres123' }
-                          ]
-                          setProject(prev => ({ ...prev, services: [...prev.services, postgres] }))
-                          setSelectedId(postgres.id)
-                          setSelectedType('service')
-                        }}
-                      >
-                        <Space>
-                          <CloudServerOutlined style={{ color: '#1677ff' }} />
-                          <Text>PostgreSQL</Text>
-                        </Space>
-                      </Card>
-                    </Col>
-                    <Col span={8}>
-                      <Card
-                        size="small"
-                        hoverable
-                        onClick={() => {
-                          const mongo = createEmptyService()
-                          mongo.name = 'mongo'
-                          mongo.image = 'mongo:6'
-                          mongo.ports = [{ id: generateId(), hostPort: '27017', containerPort: '27017', protocol: 'tcp' }]
-                          setProject(prev => ({ ...prev, services: [...prev.services, mongo] }))
-                          setSelectedId(mongo.id)
-                          setSelectedType('service')
-                        }}
-                      >
-                        <Space>
-                          <CloudServerOutlined style={{ color: '#1677ff' }} />
-                          <Text>MongoDB</Text>
-                        </Space>
-                      </Card>
-                    </Col>
-                    <Col span={8}>
-                      <Card
-                        size="small"
-                        hoverable
-                        onClick={() => {
-                          const wordpress = createEmptyService()
-                          wordpress.name = 'wordpress'
-                          wordpress.image = 'wordpress:latest'
-                          wordpress.ports = [{ id: generateId(), hostPort: '8080', containerPort: '80', protocol: 'tcp' }]
-                          wordpress.environment = [
-                            { id: generateId(), key: 'WORDPRESS_DB_HOST', value: 'db:3306' },
-                            { id: generateId(), key: 'WORDPRESS_DB_PASSWORD', value: 'wordpress' }
-                          ]
-                          const db = createEmptyService()
-                          db.name = 'db'
-                          db.image = 'mysql:5.7'
-                          db.environment = [
-                            { id: generateId(), key: 'MYSQL_DATABASE', value: 'wordpress' },
-                            { id: generateId(), key: 'MYSQL_PASSWORD', value: 'wordpress' }
-                          ]
-                          setProject(prev => ({ ...prev, services: [...prev.services, wordpress, db] }))
-                          setSelectedId(wordpress.id)
-                          setSelectedType('service')
-                        }}
-                      >
-                        <Space>
-                          <CloudServerOutlined style={{ color: '#1677ff' }} />
-                          <Text>WordPress</Text>
-                        </Space>
-                      </Card>
-                    </Col>
-                  </Row>
-                </Card>
-              </div>
-            )}
+              {/* 快速模板 */}
+              <Card title={t('composeEditor.quickTemplates')} style={{ marginTop: 16 }}>
+                <Row gutter={[16, 16]}>
+                  <Col xs={12} sm={8}>
+                    <Card
+                      size="small"
+                      hoverable
+                      onClick={() => {
+                        const nginx = createEmptyService()
+                        nginx.name = 'nginx'
+                        nginx.image = 'nginx:latest'
+                        nginx.ports = [{ id: generateId(), hostPort: '80', containerPort: '80', protocol: 'tcp' }]
+                        setProject(prev => ({ ...prev, services: [...prev.services, nginx] }))
+                        setSelectedId(nginx.id)
+                        setSelectedType('service')
+                      }}
+                    >
+                      <Space>
+                        <CloudServerOutlined style={{ color: '#1677ff' }} />
+                        <Text>Nginx</Text>
+                      </Space>
+                    </Card>
+                  </Col>
+                  <Col xs={12} sm={8}>
+                    <Card
+                      size="small"
+                      hoverable
+                      onClick={() => {
+                        const mysql = createEmptyService()
+                        mysql.name = 'mysql'
+                        mysql.image = 'mysql:8.0'
+                        mysql.ports = [{ id: generateId(), hostPort: '3306', containerPort: '3306', protocol: 'tcp' }]
+                        mysql.environment = [
+                          { id: generateId(), key: 'MYSQL_ROOT_PASSWORD', value: 'root123' }
+                        ]
+                        setProject(prev => ({ ...prev, services: [...prev.services, mysql] }))
+                        setSelectedId(mysql.id)
+                        setSelectedType('service')
+                      }}
+                    >
+                      <Space>
+                        <CloudServerOutlined style={{ color: '#1677ff' }} />
+                        <Text>MySQL</Text>
+                      </Space>
+                    </Card>
+                  </Col>
+                  <Col xs={12} sm={8}>
+                    <Card
+                      size="small"
+                      hoverable
+                      onClick={() => {
+                        const redis = createEmptyService()
+                        redis.name = 'redis'
+                        redis.image = 'redis:7'
+                        redis.ports = [{ id: generateId(), hostPort: '6379', containerPort: '6379', protocol: 'tcp' }]
+                        setProject(prev => ({ ...prev, services: [...prev.services, redis] }))
+                        setSelectedId(redis.id)
+                        setSelectedType('service')
+                      }}
+                    >
+                      <Space>
+                        <CloudServerOutlined style={{ color: '#1677ff' }} />
+                        <Text>Redis</Text>
+                      </Space>
+                    </Card>
+                  </Col>
+                  <Col xs={12} sm={8}>
+                    <Card
+                      size="small"
+                      hoverable
+                      onClick={() => {
+                        const postgres = createEmptyService()
+                        postgres.name = 'postgres'
+                        postgres.image = 'postgres:15'
+                        postgres.ports = [{ id: generateId(), hostPort: '5432', containerPort: '5432', protocol: 'tcp' }]
+                        postgres.environment = [
+                          { id: generateId(), key: 'POSTGRES_PASSWORD', value: 'postgres123' }
+                        ]
+                        setProject(prev => ({ ...prev, services: [...prev.services, postgres] }))
+                        setSelectedId(postgres.id)
+                        setSelectedType('service')
+                      }}
+                    >
+                      <Space>
+                        <CloudServerOutlined style={{ color: '#1677ff' }} />
+                        <Text>PostgreSQL</Text>
+                      </Space>
+                    </Card>
+                  </Col>
+                  <Col xs={12} sm={8}>
+                    <Card
+                      size="small"
+                      hoverable
+                      onClick={() => {
+                        const mongo = createEmptyService()
+                        mongo.name = 'mongo'
+                        mongo.image = 'mongo:6'
+                        mongo.ports = [{ id: generateId(), hostPort: '27017', containerPort: '27017', protocol: 'tcp' }]
+                        setProject(prev => ({ ...prev, services: [...prev.services, mongo] }))
+                        setSelectedId(mongo.id)
+                        setSelectedType('service')
+                      }}
+                    >
+                      <Space>
+                        <CloudServerOutlined style={{ color: '#1677ff' }} />
+                        <Text>MongoDB</Text>
+                      </Space>
+                    </Card>
+                  </Col>
+                  <Col xs={12} sm={8}>
+                    <Card
+                      size="small"
+                      hoverable
+                      onClick={() => {
+                        const wordpress = createEmptyService()
+                        wordpress.name = 'wordpress'
+                        wordpress.image = 'wordpress:latest'
+                        wordpress.ports = [{ id: generateId(), hostPort: '8080', containerPort: '80', protocol: 'tcp' }]
+                        wordpress.environment = [
+                          { id: generateId(), key: 'WORDPRESS_DB_HOST', value: 'db:3306' },
+                          { id: generateId(), key: 'WORDPRESS_DB_PASSWORD', value: 'wordpress' }
+                        ]
+                        const db = createEmptyService()
+                        db.name = 'db'
+                        db.image = 'mysql:5.7'
+                        db.environment = [
+                          { id: generateId(), key: 'MYSQL_DATABASE', value: 'wordpress' },
+                          { id: generateId(), key: 'MYSQL_PASSWORD', value: 'wordpress' }
+                        ]
+                        setProject(prev => ({ ...prev, services: [...prev.services, wordpress, db] }))
+                        setSelectedId(wordpress.id)
+                        setSelectedType('service')
+                      }}
+                    >
+                      <Space>
+                        <CloudServerOutlined style={{ color: '#1677ff' }} />
+                        <Text>WordPress</Text>
+                      </Space>
+                    </Card>
+                  </Col>
+                </Row>
+              </Card>
+            </div>
           </Content>
 
           {/* 底部 YAML 预览 */}
-          <div style={{ height: 280, borderTop: '1px solid #f0f2f5', background: '#fff' }}>
-            <Tabs
-              activeKey={activeTab}
-              onChange={setActiveTab}
-              size="small"
-              tabBarExtraContent={
-                <Space size={4} style={{ marginRight: 8 }}>
-                  <Button size="small" icon={<CopyOutlined />} onClick={handleCopyYaml}>
-                    {t('composeEditor.copy')}
-                  </Button>
-                </Space>
-              }
-              items={[
-                {
-                  key: 'editor',
-                  label: (
-                    <span>
-                      <FileOutlined /> {t('composeEditor.yamlPreview')}
-                    </span>
-                  ),
-                  children: (
-                    <div style={{ height: 240 }}>
-                      <Editor
-                        height="100%"
-                        defaultLanguage="yaml"
-                        value={yamlContent}
-                        options={{
-                          readOnly: true,
-                          minimap: { enabled: false },
-                          fontSize: 13,
-                          lineNumbers: 'on',
-                          scrollBeyondLastLine: false,
-                          wordWrap: 'on',
-                          theme: 'vs-light'
-                        }}
-                      />
-                    </div>
-                  )
-                },
-                {
-                  key: 'raw',
-                  label: (
-                    <span>
-                      <SettingOutlined /> {t('composeEditor.rawYaml')}
-                    </span>
-                  ),
-                  children: (
-                    <div style={{ height: 240, padding: 8 }}>
-                      <TextArea
-                        value={yamlContent}
-                        readOnly
-                        style={{
-                          height: '100%',
-                          fontFamily: 'monospace',
-                          fontSize: 13,
-                          resize: 'none',
-                          background: '#f5f5f5'
-                        }}
-                      />
-                    </div>
-                  )
-                }
-              ]}
-            />
+          <div style={{ height: 280, borderTop: '1px solid #f0f2f5', background: '#fff', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 8px', borderBottom: '1px solid #f0f2f5' }}>
+              <Space size={4}>
+                <FileOutlined style={{ color: '#1677ff' }} />
+                <Text strong>{t('composeEditor.yamlPreview')}</Text>
+              </Space>
+              <Button size="small" icon={<CopyOutlined />} onClick={handleCopyYaml}>
+                {t('composeEditor.copy')}
+              </Button>
+            </div>
+            <div style={{ flex: 1, padding: 8 }}>
+              <TextArea
+                value={yamlContent}
+                readOnly
+                style={{
+                  height: '100%',
+                  fontFamily: 'Monaco, Consolas, monospace',
+                  fontSize: 13,
+                  resize: 'none',
+                  background: '#f5f5f5',
+                  whiteSpace: 'pre',
+                  overflow: 'auto'
+                }}
+                placeholder={t('composeEditor.yamlPlaceholder')}
+              />
+            </div>
           </div>
         </Layout>
 
@@ -1589,38 +1531,6 @@ const ComposeEditor: React.FC = () => {
         />
       </Modal>
 
-      {/* 预览模态框 */}
-      <Modal
-        title={t('composeEditor.previewTitle')}
-        open={previewModalVisible}
-        onCancel={() => setPreviewModalVisible(false)}
-        footer={[
-          <Button key="copy" icon={<CopyOutlined />} onClick={handleCopyYaml}>
-            {t('composeEditor.copy')}
-          </Button>,
-          <Button key="export" icon={<DownloadOutlined />} onClick={handleExport}>
-            {t('composeEditor.export')}
-          </Button>,
-          <Button key="close" type="primary" onClick={() => setPreviewModalVisible(false)}>
-            {t('common.close')}
-          </Button>
-        ]}
-        width={800}
-      >
-        <Editor
-          height="500px"
-          defaultLanguage="yaml"
-          value={yamlContent}
-          options={{
-            readOnly: true,
-            minimap: { enabled: false },
-            fontSize: 14,
-            lineNumbers: 'on',
-            scrollBeyondLastLine: false,
-            wordWrap: 'on'
-          }}
-        />
-      </Modal>
     </Layout>
   )
 }

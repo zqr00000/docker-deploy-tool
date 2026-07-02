@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Layout, Menu, Typography, theme } from 'antd'
+import { Menu, Typography, theme, Grid, Button, Drawer } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useLocation } from 'react-router-dom'
 import {
@@ -19,12 +19,15 @@ import {
   ScheduleOutlined,
   HeartOutlined,
   BuildOutlined,
-  LineChartOutlined
+  LineChartOutlined,
+  MenuFoldOutlined,
+  MenuUnfoldOutlined
 } from '@ant-design/icons'
 import LanguageSwitcher from './LanguageSwitcher'
+import Logo from './Logo'
 
-const { Header, Sider, Content } = Layout
 const { Title } = Typography
+const { useBreakpoint } = Grid
 
 interface LayoutProps {
   children: React.ReactNode
@@ -37,8 +40,20 @@ const LayoutComponent: React.FC<LayoutProps> = ({ children }) => {
   const {
     token: { colorBgContainer, colorPrimary }
   } = theme.useToken()
+  const screens = useBreakpoint()
 
   const [selectedKey, setSelectedKey] = useState('servers')
+  const [collapsed, setCollapsed] = useState(false)
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false)
+
+  // 根据屏幕尺寸自动折叠侧边栏
+  useEffect(() => {
+    if (screens.xs) {
+      setCollapsed(true)
+    } else if (screens.sm && !screens.md) {
+      setCollapsed(true)
+    }
+  }, [screens])
 
   useEffect(() => {
     const path = location.pathname.replace('/', '')
@@ -46,6 +61,8 @@ const LayoutComponent: React.FC<LayoutProps> = ({ children }) => {
       setSelectedKey(path)
     }
   }, [location.pathname])
+
+  const isMobile = screens.xs || (!screens.md && screens.sm)
 
   const menuItems = [
     {
@@ -128,36 +145,127 @@ const LayoutComponent: React.FC<LayoutProps> = ({ children }) => {
   const handleMenuClick = ({ key }: { key: string }) => {
     setSelectedKey(key)
     navigate(`/${key}`)
+    if (isMobile) {
+      setMobileDrawerOpen(false)
+    }
   }
 
+  const handleToggleSidebar = () => {
+    if (isMobile) {
+      setMobileDrawerOpen(!mobileDrawerOpen)
+    } else {
+      setCollapsed(!collapsed)
+    }
+  }
+
+  const sidebarWidth = collapsed ? 60 : 220
+
+  // 移动端使用 Drawer
+  if (isMobile) {
+    return (
+      <div className="app-layout">
+        {/* Header */}
+        <header
+          className="app-header"
+          style={{
+            background: colorBgContainer,
+            borderBottom: `1px solid ${colorPrimary}20`
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <Button
+              type="text"
+              icon={mobileDrawerOpen ? <MenuFoldOutlined /> : <MenuUnfoldOutlined />}
+              onClick={handleToggleSidebar}
+              style={{ fontSize: 16 }}
+            />
+            <Logo size={28} />
+            <Title level={4} style={{ margin: 0, color: colorPrimary }}>
+              {t('app.title')}
+            </Title>
+          </div>
+          <LanguageSwitcher />
+        </header>
+
+        {/* Mobile Drawer */}
+        <Drawer
+          title={
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Logo size={24} />
+              <span>{t('app.title')}</span>
+            </div>
+          }
+          placement="left"
+          onClose={() => setMobileDrawerOpen(false)}
+          open={mobileDrawerOpen}
+          bodyStyle={{ padding: 0 }}
+          width={240}
+        >
+          <Menu
+            mode="inline"
+            selectedKeys={[selectedKey]}
+            items={menuItems}
+            onClick={handleMenuClick}
+            style={{ borderRight: 0, height: '100%' }}
+          />
+        </Drawer>
+
+        {/* Content */}
+        <div className="app-content-wrapper">
+          <main
+            className="app-content"
+            style={{
+              background: colorBgContainer,
+              padding: 12
+            }}
+          >
+            {children}
+          </main>
+        </div>
+      </div>
+    )
+  }
+
+  // 桌面端布局
   return (
-    <Layout style={{ minHeight: '100vh' }}>
-      <Header
+    <div className="app-layout">
+      {/* Header */}
+      <header
+        className="app-header"
         style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '0 24px',
           background: colorBgContainer,
-          borderBottom: `1px solid ${colorPrimary}20`
+          borderBottom: `1px solid ${colorPrimary}20`,
+          padding: '0 24px'
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span style={{ fontSize: 24 }}>🐳</span>
-          <Title level={4} style={{ margin: 0, color: colorPrimary }}>
-            {t('app.title')}
-          </Title>
+          <Button
+            type="text"
+            icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+            onClick={handleToggleSidebar}
+            style={{ fontSize: 16, marginRight: 8 }}
+          />
+          <Logo size={32} />
+          {!collapsed && (
+            <Title level={4} style={{ margin: 0, color: colorPrimary }}>
+              {t('app.title')}
+            </Title>
+          )}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <LanguageSwitcher />
-        </div>
-      </Header>
-      <Layout>
-        <Sider
-          width={200}
+        <LanguageSwitcher />
+      </header>
+
+      {/* Body */}
+      <div className="app-body">
+        {/* Sidebar */}
+        <aside
+          className={`app-sider ${collapsed ? 'collapsed' : ''}`}
           style={{
+            width: sidebarWidth,
             background: colorBgContainer,
-            borderRight: `1px solid ${colorPrimary}20`
+            borderRight: `1px solid ${colorPrimary}20`,
+            flex: collapsed ? `0 0 ${sidebarWidth}px` : `0 0 ${sidebarWidth}px`,
+            transition: 'flex 0.2s ease, width 0.2s ease'
           }}
         >
           <Menu
@@ -165,22 +273,30 @@ const LayoutComponent: React.FC<LayoutProps> = ({ children }) => {
             selectedKeys={[selectedKey]}
             items={menuItems}
             onClick={handleMenuClick}
-            style={{ height: '100%', borderRight: 0 }}
+            style={{
+              height: '100%',
+              borderRight: 0,
+              paddingTop: 8
+            }}
+            inlineCollapsed={collapsed}
           />
-        </Sider>
-        <Layout style={{ padding: '24px' }}>
-          <Content
+        </aside>
+
+        {/* Content */}
+        <div className="app-content-wrapper">
+          <main
+            className="app-content"
             style={{
               background: colorBgContainer,
-              borderRadius: 8,
+              borderRadius: 0,
               padding: 24
             }}
           >
             {children}
-          </Content>
-        </Layout>
-      </Layout>
-    </Layout>
+          </main>
+        </div>
+      </div>
+    </div>
   )
 }
 

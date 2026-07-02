@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Card, Button, Space, Tag, Typography, message, Spin, Tabs, Descriptions, Popconfirm, Alert } from 'antd'
+import { Card, Button, Space, Tag, Typography, message, Spin, Tabs, Descriptions, Popconfirm, Alert, Row, Col } from 'antd'
 import { ArrowLeftOutlined, LinkOutlined, DisconnectOutlined, CheckCircleOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import SystemEnvironmentStatus from '../components/SystemEnvironmentStatus'
@@ -88,7 +88,7 @@ const ServerDetail: React.FC = () => {
   }
 
   const renderConnectionInfo = () => (
-    <Descriptions column={2} size="small">
+    <Descriptions column={{ xs: 1, sm: 1, md: 2 }} size="small">
       <Descriptions.Item label={t('server.name')}>
         <Text strong>{server?.name}</Text>
       </Descriptions.Item>
@@ -112,7 +112,7 @@ const ServerDetail: React.FC = () => {
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 400 }}>
+      <div className="loading-container">
         <Spin size="large" />
       </div>
     )
@@ -149,15 +149,18 @@ const ServerDetail: React.FC = () => {
   ]
 
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Space>
-          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/servers')}>
-            {t('common.back')}
-          </Button>
-          <Title level={4} style={{ margin: 0 }}>{server.name}</Title>
-        </Space>
-        <Space>
+    <div className="page-content">
+      {/* Page Header - Flex Layout */}
+      <div className="page-header">
+        <div className="page-header-left">
+          <Space wrap>
+            <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/servers')}>
+              {t('common.back')}
+            </Button>
+            <Title level={4} style={{ margin: 0 }}>{server.name}</Title>
+          </Space>
+        </div>
+        <div className="page-header-right">
           {server.status === 'online' ? (
             <Popconfirm
               title={t('server.confirmDisconnect')}
@@ -179,7 +182,7 @@ const ServerDetail: React.FC = () => {
               {t('server.connect')}
             </Button>
           )}
-        </Space>
+        </div>
       </div>
 
       <Card>

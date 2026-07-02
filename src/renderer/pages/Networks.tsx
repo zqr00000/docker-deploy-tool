@@ -19,7 +19,9 @@ import {
   Switch,
   Divider,
   List,
-  InputNumber
+  InputNumber,
+  Row,
+  Col
 } from 'antd'
 import {
   PlusOutlined,
@@ -371,12 +373,14 @@ const Networks: React.FC = () => {
   const isServerOnline = selectedServer?.status === 'online'
 
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Title level={4} style={{ margin: 0 }}>{t('network.title')}</Title>
-        <Space>
+    <div className="page-content">
+      <div className="page-header">
+        <div className="page-header-left">
+          <Title level={4} style={{ margin: 0 }}>{t('network.title')}</Title>
+        </div>
+        <div className="page-header-right">
           <Select
-            style={{ width: 200 }}
+            style={{ width: '100%', maxWidth: 280 }}
             placeholder={t('network.selectServer')}
             value={selectedServerId}
             onChange={setSelectedServerId}
@@ -392,7 +396,7 @@ const Networks: React.FC = () => {
               </Select.Option>
             ))}
           </Select>
-        </Space>
+        </div>
       </div>
 
       {!selectedServerId && (
@@ -416,24 +420,22 @@ const Networks: React.FC = () => {
       )}
 
       <Card>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-          <Space>
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={() => setCreateModalVisible(true)}
-              disabled={!isServerOnline}
-            >
-              {t('network.create')}
-            </Button>
-            <Button
-              icon={<ReloadOutlined />}
-              onClick={loadNetworks}
-              loading={loading}
-            >
-              {t('common.refresh')}
-            </Button>
-          </Space>
+        <div className="action-bar" style={{ marginBottom: 16 }}>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => setCreateModalVisible(true)}
+            disabled={!isServerOnline}
+          >
+            {t('network.create')}
+          </Button>
+          <Button
+            icon={<ReloadOutlined />}
+            onClick={loadNetworks}
+            loading={loading}
+          >
+            {t('common.refresh')}
+          </Button>
           <Popconfirm
             title={t('network.confirmPrune')}
             onConfirm={() => setPruneModalVisible(true)}
@@ -457,6 +459,7 @@ const Networks: React.FC = () => {
           loading={loading}
           locale={{ emptyText: <Empty description={t('common.noData')} /> }}
           pagination={{ pageSize: 10 }}
+          scroll={{ x: 900 }}
         />
       </Card>
 

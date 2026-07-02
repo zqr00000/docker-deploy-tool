@@ -236,18 +236,21 @@ const ServerGroups: React.FC = () => {
   }
 
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Title level={3} style={{ margin: 0 }}>
-          <TeamOutlined style={{ marginRight: 8 }} />
-          {t('serverGroup.title')}
-        </Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate}>
-          {t('serverGroup.create')}
-        </Button>
+    <div className="page-content">
+      <div className="page-header">
+        <div className="page-header-left">
+          <Title level={3} style={{ margin: 0 }}>
+            <TeamOutlined style={{ marginRight: 8 }} />
+            {t('serverGroup.title')}
+          </Title>
+          <Paragraph type="secondary" style={{ marginBottom: 0 }}>{t('serverGroup.description')}</Paragraph>
+        </div>
+        <div className="page-header-right">
+          <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate}>
+            {t('serverGroup.create')}
+          </Button>
+        </div>
       </div>
-
-      <Paragraph type="secondary">{t('serverGroup.description')}</Paragraph>
 
       <Table
         columns={columns}
@@ -255,6 +258,7 @@ const ServerGroups: React.FC = () => {
         rowKey="id"
         locale={{ emptyText: <Empty description={t('serverGroup.noGroups')} /> }}
         pagination={groups.length > 10 ? { pageSize: 10 } : false}
+        scroll={{ x: 600 }}
       />
 
       {/* Create/Edit Modal */}

@@ -14,6 +14,8 @@ body {
 
 #root {
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
 /* Ant Design Theme Overrides */
@@ -57,6 +59,89 @@ body {
   color: var(--app-text-color);
 }
 
+/* ====== Flexbox Layout Utilities ====== */
+.flex {
+  display: flex !important;
+}
+
+.flex-column {
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.flex-row {
+  display: flex !important;
+  flex-direction: row !important;
+}
+
+.flex-wrap {
+  flex-wrap: wrap !important;
+}
+
+.flex-nowrap {
+  flex-wrap: nowrap !important;
+}
+
+.flex-1 {
+  flex: 1 !important;
+}
+
+.flex-auto {
+  flex: 1 1 auto !important;
+}
+
+.flex-grow {
+  flex-grow: 1 !important;
+}
+
+.flex-shrink-0 {
+  flex-shrink: 0 !important;
+}
+
+.justify-start {
+  justify-content: flex-start !important;
+}
+
+.justify-center {
+  justify-content: center !important;
+}
+
+.justify-end {
+  justify-content: flex-end !important;
+}
+
+.justify-between {
+  justify-content: space-between !important;
+}
+
+.justify-around {
+  justify-content: space-around !important;
+}
+
+.align-start {
+  align-items: flex-start !important;
+}
+
+.align-center {
+  align-items: center !important;
+}
+
+.align-end {
+  align-items: flex-end !important;
+}
+
+.align-stretch {
+  align-items: stretch !important;
+}
+
+/* Gap utilities */
+.gap-4 { gap: 4px !important; }
+.gap-8 { gap: 8px !important; }
+.gap-12 { gap: 12px !important; }
+.gap-16 { gap: 16px !important; }
+.gap-24 { gap: 24px !important; }
+.gap-32 { gap: 32px !important; }
+
 /* Layout Improvements */
 .ant-layout {
   background-color: var(--app-bg-color) !important;
@@ -76,7 +161,69 @@ body {
   background-color: var(--app-content-bg) !important;
 }
 
-/* Content Card Styling */
+/* ====== Main App Layout ====== */
+.app-layout {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  height: 64px;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 10;
+}
+
+.app-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.app-sider {
+  flex-shrink: 0;
+  transition: width 0.2s ease, flex 0.2s ease;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 64px);
+  position: relative;
+}
+
+.app-sider .ant-menu {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.app-sider.collapsed {
+  width: 0 !important;
+  flex: 0 0 0 !important;
+}
+
+.app-content-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  height: calc(100vh - 64px);
+}
+
+.app-content {
+  flex: 1;
+  padding: 24px;
+}
+
+/* ====== Content Card Styling ====== */
 .content-wrapper {
   background-color: var(--app-content-bg);
   border-radius: 8px;
@@ -85,7 +232,7 @@ body {
   min-height: calc(100vh - 180px);
 }
 
-/* Page Header */
+/* ====== Page Header (Flex) ====== */
 .page-header {
   display: flex;
   justify-content: space-between;
@@ -93,6 +240,8 @@ body {
   margin-bottom: 24px;
   padding-bottom: 16px;
   border-bottom: 1px solid var(--app-border-color);
+  flex-wrap: wrap;
+  gap: 12px;
 }
 
 .page-header h1, .page-header h2, .page-header h3, .page-header h4 {
@@ -105,7 +254,20 @@ body {
   margin-top: 4px;
 }
 
-/* Cards Enhancement */
+.page-header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.page-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ====== Cards Enhancement ====== */
 .ant-card {
   border: 1px solid var(--app-border-color) !important;
   border-radius: 8px !important;
@@ -120,7 +282,7 @@ body {
   background-color: var(--app-content-bg) !important;
 }
 
-/* Tables Enhancement */
+/* ====== Tables Enhancement ====== */
 .ant-table {
   background-color: var(--app-content-bg) !important;
 }
@@ -138,7 +300,7 @@ body {
   background-color: var(--app-hover-bg) !important;
 }
 
-/* Drawer Enhancement */
+/* ====== Drawer Enhancement ====== */
 .ant-drawer-content {
   background-color: var(--app-content-bg) !important;
 }
@@ -148,7 +310,7 @@ body {
   background-color: var(--app-content-bg) !important;
 }
 
-/* Modal Enhancement */
+/* ====== Modal Enhancement ====== */
 .ant-modal-content {
   background-color: var(--app-content-bg) !important;
 }
@@ -162,7 +324,7 @@ body {
   border-top: 1px solid var(--app-border-color) !important;
 }
 
-/* Form Enhancement */
+/* ====== Form Enhancement ====== */
 .ant-form-item-label > label {
   color: var(--app-text-color) !important;
 }
@@ -190,7 +352,7 @@ body {
   box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.2) !important;
 }
 
-/* Menu Enhancement */
+/* ====== Menu Enhancement ====== */
 .ant-menu {
   background-color: transparent !important;
   border-right: none !important;
@@ -213,7 +375,7 @@ body {
   display: none !important;
 }
 
-/* Button Enhancement */
+/* ====== Button Enhancement ====== */
 .ant-btn {
   border-radius: 6px !important;
   font-weight: 500 !important;
@@ -225,165 +387,13 @@ body {
   box-shadow: 0 4px 12px rgba(22, 119, 255, 0.3) !important;
 }
 
-/* Tags Enhancement */
+/* ====== Tags Enhancement ====== */
 .ant-tag {
   border-radius: 4px !important;
   padding: 2px 8px !important;
 }
 
-/* Responsive Design */
-@media (max-width: 768px) {
-  .ant-layout-header {
-    padding: 0 12px !important;
-  }
-
-  .ant-layout-sider {
-    display: none !important;
-  }
-
-  .ant-layout-content {
-    padding: 12px !important;
-  }
-
-  .content-wrapper {
-    padding: 16px;
-    border-radius: 4px;
-  }
-
-  .page-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 12px;
-  }
-
-  .ant-table {
-    font-size: 12px !important;
-  }
-
-  .ant-table-wrapper .ant-table-cell {
-    padding: 8px 4px !important;
-  }
-}
-
-/* Log Viewer Styling */
-.log-viewer {
-  background-color: #1e1e1e !important;
-  color: #d4d4d4 !important;
-  padding: 16px !important;
-  border-radius: 4px !important;
-  max-height: 400px;
-  overflow: auto;
-  font-family: 'Monaco', 'Consolas', 'Courier New', monospace !important;
-  font-size: 12px !important;
-  line-height: 1.5;
-}
-
-[data-theme='dark'] .log-viewer {
-  background-color: #0d0d0d !important;
-}
-
-/* Loading States */
-.loading-container {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  min-height: 400px;
-  width: 100%;
-}
-
-/* Empty States */
-.empty-state {
-  text-align: center;
-  padding: 48px 24px;
-  color: var(--app-text-secondary);
-}
-
-.empty-state .anticon {
-  font-size: 48px;
-  margin-bottom: 16px;
-  opacity: 0.5;
-}
-
-/* Badge Status Colors */
-.status-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-}
-
-.status-dot.online {
-  background-color: #52c41a;
-}
-
-.status-dot.offline {
-  background-color: #8c8c8c;
-}
-
-.status-dot.connecting {
-  background-color: #1677ff;
-  animation: pulse 1.5s infinite;
-}
-
-.status-dot.error {
-  background-color: #ff4d4f;
-}
-
-@keyframes pulse {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.5;
-  }
-}
-
-/* Scrollbar Styling */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: var(--app-bg-color);
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--app-border-color);
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #888;
-}
-
-/* Utility Classes */
-.mb-0 { margin-bottom: 0 !important; }
-.mb-8 { margin-bottom: 8px !important; }
-.mb-16 { margin-bottom: 16px !important; }
-.mb-24 { margin-bottom: 24px !important; }
-.mt-0 { margin-top: 0 !important; }
-.mt-8 { margin-top: 8px !important; }
-.mt-16 { margin-top: 16px !important; }
-.mt-24 { margin-top: 24px !important; }
-.p-0 { padding: 0 !important; }
-.p-16 { padding: 16px !important; }
-.p-24 { padding: 24px !important; }
-.text-center { text-align: center !important; }
-.text-secondary { color: var(--app-text-secondary) !important; }
-.flex { display: flex !important; }
-.flex-center { display: flex !important; justify-content: center !important; align-items: center !important; }
-.flex-between { display: flex !important; justify-content: space-between !important; align-items: center !important; }
-.gap-8 { gap: 8px !important; }
-.gap-16 { gap: 16px !important; }
-.gap-24 { gap: 24px !important; }
-
-/* Responsive Grid Layout */
+/* ====== Responsive Grid Layout ====== */
 .templates-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -403,6 +413,24 @@ body {
   flex-direction: column;
 }
 
+.templates-grid .ant-card-actions {
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.templates-grid .ant-card-actions > li {
+  margin: 4px 0;
+}
+
+.templates-grid .ant-card-actions .ant-btn {
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+.templates-grid .ant-card-actions .ant-btn > span {
+  margin-left: 4px;
+}
+
 /* Server List Responsive Grid */
 .servers-grid {
   display: grid;
@@ -419,75 +447,39 @@ body {
   width: 100%;
 }
 
-/* Responsive Grid for Different Screen Sizes */
-@media (max-width: 576px) {
-  .templates-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .servers-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .apps-grid {
-    grid-template-columns: 1fr;
-  }
+/* Stats Cards Row */
+.stats-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 16px;
 }
 
-@media (min-width: 576px) and (max-width: 768px) {
-  .templates-grid {
-    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  }
-  
-  .servers-grid {
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  }
-  
-  .apps-grid {
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  }
+.stats-row .stat-card {
+  flex: 1;
+  min-width: 200px;
 }
 
-@media (min-width: 768px) and (max-width: 992px) {
-  .templates-grid {
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  }
-  
-  .servers-grid {
-    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  }
-  
-  .apps-grid {
-    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  }
+/* Filter Bar Flex */
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
 }
 
-@media (min-width: 992px) and (max-width: 1200px) {
-  .templates-grid {
-    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  }
-  
-  .servers-grid {
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  }
-  
-  .apps-grid {
-    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-  }
+.filter-bar .filter-item {
+  flex: 1;
+  min-width: 200px;
+  max-width: 300px;
 }
 
-@media (min-width: 1200px) {
-  .templates-grid {
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  }
-  
-  .servers-grid {
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  }
-  
-  .apps-grid {
-    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-  }
+/* Action Bar Flex */
+.action-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
 }
 
 /* Card Content Flex */
@@ -526,4 +518,459 @@ body {
 /* Fix xterm fit addon */
 .xterm-helper-textarea {
   opacity: 0;
+}
+
+/* ====== Loading States ====== */
+.loading-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 400px;
+  width: 100%;
+}
+
+/* ====== Empty States ====== */
+.empty-state {
+  text-align: center;
+  padding: 48px 24px;
+  color: var(--app-text-secondary);
+}
+
+.empty-state .anticon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+
+/* ====== Badge Status Colors ====== */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.status-dot.online {
+  background-color: #52c41a;
+}
+
+.status-dot.offline {
+  background-color: #8c8c8c;
+}
+
+.status-dot.connecting {
+  background-color: #1677ff;
+  animation: pulse 1.5s infinite;
+}
+
+.status-dot.error {
+  background-color: #ff4d4f;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* ====== Scrollbar Styling ====== */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--app-bg-color);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--app-border-color);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #888;
+}
+
+/* ====== Utility Classes ====== */
+.mb-0 { margin-bottom: 0 !important; }
+.mb-8 { margin-bottom: 8px !important; }
+.mb-16 { margin-bottom: 16px !important; }
+.mb-24 { margin-bottom: 24px !important; }
+.mt-0 { margin-top: 0 !important; }
+.mt-8 { margin-top: 8px !important; }
+.mt-16 { margin-top: 16px !important; }
+.mt-24 { margin-top: 24px !important; }
+.p-0 { padding: 0 !important; }
+.p-16 { padding: 16px !important; }
+.p-24 { padding: 24px !important; }
+.text-center { text-align: center !important; }
+.text-secondary { color: var(--app-text-secondary) !important; }
+.flex-center { display: flex !important; justify-content: center !important; align-items: center !important; }
+.flex-between { display: flex !important; justify-content: space-between !important; align-items: center !important; }
+.w-full { width: 100% !important; }
+.h-full { height: 100% !important; }
+.overflow-auto { overflow: auto !important; }
+
+/* ====== Responsive Breakpoints ====== */
+
+/* Extra small: phones (<576px) */
+@media (max-width: 575px) {
+  .ant-layout-header {
+    padding: 0 12px !important;
+  }
+
+  .app-content {
+    padding: 12px;
+  }
+
+  .content-wrapper {
+    padding: 12px;
+    border-radius: 4px;
+  }
+
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+  }
+
+  .page-header-right {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .ant-table {
+    font-size: 12px !important;
+  }
+
+  .ant-table-wrapper .ant-table-cell {
+    padding: 8px 4px !important;
+  }
+
+  .templates-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .templates-grid .ant-card-actions {
+    flex-wrap: wrap;
+  }
+
+  .templates-grid .ant-card-actions .ant-btn > span:last-child {
+    display: none;
+  }
+
+  .templates-grid .ant-card-actions .ant-btn {
+    padding: 0 6px;
+  }
+  
+  .servers-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .apps-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .stats-row {
+    flex-direction: column;
+  }
+
+  .stats-row .stat-card {
+    min-width: 100%;
+  }
+
+  .filter-bar .filter-item {
+    min-width: 100%;
+    max-width: 100%;
+  }
+
+  .ant-modal {
+    max-width: calc(100vw - 24px) !important;
+    margin: 12px !important;
+  }
+
+  .ant-drawer {
+    width: 100% !important;
+  }
+
+  .ant-space {
+    flex-wrap: wrap;
+  }
+}
+
+/* Small: landscape phones (576px - 767px) */
+@media (min-width: 576px) and (max-width: 767px) {
+  .ant-layout-header {
+    padding: 0 16px !important;
+  }
+
+  .app-content {
+    padding: 16px;
+  }
+
+  .content-wrapper {
+    padding: 16px;
+    border-radius: 6px;
+  }
+
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .templates-grid {
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  }
+
+  .templates-grid .ant-card-actions .ant-btn > span:last-child {
+    display: none;
+  }
+  
+  .servers-grid {
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  }
+  
+  .apps-grid {
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  }
+
+  .ant-table-wrapper .ant-table-cell {
+    padding: 8px 6px !important;
+  }
+}
+
+/* Medium: tablets (768px - 991px) */
+@media (min-width: 768px) and (max-width: 991px) {
+  .app-content {
+    padding: 20px;
+  }
+
+  .templates-grid {
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  }
+  
+  .servers-grid {
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  }
+  
+  .apps-grid {
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  }
+}
+
+/* Large: desktops (992px - 1199px) */
+@media (min-width: 992px) and (max-width: 1199px) {
+  .templates-grid {
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  }
+  
+  .servers-grid {
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  }
+  
+  .apps-grid {
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  }
+}
+
+/* Extra large: large desktops (>=1200px) */
+@media (min-width: 1200px) {
+  .templates-grid {
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  }
+  
+  .servers-grid {
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  }
+  
+  .apps-grid {
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  }
+}
+
+/* ====== Sidebar Collapse Button ====== */
+.sidebar-collapse-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.sidebar-collapse-btn:hover {
+  background-color: var(--app-hover-bg);
+}
+
+/* ====== Mobile Sidebar Overlay ====== */
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 99;
+}
+
+@media (max-width: 767px) {
+  .sidebar-overlay.visible {
+    display: block;
+  }
+
+  .app-sider.mobile-open {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 100;
+    box-shadow: 2px 0 8px rgba(0, 0, 0, 0.15);
+  }
+}
+
+/* ====== Responsive Table ====== */
+.responsive-table .ant-table {
+  overflow-x: auto;
+}
+
+.responsive-table .ant-table-wrapper {
+  min-width: 100%;
+}
+
+/* ====== Flex Card Layout ====== */
+.flex-card-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.flex-card-container > .ant-card {
+  flex: 1 1 300px;
+  max-width: 100%;
+}
+
+/* ====== Action Buttons Wrap ====== */
+.action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* ====== Page Content Flex ====== */
+.page-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+}
+
+/* ====== Split Layout (for BatchDeploy etc) ====== */
+.split-layout {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+}
+
+.split-layout .split-left,
+.split-layout .split-right {
+  flex: 1;
+  min-width: 300px;
+}
+
+@media (max-width: 767px) {
+  .split-layout {
+    flex-direction: column;
+  }
+  
+  .split-layout .split-left,
+  .split-layout .split-right {
+    min-width: 100%;
+  }
+}
+
+/* ====== Form Responsive ====== */
+@media (max-width: 575px) {
+  .ant-form-item {
+    margin-bottom: 16px;
+  }
+
+  .ant-input,
+  .ant-select,
+  .ant-input-number {
+    width: 100% !important;
+  }
+
+  .ant-modal-body {
+    padding: 16px !important;
+  }
+}
+
+/* ====== Log Viewer Responsive ====== */
+.log-viewer {
+  background-color: #1e1e1e !important;
+  color: #d4d4d4 !important;
+  padding: 16px !important;
+  border-radius: 4px !important;
+  max-height: 400px;
+  overflow: auto;
+  font-family: 'Monaco', 'Consolas', 'Courier New', monospace !important;
+  font-size: 12px !important;
+  line-height: 1.5;
+}
+
+[data-theme='dark'] .log-viewer {
+  background-color: #0d0d0d !important;
+}
+
+/* ====== Description Responsive ====== */
+@media (max-width: 575px) {
+  .ant-descriptions-item {
+    padding-bottom: 8px !important;
+  }
+  
+  .ant-descriptions-bordered .ant-descriptions-item-label,
+  .ant-descriptions-bordered .ant-descriptions-item-content {
+    padding: 8px 12px !important;
+  }
+}
+
+/* ====== Tabs Responsive ====== */
+@media (max-width: 575px) {
+  .ant-tabs-tab {
+    padding: 8px 12px !important;
+    font-size: 13px !important;
+  }
+}
+
+/* ====== Statistic Cards Responsive ====== */
+.stat-cards-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.stat-cards-row > .ant-card {
+  flex: 1;
+  min-width: 150px;
+}
+
+@media (max-width: 575px) {
+  .stat-cards-row > .ant-card {
+    min-width: calc(50% - 8px);
+  }
 }

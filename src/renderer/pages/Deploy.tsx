@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Spin } from 'antd'
+import { Spin, Row, Col } from 'antd'
 import { useNavigate, useLocation } from 'react-router-dom'
 import DeployForm from '../components/DeployForm'
 import type { Server } from '../types/server'

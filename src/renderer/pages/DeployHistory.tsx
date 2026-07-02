@@ -252,13 +252,17 @@ const DeployHistory: React.FC = () => {
   ]
 
   return (
-    <div>
-      <Title level={4}>
-        <HistoryOutlined style={{ marginRight: 8 }} />
-        {t('deployHistory.title')}
-      </Title>
+    <div className="page-content">
+      <div className="page-header">
+        <div className="page-header-left">
+          <Title level={4} style={{ margin: 0 }}>
+            <HistoryOutlined style={{ marginRight: 8 }} />
+            {t('deployHistory.title')}
+          </Title>
+        </div>
+      </div>
 
-      <Card style={{ marginTop: 16 }}>
+      <Card>
         <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
           <Col xs={24} sm={12} md={8}>
             <Input

@@ -13,7 +13,9 @@ import {
   Select,
   Tooltip,
   Alert,
-  Spin
+  Spin,
+  Row,
+  Col
 } from 'antd'
 import {
   PlusOutlined,
@@ -260,23 +262,27 @@ const Images: React.FC = () => {
   ]
 
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Title level={4} style={{ margin: 0 }}>{t('image.title')}</Title>
-        <Space>
+    <div className="page-content">
+      <div className="page-header">
+        <div className="page-header-left">
+          <Title level={4} style={{ margin: 0 }}>{t('image.title')}</Title>
+        </div>
+        <div className="page-header-right">
           <Button icon={<ReloadOutlined />} onClick={loadImages} loading={loading}>
             {t('common.refresh')}
           </Button>
-        </Space>
+        </div>
       </div>
 
       {/* 服务器选择 */}
       <Card style={{ marginBottom: 16 }}>
-        <Space direction="vertical" style={{ width: '100%' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+        <Row gutter={[16, 8]} align="middle">
+          <Col xs={24} sm={24} md={8} lg={6}>
             <span style={{ fontWeight: 500 }}>{t('image.selectServer')}:</span>
+          </Col>
+          <Col xs={24} sm={24} md={16} lg={18}>
             <Select
-              style={{ width: 300 }}
+              style={{ width: '100%', maxWidth: 400 }}
               placeholder={t('image.selectServerPlaceholder')}
               value={selectedServerId}
               onChange={setSelectedServerId}
@@ -288,22 +294,22 @@ const Images: React.FC = () => {
                 </Option>
               ))}
             </Select>
-            {!selectedServerId && onlineServers.length === 0 && (
-              <Alert
-                message={t('image.noOnlineServers')}
-                type="warning"
-                showIcon
-                style={{ flex: 1 }}
-              />
-            )}
-          </div>
-        </Space>
+          </Col>
+        </Row>
+        {!selectedServerId && onlineServers.length === 0 && (
+          <Alert
+            message={t('image.noOnlineServers')}
+            type="warning"
+            showIcon
+            style={{ marginTop: 8 }}
+          />
+        )}
       </Card>
 
       {/* 操作栏 */}
       {selectedServerId && (
         <Card size="small" style={{ marginBottom: 16 }}>
-          <Space wrap>
+          <div className="filter-bar">
             <Button
               type="primary"
               icon={<PlusOutlined />}
@@ -322,10 +328,10 @@ const Images: React.FC = () => {
               prefix={<SearchOutlined />}
               value={searchText}
               onChange={e => setSearchText(e.target.value)}
-              style={{ width: 250 }}
+              style={{ flex: 1, minWidth: 150, maxWidth: 300 }}
               allowClear
             />
-          </Space>
+          </div>
         </Card>
       )}
 
@@ -343,6 +349,7 @@ const Images: React.FC = () => {
             showTotal: (total) => `${total} ${t('image.totalItems')}`
           }}
           size="middle"
+          scroll={{ x: 800 }}
         />
       </Card>
 

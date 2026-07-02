@@ -10,7 +10,9 @@ import {
   message,
   Tooltip,
   Modal,
-  Drawer
+  Drawer,
+  Row,
+  Col
 } from 'antd'
 import { PlusOutlined, DeleteOutlined, LinkOutlined, DisconnectOutlined, EditOutlined, EyeOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
@@ -160,7 +162,7 @@ const ServerList: React.FC = () => {
       key: 'actions',
       width: 220,
       render: (_: unknown, record: Server) => (
-        <Space size="small">
+        <Space size="small" wrap>
           {record.status === 'online' ? (
             <Tooltip title={t('server.disconnect')}>
               <Button
@@ -216,19 +218,23 @@ const ServerList: React.FC = () => {
   ]
 
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Title level={4} style={{ margin: 0 }}>{t('server.title')}</Title>
-        <Space>
+    <div className="page-content">
+      {/* Page Header - Flex Layout */}
+      <div className="page-header">
+        <div className="page-header-left">
+          <Title level={4} style={{ margin: 0 }}>{t('server.title')}</Title>
+        </div>
+        <div className="page-header-right">
           <Button onClick={refreshServers}>
             {t('common.refresh')}
           </Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
             {t('server.add')}
           </Button>
-        </Space>
+        </div>
       </div>
 
+      {/* Table Card */}
       <Card>
         <Table
           columns={columns}
@@ -237,9 +243,11 @@ const ServerList: React.FC = () => {
           loading={loading}
           locale={{ emptyText: t('common.noData') }}
           pagination={{ pageSize: 10 }}
+          scroll={{ x: 800 }}
         />
       </Card>
 
+      {/* Drawer for Add/Edit */}
       <Drawer
         title={editingServer ? t('server.edit') : t('server.add')}
         placement="right"

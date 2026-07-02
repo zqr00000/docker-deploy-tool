@@ -588,15 +588,17 @@ const AppDetail: React.FC = () => {
   ]
 
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Space>
-          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/apps')}>
-            {t('common.back')}
-          </Button>
-          <Title level={4} style={{ margin: 0 }}>{app.name}</Title>
-        </Space>
-        <Space>
+    <div className="page-content">
+      <div className="page-header">
+        <div className="page-header-left">
+          <Space wrap>
+            <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/apps')}>
+              {t('common.back')}
+            </Button>
+            <Title level={4} style={{ margin: 0 }}>{app.name}</Title>
+          </Space>
+        </div>
+        <div className="page-header-right">
           {app.status === 'running' ? (
             <Button
               danger
@@ -642,7 +644,7 @@ const AppDetail: React.FC = () => {
               {t('app.delete')}
             </Button>
           </Popconfirm>
-        </Space>
+        </div>
       </div>
 
       <Card>

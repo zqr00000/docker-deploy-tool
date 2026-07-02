@@ -9,7 +9,9 @@ import {
   Popconfirm,
   message,
   Tooltip,
-  Modal
+  Modal,
+  Row,
+  Col
 } from 'antd'
 import {
   PlusOutlined,
@@ -213,7 +215,7 @@ const Apps: React.FC = () => {
       key: 'actions',
       width: 280,
       render: (_: unknown, record: App) => (
-        <Space size="small">
+        <Space size="small" wrap>
           {record.status === 'running' ? (
             <Tooltip title={t('app.stop')}>
               <Button
@@ -279,19 +281,23 @@ const Apps: React.FC = () => {
   ]
 
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Title level={4} style={{ margin: 0 }}>{t('app.title')}</Title>
-        <Space>
+    <div className="page-content">
+      {/* Page Header - Flex Layout */}
+      <div className="page-header">
+        <div className="page-header-left">
+          <Title level={4} style={{ margin: 0 }}>{t('app.title')}</Title>
+        </div>
+        <div className="page-header-right">
           <Button onClick={loadData}>
             {t('common.refresh')}
           </Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={handleDeploy}>
             {t('app.deploy')}
           </Button>
-        </Space>
+        </div>
       </div>
 
+      {/* Table Card */}
       <Card>
         <Table
           columns={columns}
@@ -300,9 +306,11 @@ const Apps: React.FC = () => {
           loading={loading}
           locale={{ emptyText: t('common.noData') }}
           pagination={{ pageSize: 10 }}
+          scroll={{ x: 900 }}
         />
       </Card>
 
+      {/* Logs Modal */}
       <Modal
         title={`${t('app.viewLogs')}: ${selectedApp?.name}`}
         open={logsModalVisible}
@@ -317,16 +325,7 @@ const Apps: React.FC = () => {
         ]}
         width={800}
       >
-        <pre style={{
-          background: '#1e1e1e',
-          color: '#d4d4d4',
-          padding: 16,
-          borderRadius: 4,
-          maxHeight: 400,
-          overflow: 'auto',
-          fontSize: 12,
-          fontFamily: 'Monaco, Consolas, "Courier New", monospace'
-        }}>
+        <pre className="log-viewer" style={{ maxHeight: 400 }}>
           {logsLoading ? t('common.loading') : logs}
         </pre>
       </Modal>

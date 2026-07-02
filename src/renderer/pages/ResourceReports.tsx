@@ -391,8 +391,12 @@ const ResourceReports: React.FC = () => {
     : apps
 
   return (
-    <div>
-      <Title level={3}>{t('resourceReports.title')}</Title>
+    <div className="page-content">
+      <div className="page-header">
+        <div className="page-header-left">
+          <Title level={3} style={{ margin: 0 }}>{t('resourceReports.title')}</Title>
+        </div>
+      </div>
 
       {/* Filters */}
       <Card size="small" style={{ marginBottom: 16 }}>

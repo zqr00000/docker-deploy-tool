@@ -47,6 +47,16 @@ function createWindow(): void {
     mainWindow.show()
   })
 
+  // Suppress harmless Autofill DevTools protocol errors
+  mainWindow.webContents.on('devtools-opened', () => {
+    try {
+      mainWindow.webContents.debugger.attach('1.3')
+      mainWindow.webContents.debugger.sendCommand('Autofill.disable').catch(() => {})
+    } catch {
+      // Debugger not available
+    }
+  })
+
   if (process.env.NODE_ENV === 'development') {
     const devServerUrl = process.env.ELECTRON_RENDERER_URL || 'http://localhost:5173'
     log.info(`Development mode, loading dev server: ${devServerUrl}`)

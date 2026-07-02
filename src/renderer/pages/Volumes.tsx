@@ -15,7 +15,9 @@ import {
   Descriptions,
   Tooltip,
   Alert,
-  Empty
+  Empty,
+  Row,
+  Col
 } from 'antd'
 import {
   PlusOutlined,
@@ -283,12 +285,14 @@ const Volumes: React.FC = () => {
   const isServerOnline = selectedServer?.status === 'online'
 
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Title level={4} style={{ margin: 0 }}>{t('volume.title')}</Title>
-        <Space>
+    <div className="page-content">
+      <div className="page-header">
+        <div className="page-header-left">
+          <Title level={4} style={{ margin: 0 }}>{t('volume.title')}</Title>
+        </div>
+        <div className="page-header-right">
           <Select
-            style={{ width: 200 }}
+            style={{ width: '100%', maxWidth: 280 }}
             placeholder={t('volume.selectServer')}
             value={selectedServerId}
             onChange={setSelectedServerId}
@@ -304,7 +308,7 @@ const Volumes: React.FC = () => {
               </Select.Option>
             ))}
           </Select>
-        </Space>
+        </div>
       </div>
 
       {!selectedServerId && (
@@ -328,24 +332,22 @@ const Volumes: React.FC = () => {
       )}
 
       <Card>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-          <Space>
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={() => setCreateModalVisible(true)}
-              disabled={!isServerOnline}
-            >
-              {t('volume.create')}
-            </Button>
-            <Button
-              icon={<ReloadOutlined />}
-              onClick={loadVolumes}
-              loading={loading}
-            >
-              {t('common.refresh')}
-            </Button>
-          </Space>
+        <div className="action-bar" style={{ marginBottom: 16 }}>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => setCreateModalVisible(true)}
+            disabled={!isServerOnline}
+          >
+            {t('volume.create')}
+          </Button>
+          <Button
+            icon={<ReloadOutlined />}
+            onClick={loadVolumes}
+            loading={loading}
+          >
+            {t('common.refresh')}
+          </Button>
           <Popconfirm
             title={t('volume.confirmPrune')}
             onConfirm={() => setPruneModalVisible(true)}
@@ -369,6 +371,7 @@ const Volumes: React.FC = () => {
           loading={loading}
           locale={{ emptyText: <Empty description={t('common.noData')} /> }}
           pagination={{ pageSize: 10 }}
+          scroll={{ x: 800 }}
         />
       </Card>
 

@@ -558,14 +558,18 @@ const Alerts: React.FC = () => {
   ]
 
   return (
-    <div>
-      <Title level={4}>
-        <BellOutlined style={{ marginRight: 8 }} />
-        告警管理
-      </Title>
+    <div className="page-content">
+      <div className="page-header">
+        <div className="page-header-left">
+          <Title level={4} style={{ margin: 0 }}>
+            <BellOutlined style={{ marginRight: 8 }} />
+            告警管理
+          </Title>
+        </div>
+      </div>
 
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-        <Col xs={12} sm={6}>
+        <Col xs={12} sm={12} md={6}>
           <Card>
             <Statistic
               title="总规则数"
@@ -574,7 +578,7 @@ const Alerts: React.FC = () => {
             />
           </Card>
         </Col>
-        <Col xs={12} sm={6}>
+        <Col xs={12} sm={12} md={6}>
           <Card>
             <Statistic
               title="启用规则"
@@ -584,7 +588,7 @@ const Alerts: React.FC = () => {
             />
           </Card>
         </Col>
-        <Col xs={12} sm={6}>
+        <Col xs={12} sm={12} md={6}>
           <Card>
             <Statistic
               title="活动告警"
@@ -594,7 +598,7 @@ const Alerts: React.FC = () => {
             />
           </Card>
         </Col>
-        <Col xs={12} sm={6}>
+        <Col xs={12} sm={12} md={6}>
           <Card>
             <Statistic
               title="总告警数"

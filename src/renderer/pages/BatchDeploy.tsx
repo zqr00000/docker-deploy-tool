@@ -222,14 +222,16 @@ const BatchDeploy: React.FC = () => {
   }
 
   return (
-    <div>
-      <Title level={3}>
-        <RocketOutlined style={{ marginRight: 8 }} />
-        {t('batchDeploy.title')}
-      </Title>
-      <Text type="secondary">{t('batchDeploy.description')}</Text>
-
-      <Divider />
+    <div className="page-content">
+      <div className="page-header">
+        <div className="page-header-left">
+          <Title level={3} style={{ margin: 0 }}>
+            <RocketOutlined style={{ marginRight: 8 }} />
+            {t('batchDeploy.title')}
+          </Title>
+          <Text type="secondary">{t('batchDeploy.description')}</Text>
+        </div>
+      </div>
 
       <Row gutter={[24, 24]}>
         <Col xs={24} lg={12}>

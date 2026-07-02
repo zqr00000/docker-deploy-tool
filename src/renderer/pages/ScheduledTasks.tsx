@@ -391,9 +391,9 @@ const ScheduledTasks: React.FC = () => {
   ]
 
   return (
-    <div>
-      <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
-        <Col>
+    <div className="page-content">
+      <div className="page-header">
+        <div className="page-header-left">
           <Title level={4} style={{ margin: 0 }}>
             {t('scheduledTasks.title')}
             <Badge
@@ -401,25 +401,23 @@ const ScheduledTasks: React.FC = () => {
               style={{ marginLeft: 8, backgroundColor: '#52c41a' }}
             />
           </Title>
-        </Col>
-        <Col>
-          <Space>
-            <Button
-              icon={<ReloadOutlined />}
-              onClick={fetchTasks}
-            >
-              {t('common.refresh')}
-            </Button>
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={handleCreate}
-            >
-              {t('scheduledTasks.add')}
-            </Button>
-          </Space>
-        </Col>
-      </Row>
+        </div>
+        <div className="page-header-right">
+          <Button
+            icon={<ReloadOutlined />}
+            onClick={fetchTasks}
+          >
+            {t('common.refresh')}
+          </Button>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={handleCreate}
+          >
+            {t('scheduledTasks.add')}
+          </Button>
+        </div>
+      </div>
 
       <Card>
         <Table

@@ -249,12 +249,16 @@ const AuditLog: React.FC = () => {
   ]
 
   return (
-    <div>
-      <Title level={4}>{t('auditLog.title')}</Title>
+    <div className="page-content">
+      <div className="page-header">
+        <div className="page-header-left">
+          <Title level={4} style={{ margin: 0 }}>{t('auditLog.title')}</Title>
+        </div>
+      </div>
 
-      <Card style={{ marginTop: 16 }}>
+      <Card>
         <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-          <Col xs={24} sm={8} md={6}>
+          <Col xs={24} sm={12} md={6}>
             <Input
               placeholder={t('auditLog.searchPlaceholder')}
               prefix={<SearchOutlined />}
@@ -263,7 +267,7 @@ const AuditLog: React.FC = () => {
               allowClear
             />
           </Col>
-          <Col xs={24} sm={8} md={4}>
+          <Col xs={24} sm={12} md={4}>
             <Select
               placeholder={t('auditLog.actionFilter')}
               value={actionFilter}
@@ -278,7 +282,7 @@ const AuditLog: React.FC = () => {
               ))}
             </Select>
           </Col>
-          <Col xs={24} sm={8} md={4}>
+          <Col xs={24} sm={12} md={4}>
             <Select
               placeholder={t('auditLog.statusFilter')}
               value={statusFilter}
@@ -298,8 +302,8 @@ const AuditLog: React.FC = () => {
               style={{ width: '100%' }}
             />
           </Col>
-          <Col xs={24} sm={8} md={4}>
-            <Space>
+          <Col xs={24} sm={24} md={4}>
+            <Space wrap>
               <Button icon={<SearchOutlined />} type="primary" onClick={() => fetchLogs()}>
                 {t('common.search')}
               </Button>
@@ -308,36 +312,34 @@ const AuditLog: React.FC = () => {
           </Col>
         </Row>
 
-        <Row justify="end" style={{ marginBottom: 16 }}>
-          <Space>
-            <Button icon={<ReloadOutlined />} onClick={fetchLogs}>
-              {t('common.refresh')}
+        <div className="action-bar" style={{ marginBottom: 16 }}>
+          <Button icon={<ReloadOutlined />} onClick={fetchLogs}>
+            {t('common.refresh')}
+          </Button>
+          <Button icon={<ExportOutlined />} onClick={handleExport}>
+            {t('auditLog.export')}
+          </Button>
+          <Popconfirm
+            title={t('auditLog.cleanupConfirm')}
+            onConfirm={handleCleanup}
+            okText={t('common.confirm')}
+            cancelText={t('common.cancel')}
+          >
+            <Button icon={<DeleteOutlined />}>
+              {t('auditLog.cleanup')}
             </Button>
-            <Button icon={<ExportOutlined />} onClick={handleExport}>
-              {t('auditLog.export')}
+          </Popconfirm>
+          <Popconfirm
+            title={t('auditLog.clearConfirm')}
+            onConfirm={handleClear}
+            okText={t('common.confirm')}
+            cancelText={t('common.cancel')}
+          >
+            <Button icon={<ClearOutlined />} danger>
+              {t('auditLog.clear')}
             </Button>
-            <Popconfirm
-              title={t('auditLog.cleanupConfirm')}
-              onConfirm={handleCleanup}
-              okText={t('common.confirm')}
-              cancelText={t('common.cancel')}
-            >
-              <Button icon={<DeleteOutlined />}>
-                {t('auditLog.cleanup')}
-              </Button>
-            </Popconfirm>
-            <Popconfirm
-              title={t('auditLog.clearConfirm')}
-              onConfirm={handleClear}
-              okText={t('common.confirm')}
-              cancelText={t('common.cancel')}
-            >
-              <Button icon={<ClearOutlined />} danger>
-                {t('auditLog.clear')}
-              </Button>
-            </Popconfirm>
-          </Space>
-        </Row>
+          </Popconfirm>
+        </div>
 
         <Table
           columns={columns}
