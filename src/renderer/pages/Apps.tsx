@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback, useMemo, memo } from 'react'
 import {
   Table,
   Card,
@@ -9,9 +9,7 @@ import {
   Popconfirm,
   message,
   Tooltip,
-  Modal,
-  Row,
-  Col
+  Modal
 } from 'antd'
 import {
   PlusOutlined,
@@ -30,6 +28,24 @@ import type { Template } from '../types/template'
 
 const { Title } = Typography
 
+// 状态标签组件 - 使用 memo 避免重复渲染
+const AppStatusTag: React.FC<{ status: AppStatus }> = memo(({ status }) => {
+  const { t } = useTranslation()
+  switch (status) {
+    case 'running':
+      return <Tag color="success">{t('app.statusRunning')}</Tag>
+    case 'stopped':
+      return <Tag color="default">{t('app.statusStopped')}</Tag>
+    case 'deploying':
+      return <Tag color="processing">{t('app.statusDeploying')}</Tag>
+    case 'error':
+      return <Tag color="error">{t('app.statusError')}</Tag>
+    default:
+      return <Tag>{status}</Tag>
+  }
+})
+AppStatusTag.displayName = 'AppStatusTag'
+
 const Apps: React.FC = () => {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -43,7 +59,7 @@ const Apps: React.FC = () => {
   const [logs, setLogs] = useState('')
   const [logsLoading, setLogsLoading] = useState(false)
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true)
     try {
       const [appsData, serversData, templatesData] = await Promise.all([
@@ -59,42 +75,38 @@ const Apps: React.FC = () => {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
     loadData()
-  }, [])
+  }, [loadData])
 
-  const getServerName = (serverId: string) => {
-    const server = servers.find(s => s.id === serverId)
-    return server?.name || serverId
-  }
+  // 使用 useMemo 创建查找 Map，避免每次渲染进行 O(n) 查找
+  const serverMap = useMemo(() => {
+    const map = new Map<string, string>()
+    servers.forEach(s => map.set(s.id, s.name))
+    return map
+  }, [servers])
 
-  const getTemplateName = (templateId: string) => {
+  const templateMap = useMemo(() => {
+    const map = new Map<string, string>()
+    templates.forEach(t => map.set(t.id, t.name))
+    return map
+  }, [templates])
+
+  const getServerName = useCallback((serverId: string) => {
+    return serverMap.get(serverId) || serverId
+  }, [serverMap])
+
+  const getTemplateName = useCallback((templateId: string) => {
     if (templateId === 'custom') return t('app.custom')
-    const template = templates.find(t => t.id === templateId)
-    return template?.name || templateId
-  }
+    return templateMap.get(templateId) || templateId
+  }, [templateMap, t])
 
-  const getStatusTag = (status: AppStatus) => {
-    switch (status) {
-      case 'running':
-        return <Tag color="success">{t('app.statusRunning')}</Tag>
-      case 'stopped':
-        return <Tag color="default">{t('app.statusStopped')}</Tag>
-      case 'deploying':
-        return <Tag color="processing">{t('app.statusDeploying')}</Tag>
-      case 'error':
-        return <Tag color="error">{t('app.statusError')}</Tag>
-      default:
-        return <Tag>{status}</Tag>
-    }
-  }
-
-  const handleStart = async (app: App) => {
-    setActionLoading(app.id)
+  const handleStart = useCallback(async (appId: string) => {
+    setActionLoading(appId)
     try {
-      const result = await window.electronAPI.app.start(app.id)
+      const result = await window.electronAPI.app.start(appId)
       if (result.success) {
         message.success(t('app.startSuccess'))
         loadData()
@@ -106,12 +118,12 @@ const Apps: React.FC = () => {
     } finally {
       setActionLoading(null)
     }
-  }
+  }, [t, loadData])
 
-  const handleStop = async (app: App) => {
-    setActionLoading(app.id)
+  const handleStop = useCallback(async (appId: string) => {
+    setActionLoading(appId)
     try {
-      const result = await window.electronAPI.app.stop(app.id)
+      const result = await window.electronAPI.app.stop(appId)
       if (result.success) {
         message.success(t('app.stopSuccess'))
         loadData()
@@ -123,12 +135,12 @@ const Apps: React.FC = () => {
     } finally {
       setActionLoading(null)
     }
-  }
+  }, [t, loadData])
 
-  const handleRestart = async (app: App) => {
-    setActionLoading(app.id)
+  const handleRestart = useCallback(async (appId: string) => {
+    setActionLoading(appId)
     try {
-      const result = await window.electronAPI.app.restart(app.id)
+      const result = await window.electronAPI.app.restart(appId)
       if (result.success) {
         message.success(t('app.restartSuccess'))
         loadData()
@@ -140,19 +152,19 @@ const Apps: React.FC = () => {
     } finally {
       setActionLoading(null)
     }
-  }
+  }, [t, loadData])
 
-  const handleDelete = async (app: App) => {
+  const handleDelete = useCallback(async (appId: string) => {
     try {
-      await window.electronAPI.app.delete(app.id)
+      await window.electronAPI.app.delete(appId)
       message.success(t('app.deleteSuccess'))
       loadData()
     } catch (error) {
       message.error((error as Error).message)
     }
-  }
+  }, [t, loadData])
 
-  const handleViewLogs = async (app: App) => {
+  const handleViewLogs = useCallback(async (app: App) => {
     setSelectedApp(app)
     setLogsModalVisible(true)
     setLogsLoading(true)
@@ -169,17 +181,28 @@ const Apps: React.FC = () => {
     } finally {
       setLogsLoading(false)
     }
-  }
+  }, [servers, t])
 
-  const handleViewDetail = (app: App) => {
-    navigate(`/apps/${app.id}`)
-  }
+  const handleViewDetail = useCallback((appId: string) => {
+    navigate(`/apps/${appId}`)
+  }, [navigate])
 
-  const handleDeploy = () => {
+  const handleDeploy = useCallback(() => {
     navigate('/apps/deploy')
-  }
+  }, [navigate])
 
-  const columns = [
+  const handleCloseLogsModal = useCallback(() => {
+    setLogsModalVisible(false)
+  }, [])
+
+  const handleRefreshLogs = useCallback(() => {
+    if (selectedApp) {
+      handleViewLogs(selectedApp)
+    }
+  }, [selectedApp, handleViewLogs])
+
+  // 使用 useMemo 缓存表格列定义
+  const columns = useMemo(() => [
     {
       title: t('app.name'),
       dataIndex: 'name',
@@ -202,7 +225,7 @@ const Apps: React.FC = () => {
       title: t('app.status'),
       dataIndex: 'status',
       key: 'status',
-      render: (status: AppStatus) => getStatusTag(status)
+      render: (status: AppStatus) => <AppStatusTag status={status} />
     },
     {
       title: t('app.created'),
@@ -223,7 +246,7 @@ const Apps: React.FC = () => {
                 danger
                 icon={<StopOutlined />}
                 loading={actionLoading === record.id}
-                onClick={() => handleStop(record)}
+                onClick={() => handleStop(record.id)}
               />
             </Tooltip>
           ) : (
@@ -233,7 +256,7 @@ const Apps: React.FC = () => {
                 type="primary"
                 icon={<PlayCircleOutlined />}
                 loading={actionLoading === record.id}
-                onClick={() => handleStart(record)}
+                onClick={() => handleStart(record.id)}
                 disabled={record.status === 'deploying'}
               />
             </Tooltip>
@@ -243,7 +266,7 @@ const Apps: React.FC = () => {
               size="small"
               icon={<ReloadOutlined />}
               loading={actionLoading === record.id}
-              onClick={() => handleRestart(record)}
+              onClick={() => handleRestart(record.id)}
               disabled={record.status === 'deploying'}
             />
           </Tooltip>
@@ -258,12 +281,12 @@ const Apps: React.FC = () => {
             <Button
               size="small"
               icon={<EyeOutlined />}
-              onClick={() => handleViewDetail(record)}
+              onClick={() => handleViewDetail(record.id)}
             />
           </Tooltip>
           <Popconfirm
             title={t('app.confirmDelete')}
-            onConfirm={() => handleDelete(record)}
+            onConfirm={() => handleDelete(record.id)}
             okText={t('common.yes')}
             cancelText={t('common.no')}
           >
@@ -278,7 +301,7 @@ const Apps: React.FC = () => {
         </Space>
       )
     }
-  ]
+  ], [t, getServerName, getTemplateName, actionLoading, handleStop, handleStart, handleRestart, handleViewLogs, handleViewDetail, handleDelete])
 
   return (
     <div className="page-content">
@@ -288,7 +311,7 @@ const Apps: React.FC = () => {
           <Title level={4} style={{ margin: 0 }}>{t('app.title')}</Title>
         </div>
         <div className="page-header-right">
-          <Button onClick={loadData}>
+          <Button onClick={loadData} icon={<ReloadOutlined />}>
             {t('common.refresh')}
           </Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={handleDeploy}>
@@ -305,7 +328,7 @@ const Apps: React.FC = () => {
           rowKey="id"
           loading={loading}
           locale={{ emptyText: t('common.noData') }}
-          pagination={{ pageSize: 10 }}
+          pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (total) => `${total} ${t('common.items')}` }}
           scroll={{ x: 900 }}
         />
       </Card>
@@ -314,12 +337,12 @@ const Apps: React.FC = () => {
       <Modal
         title={`${t('app.viewLogs')}: ${selectedApp?.name}`}
         open={logsModalVisible}
-        onCancel={() => setLogsModalVisible(false)}
+        onCancel={handleCloseLogsModal}
         footer={[
-          <Button key="close" onClick={() => setLogsModalVisible(false)}>
+          <Button key="close" onClick={handleCloseLogsModal}>
             {t('common.close')}
           </Button>,
-          <Button key="refresh" onClick={() => selectedApp && handleViewLogs(selectedApp)}>
+          <Button key="refresh" onClick={handleRefreshLogs}>
             {t('common.refresh')}
           </Button>
         ]}

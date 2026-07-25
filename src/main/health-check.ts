@@ -68,15 +68,15 @@ class HealthCheckService {
   async getContainerHealth(serverId: string, containerId: string): Promise<ContainerHealthStatus> {
     const startTime = Date.now()
     try {
-      // 获取容器详细信息
-      const result = await sshService.executeCommand(
+      // 获取容器状态
+      const stateResult = await sshService.executeCommand(
         serverId,
-        `docker inspect --format '{{.State.Status}}|{{.State.Health.Status}}|{{.State.StartedAt}}|{{.RestartCount}}|{{.State.ExitCode}}' ${containerId} 2>/dev/null || echo 'unknown'`
+        `docker inspect --format '{{json .State}}' ${containerId} 2>/dev/null`
       )
 
       const responseTime = Date.now() - startTime
 
-      if (!result.success || !result.stdout || result.stdout.trim() === 'unknown') {
+      if (!stateResult.success || !stateResult.stdout) {
         return {
           containerId,
           containerName: containerId.substring(0, 12),
@@ -85,21 +85,48 @@ class HealthCheckService {
           uptime: '-',
           restartCount: 0,
           exitCode: -1,
-          errorMessage: result.stderr || '无法获取容器状态',
+          errorMessage: stateResult.stderr || '无法获取容器状态',
           responseTime
         }
       }
 
-      const parts = result.stdout.trim().split('|')
-      const stateStatus = parts[0] || 'unknown'
-      const healthStatus = parts[1] || 'none'
-      const startedAt = parts[2] || ''
-      const restartCount = parseInt(parts[3] || '0', 10)
-      const exitCode = parseInt(parts[4] || '0', 10)
+      // 解析容器状态
+      let state: any = {}
+      try {
+        state = JSON.parse(stateResult.stdout.trim())
+      } catch {
+        // 如果 JSON 解析失败，使用简单格式
+        const simpleResult = await sshService.executeCommand(
+          serverId,
+          `docker inspect --format '{{.State.Status}}|{{.State.Running}}|{{.State.StartedAt}}|{{.RestartCount}}|{{.State.ExitCode}}' ${containerId} 2>/dev/null`
+        )
+        if (simpleResult.success && simpleResult.stdout) {
+          const parts = simpleResult.stdout.trim().split('|')
+          state = {
+            Status: parts[0] || 'unknown',
+            Running: parts[1] === 'true',
+            StartedAt: parts[2] || '',
+            RestartCount: parseInt(parts[3] || '0', 10),
+            ExitCode: parseInt(parts[4] || '0', 10)
+          }
+        }
+      }
+
+      const stateStatus = state.Status || 'unknown'
+      const isRunning = state.Running === true
+      const startedAt = state.StartedAt || ''
+      const restartCount = state.RestartCount || 0
+      const exitCode = state.ExitCode || 0
+
+      // 获取健康检查状态
+      let healthStatus = 'none'
+      if (state.Health && state.Health.Status) {
+        healthStatus = state.Health.Status
+      }
 
       // 计算运行时间
       let uptime = '-'
-      if (startedAt && stateStatus === 'running') {
+      if (startedAt && isRunning) {
         try {
           const startDate = new Date(startedAt)
           const diff = Date.now() - startDate.getTime()
@@ -118,8 +145,8 @@ class HealthCheckService {
 
       // 确定健康状态
       let status: ContainerHealthStatus['status'] = 'unknown'
-      if (stateStatus === 'running') {
-        if (healthStatus === 'healthy' || healthStatus === 'none') {
+      if (isRunning || stateStatus === 'running') {
+        if (healthStatus === 'healthy' || healthStatus === 'none' || healthStatus === '') {
           status = 'healthy'
         } else if (healthStatus === 'starting') {
           status = 'starting'

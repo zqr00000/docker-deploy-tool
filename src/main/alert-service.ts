@@ -471,7 +471,9 @@ class AlertService {
     this.checkIntervalMs = intervalMs || this.checkIntervalMs
     
     this.timer = setInterval(() => {
-      this.performScheduledChecks()
+      this.performScheduledChecks().catch(error => {
+        log.error('Scheduled check failed:', error)
+      })
     }, this.checkIntervalMs)
 
     log.info(`Alert monitoring started: interval ${this.checkIntervalMs}ms`)
@@ -487,13 +489,125 @@ class AlertService {
   }
 
   // 执行定期检查（可由外部调用触发）
-  private performScheduledChecks(): void {
-    // 清理过期的重启计数记录
-    const now = Date.now()
-    for (const [key, record] of this.restartCountMap.entries()) {
-      if (now - record.lastRestart > 120000) { // 2分钟无活动则清除
-        this.restartCountMap.delete(key)
+  private async performScheduledChecks(): Promise<void> {
+    try {
+      // 清理过期的重启计数记录
+      const now = Date.now()
+      for (const [key, record] of this.restartCountMap.entries()) {
+        if (now - record.lastRestart > 120000) { // 2分钟无活动则清除
+          this.restartCountMap.delete(key)
+        }
       }
+
+      // 获取所有启用的告警规则
+      const rules = alertRuleQueries.getEnabled()
+      if (rules.length === 0) return
+
+      // 获取所有服务器
+      const { serverQueries } = require('./database')
+      const servers = serverQueries.getAll()
+
+      for (const server of servers) {
+        // 只检查在线服务器
+        if (server.status !== 'online') continue
+
+        try {
+          // 获取服务器上的容器
+          const { appQueries } = require('./database')
+          const apps = appQueries.getByServerId(server.id)
+
+          for (const app of apps) {
+            if (!app.projectPath) continue
+
+            // 获取容器列表
+            const containers = await this.getContainersForServer(server.id, app.projectPath)
+
+            for (const container of containers) {
+              // 检查容器状态
+              this.checkContainer({
+                serverId: server.id,
+                appId: app.id,
+                containerId: container.id,
+                containerName: container.name,
+                status: container.status,
+                restartCount: container.restartCount || 0
+              })
+
+              // 检查资源使用
+              if (container.cpuPercent !== undefined || container.memoryPercent !== undefined) {
+                this.checkResource({
+                  serverId: server.id,
+                  appId: app.id,
+                  containerId: container.id,
+                  containerName: container.name,
+                  cpuPercent: container.cpuPercent || 0,
+                  memoryPercent: container.memoryPercent || 0,
+                  diskPercent: container.diskPercent
+                })
+              }
+            }
+          }
+        } catch (error) {
+          log.error(`Failed to check server ${server.id}:`, error)
+        }
+      }
+    } catch (error) {
+      log.error('Failed to perform scheduled checks:', error)
+    }
+  }
+
+  // 获取服务器上的容器
+  private async getContainersForServer(serverId: string, projectPath: string): Promise<Array<{
+    id: string
+    name: string
+    status: string
+    restartCount: number
+    cpuPercent?: number
+    memoryPercent?: number
+    diskPercent?: number
+  }>> {
+    try {
+      const { sshService } = require('./ssh')
+      if (!sshService.isConnected(serverId)) {
+        return []
+      }
+
+      // 获取容器列表
+      const result = await sshService.executeCommand(
+        serverId,
+        `docker ps -a --filter "label=com.docker.compose.project=${projectPath}" --format "{{.ID}}|{{.Names}}|{{.Status}}"`
+      )
+
+      if (!result.success || !result.stdout) {
+        return []
+      }
+
+      const containers: Array<{
+        id: string
+        name: string
+        status: string
+        restartCount: number
+        cpuPercent?: number
+        memoryPercent?: number
+      }> = []
+
+      const lines = result.stdout.trim().split('\n').filter(line => line.trim())
+      for (const line of lines) {
+        const [id, name, status] = line.split('|')
+        if (id && name) {
+          containers.push({
+            id: id.trim(),
+            name: name.trim(),
+            status: status?.trim() || 'unknown',
+            restartCount: 0
+          })
+        }
+      }
+
+      return containers
+    } catch (error) {
+      log.error(`Failed to get containers for server ${serverId}:`, error)
+      return []
     }
   }
 

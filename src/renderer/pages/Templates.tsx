@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react'
+import React, { useState, useEffect, useMemo, useRef, useCallback, memo } from 'react'
 import {
   Card,
   Typography,
@@ -9,11 +9,8 @@ import {
   message,
   Spin,
   Modal,
-  Tabs,
   Row,
   Col,
-  Badge,
-  Tooltip,
   Empty,
   Segmented
 } from 'antd'
@@ -24,9 +21,9 @@ import {
   ImportOutlined,
   ExportOutlined,
   AppstoreOutlined,
-  LaptopOutlined,
+  ClusterOutlined,
   CloudServerOutlined,
-  ClusterOutlined
+  LaptopOutlined
 } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -74,7 +71,7 @@ const Templates: React.FC = () => {
     loadTemplates()
   }, [])
 
-  const loadTemplates = async () => {
+  const loadTemplates = useCallback(async () => {
     setLoading(true)
     try {
       const allTemplates = await window.electronAPI.template.getAll() as Template[]
@@ -87,7 +84,7 @@ const Templates: React.FC = () => {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   const stackTemplates = useMemo(() => {
     return templates.filter(t => t.category === 'stack')
@@ -99,40 +96,49 @@ const Templates: React.FC = () => {
 
   const filteredTemplates = useMemo(() => {
     const sourceList = activeTab === 'stack' ? stackTemplates : singleTemplates
+    const searchLower = searchText.toLowerCase()
     return sourceList.filter(template => {
       const matchesSearch =
-        template.name.toLowerCase().includes(searchText.toLowerCase()) ||
-        template.description.toLowerCase().includes(searchText.toLowerCase())
+        template.name.toLowerCase().includes(searchLower) ||
+        template.description.toLowerCase().includes(searchLower)
       const matchesCategory = selectedCategory === 'all' || template.category === selectedCategory
       return matchesSearch && matchesCategory
     })
   }, [singleTemplates, stackTemplates, searchText, selectedCategory, activeTab])
 
-  const handleUseTemplate = (template: Template) => {
-    navigate('/apps/deploy', { state: { templateId: template.id } })
-  }
+  // 使用 useMemo 缓存统计数据
+  const stats = useMemo(() => ({
+    total: templates.length,
+    stackCount: stackTemplates.length,
+    builtInCount: templates.filter(t => t.isBuiltIn).length,
+    customCount: templates.filter(t => !t.isBuiltIn).length
+  }), [templates, stackTemplates])
 
-  const handleEdit = (template: Template) => {
+  const handleUseTemplate = useCallback((template: Template) => {
+    navigate('/apps/deploy', { state: { templateId: template.id } })
+  }, [navigate])
+
+  const handleEdit = useCallback((template: Template) => {
     setEditingTemplate(template)
     setEditorVisible(true)
-  }
+  }, [])
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = useCallback(async (id: string) => {
     try {
       await window.electronAPI.template.delete(id)
       setTemplates(prev => prev.filter(t => t.id !== id))
       message.success(t('template.deleteSuccess'))
-    } catch (error) {
+    } catch {
       message.error(t('common.error'))
     }
-  }
+  }, [t])
 
-  const handleAdd = () => {
+  const handleAdd = useCallback(() => {
     setEditingTemplate(null)
     setEditorVisible(true)
-  }
+  }, [])
 
-  const handleSave = async (values: TemplateFormData) => {
+  const handleSave = useCallback(async (values: TemplateFormData) => {
     try {
       if (editingTemplate) {
         await window.electronAPI.template.update(editingTemplate.id, values)
@@ -150,12 +156,12 @@ const Templates: React.FC = () => {
         message.success(t('common.success'))
       }
       setEditorVisible(false)
-    } catch (error) {
+    } catch {
       message.error(t('common.error'))
     }
-  }
+  }, [editingTemplate, t])
 
-  const handleExport = () => {
+  const handleExport = useCallback(() => {
     const exportData: ExportTemplate[] = templates
       .filter(t => !t.isBuiltIn)
       .map(t => ({
@@ -182,19 +188,19 @@ const Templates: React.FC = () => {
     URL.revokeObjectURL(url)
 
     message.success(t('template.exportSuccess'))
-  }
+  }, [templates, t])
 
-  const handleImportClick = () => {
+  const handleImportClick = useCallback(() => {
     fileInputRef.current?.click()
-  }
+  }, [])
 
-  const validateTemplateData = (item: unknown): item is ImportTemplate => {
+  const validateTemplateData = useCallback((item: unknown): item is ImportTemplate => {
     if (typeof item !== 'object' || item === null) return false
     const obj = item as Record<string, unknown>
     return typeof obj.name === 'string' && typeof obj.category === 'string' && typeof obj.dockerCompose === 'string'
-  }
+  }, [])
 
-  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImportFile = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
 
@@ -239,9 +245,9 @@ const Templates: React.FC = () => {
     }
     reader.readAsText(file)
     e.target.value = ''
-  }
+  }, [t, validateTemplateData])
 
-  const handleConfirmImport = async () => {
+  const handleConfirmImport = useCallback(async () => {
     let successCount = 0
     for (const tpl of importTemplates) {
       try {
@@ -262,26 +268,58 @@ const Templates: React.FC = () => {
     setImportModalVisible(false)
     setImportTemplates([])
     message.success(t('template.importSuccess', { count: successCount }))
-  }
+  }, [importTemplates, t])
 
-  const handleShowDetail = (template: Template) => {
+  const handleShowDetail = useCallback((template: Template) => {
     setSelectedTemplate(template)
     setDetailModalVisible(true)
-  }
+  }, [])
 
-  const getCategoryColor = (category: string) => {
+  const getCategoryColor = useCallback((category: string) => {
     return CATEGORY_COLORS[category as TemplateCategory] || 'default'
-  }
+  }, [])
 
-  const getCategoryCount = (category: TemplateCategory | 'all') => {
+  const getCategoryCount = useCallback((category: TemplateCategory | 'all') => {
     const sourceList = activeTab === 'stack' ? stackTemplates : singleTemplates
     if (category === 'all') return sourceList.length
     return sourceList.filter(t => t.category === category).length
-  }
+  }, [activeTab, stackTemplates, singleTemplates])
 
-  const displayCategories = activeTab === 'stack'
-    ? (['all', 'stack'] as (TemplateCategory | 'all')[])
-    : (['all', ...ALL_CATEGORIES.filter(c => c !== 'stack')] as (TemplateCategory | 'all')[])
+  const displayCategories = useMemo(() => {
+    return activeTab === 'stack'
+      ? (['all', 'stack'] as (TemplateCategory | 'all')[])
+      : (['all', ...ALL_CATEGORIES.filter(c => c !== 'stack')] as (TemplateCategory | 'all')[])
+  }, [activeTab])
+
+  const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchText(e.target.value)
+  }, [])
+
+  const handleCategoryChange = useCallback((category: TemplateCategory | 'all') => {
+    setSelectedCategory(category)
+  }, [])
+
+  const handleTabChange = useCallback((val: string) => {
+    setActiveTab(val as 'all' | 'stack')
+    setSelectedCategory('all')
+  }, [])
+
+  const handleCloseImportModal = useCallback(() => {
+    setImportModalVisible(false)
+    setImportTemplates([])
+  }, [])
+
+  const handleCloseDetailModal = useCallback(() => {
+    setDetailModalVisible(false)
+    setSelectedTemplate(null)
+  }, [])
+
+  const handleDeployFromDetail = useCallback(() => {
+    if (selectedTemplate) {
+      handleUseTemplate(selectedTemplate)
+      setDetailModalVisible(false)
+    }
+  }, [selectedTemplate, handleUseTemplate])
 
   if (loading && !initialized) {
     return (
@@ -325,7 +363,7 @@ const Templates: React.FC = () => {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div>
                 <Text type="secondary">{t('template.totalTemplates')}</Text>
-                <div style={{ fontSize: 24, fontWeight: 'bold' }}>{templates.length}</div>
+                <div style={{ fontSize: 24, fontWeight: 'bold' }}>{stats.total}</div>
               </div>
               <AppstoreOutlined style={{ fontSize: 32, color: '#1890ff' }} />
             </div>
@@ -336,7 +374,7 @@ const Templates: React.FC = () => {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div>
                 <Text type="secondary">{t('template.appStacks')}</Text>
-                <div style={{ fontSize: 24, fontWeight: 'bold', color: '#f5222d' }}>{stackTemplates.length}</div>
+                <div style={{ fontSize: 24, fontWeight: 'bold', color: '#f5222d' }}>{stats.stackCount}</div>
               </div>
               <ClusterOutlined style={{ fontSize: 32, color: '#f5222d' }} />
             </div>
@@ -348,7 +386,7 @@ const Templates: React.FC = () => {
               <div>
                 <Text type="secondary">{t('template.builtInTemplates')}</Text>
                 <div style={{ fontSize: 24, fontWeight: 'bold', color: '#52c41a' }}>
-                  {templates.filter(t => t.isBuiltIn).length}
+                  {stats.builtInCount}
                 </div>
               </div>
               <CloudServerOutlined style={{ fontSize: 32, color: '#52c41a' }} />
@@ -361,7 +399,7 @@ const Templates: React.FC = () => {
               <div>
                 <Text type="secondary">{t('template.customTemplates')}</Text>
                 <div style={{ fontSize: 24, fontWeight: 'bold', color: '#faad14' }}>
-                  {templates.filter(t => !t.isBuiltIn).length}
+                  {stats.customCount}
                 </div>
               </div>
               <LaptopOutlined style={{ fontSize: 32, color: '#faad14' }} />
@@ -377,7 +415,7 @@ const Templates: React.FC = () => {
             placeholder={t('template.searchPlaceholder')}
             prefix={<SearchOutlined />}
             value={searchText}
-            onChange={e => setSearchText(e.target.value)}
+            onChange={handleSearchChange}
             allowClear
             size="large"
           />
@@ -386,7 +424,7 @@ const Templates: React.FC = () => {
               <Text strong>{t('template.categoryFilter')}:</Text>
               <Tag
                 color={selectedCategory === 'all' ? 'blue' : 'default'}
-                onClick={() => setSelectedCategory('all')}
+                onClick={() => handleCategoryChange('all')}
                 style={{ cursor: 'pointer', padding: '4px 12px' }}
               >
                 {t('template.all')} ({getCategoryCount('all')})
@@ -395,7 +433,7 @@ const Templates: React.FC = () => {
                 <Tag
                   key={cat}
                   color={selectedCategory === cat ? getCategoryColor(cat) : 'default'}
-                  onClick={() => setSelectedCategory(cat)}
+                  onClick={() => handleCategoryChange(cat)}
                   style={{ cursor: 'pointer', padding: '4px 12px' }}
                 >
                   {CATEGORY_LABELS[cat][i18n.language === 'zh-CN' ? 'zh' : 'en']} ({getCategoryCount(cat)})
@@ -404,10 +442,7 @@ const Templates: React.FC = () => {
             </Space>
             <Segmented
               value={activeTab}
-              onChange={(val) => {
-                setActiveTab(val as 'all' | 'stack')
-                setSelectedCategory('all')
-              }}
+              onChange={handleTabChange}
               options={[
                 { label: t('template.allTemplates'), value: 'all' },
                 { label: t('template.appStacksOnly'), value: 'stack' }
@@ -459,10 +494,7 @@ const Templates: React.FC = () => {
         title={t('template.import')}
         open={importModalVisible}
         onOk={handleConfirmImport}
-        onCancel={() => {
-          setImportModalVisible(false)
-          setImportTemplates([])
-        }}
+        onCancel={handleCloseImportModal}
         width={600}
       >
         <div>
@@ -496,24 +528,16 @@ const Templates: React.FC = () => {
           </Space>
         }
         open={detailModalVisible}
-        onCancel={() => {
-          setDetailModalVisible(false)
-          setSelectedTemplate(null)
-        }}
+        onCancel={handleCloseDetailModal}
         footer={[
-          <Button key="close" onClick={() => setDetailModalVisible(false)}>
+          <Button key="close" onClick={handleCloseDetailModal}>
             {t('common.close')}
           </Button>,
           <Button
             key="deploy"
             type="primary"
             icon={<CloudServerOutlined />}
-            onClick={() => {
-              if (selectedTemplate) {
-                handleUseTemplate(selectedTemplate)
-                setDetailModalVisible(false)
-              }
-            }}
+            onClick={handleDeployFromDetail}
           >
             {t('template.deploy')}
           </Button>

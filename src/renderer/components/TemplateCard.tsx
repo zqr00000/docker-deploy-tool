@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useCallback, useMemo, memo } from 'react'
 import {
   Card,
   Tag,
@@ -11,7 +11,6 @@ import {
   Popconfirm,
   Descriptions,
   Badge,
-  List,
   Divider
 } from 'antd'
 import {
@@ -39,7 +38,8 @@ interface TemplateCardProps {
   onShowDetail?: (template: Template) => void
 }
 
-const TemplateCard: React.FC<TemplateCardProps> = ({
+// 使用 React.memo 包装组件，避免不必要的重新渲染
+const TemplateCard: React.FC<TemplateCardProps> = memo(({
   template,
   onUseTemplate,
   onEdit,
@@ -55,27 +55,27 @@ const TemplateCard: React.FC<TemplateCardProps> = ({
   const categoryLabel = CATEGORY_LABELS[template.category]?.[i18n.language === 'zh-CN' ? 'zh' : 'en'] || template.category
   const categoryColor = CATEGORY_COLORS[template.category] || 'default'
 
-  const handleUseTemplate = () => {
+  const handleUseTemplate = useCallback(() => {
     if (onUseTemplate) {
       onUseTemplate(template)
     }
-  }
+  }, [onUseTemplate, template])
 
-  const handleEdit = () => {
+  const handleEdit = useCallback(() => {
     if (isBuiltIn) {
       message.warning(t('template.cannotEditBuiltIn'))
       return
     }
     setEditModalVisible(true)
-  }
+  }, [isBuiltIn, t])
 
-  const handleDelete = () => {
+  const handleDelete = useCallback(() => {
     if (onDelete) {
       onDelete(template.id)
     }
-  }
+  }, [onDelete, template.id])
 
-  const handleExport = () => {
+  const handleExport = useCallback(() => {
     const exportData = {
       name: template.name,
       description: template.description,
@@ -95,24 +95,33 @@ const TemplateCard: React.FC<TemplateCardProps> = ({
     URL.revokeObjectURL(url)
 
     message.success(t('template.exportSuccess'))
-  }
+  }, [template, t])
 
-  const handleEditSave = (values: Partial<Template>) => {
+  const handleEditSave = useCallback((values: Partial<Template>) => {
     if (onEdit) {
       onEdit({ ...template, ...values })
     }
     setEditModalVisible(false)
-  }
+  }, [onEdit, template])
 
-  const handleShowDetail = () => {
+  const handleShowDetail = useCallback(() => {
     if (onShowDetail) {
       onShowDetail(template)
     }
-  }
+  }, [onShowDetail, template])
 
-  const getServicesFromCompose = () => {
+  const handleClosePreview = useCallback(() => {
+    setPreviewVisible(false)
+  }, [])
+
+  const handleCloseEditModal = useCallback(() => {
+    setEditModalVisible(false)
+  }, [])
+
+  // 使用 useMemo 缓存服务解析结果
+  const services = useMemo(() => {
     const lines = template.dockerCompose.split('\n')
-    const services: string[] = []
+    const result: string[] = []
     let inServices = false
     for (const line of lines) {
       if (line.trim() === 'services:') {
@@ -123,17 +132,27 @@ const TemplateCard: React.FC<TemplateCardProps> = ({
         if (line.match(/^\s{2}\w+:\s*$/) || line.match(/^\s{2}\w+:\s/)) {
           const serviceName = line.trim().replace(':', '')
           if (serviceName && !serviceName.startsWith('#')) {
-            services.push(serviceName)
+            result.push(serviceName)
           }
         } else if (line.match(/^\w+:/)) {
           break
         }
       }
     }
-    return services
-  }
+    return result
+  }, [template.dockerCompose])
 
-  const services = getServicesFromCompose()
+  // 缓存封面样式
+  const coverStyle = useMemo(() => ({
+    background: isStack
+      ? 'linear-gradient(135deg, #f5222d 0%, #ff7875 100%)'
+      : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+    height: 100,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative' as const
+  }), [isStack])
 
   return (
     <>
@@ -141,18 +160,7 @@ const TemplateCard: React.FC<TemplateCardProps> = ({
         hoverable
         style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
         cover={
-          <div
-            style={{
-              background: isStack
-                ? 'linear-gradient(135deg, #f5222d 0%, #ff7875 100%)'
-                : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-              height: 100,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              position: 'relative'
-            }}
-          >
+          <div style={coverStyle}>
             {isStack ? (
               <ClusterOutlined style={{ fontSize: 36, color: '#fff' }} />
             ) : (
@@ -287,9 +295,9 @@ const TemplateCard: React.FC<TemplateCardProps> = ({
           </Space>
         }
         open={previewVisible}
-        onCancel={() => setPreviewVisible(false)}
+        onCancel={handleClosePreview}
         footer={[
-          <Button key="close" onClick={() => setPreviewVisible(false)}>
+          <Button key="close" onClick={handleClosePreview}>
             {t('common.close')}
           </Button>,
           <Button key="deploy" type="primary" onClick={() => {
@@ -356,10 +364,12 @@ const TemplateCard: React.FC<TemplateCardProps> = ({
         open={editModalVisible}
         template={template}
         onSave={handleEditSave}
-        onCancel={() => setEditModalVisible(false)}
+        onCancel={handleCloseEditModal}
       />
     </>
   )
-}
+})
+
+TemplateCard.displayName = 'TemplateCard'
 
 export default TemplateCard

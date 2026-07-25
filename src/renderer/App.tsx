@@ -1,32 +1,41 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, Suspense, lazy } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { ConfigProvider, App as AntApp, theme } from 'antd'
+import { ConfigProvider, App as AntApp, theme, Spin } from 'antd'
 import { useTranslation } from 'react-i18next'
 import LayoutComponent from './components/Layout'
-import ServerList from './pages/ServerList'
-import ServerDetail from './pages/ServerDetail'
-import ServerGroups from './pages/ServerGroups'
-import Templates from './pages/Templates'
-import Apps from './pages/Apps'
-import AppDetail from './pages/AppDetail'
-import Deploy from './pages/Deploy'
-import BatchDeploy from './pages/BatchDeploy'
-import Images from './pages/Images'
-import Volumes from './pages/Volumes'
-import Networks from './pages/Networks'
-import ContainerTerminal from './pages/ContainerTerminal'
-import Settings from './pages/Settings'
-import AuditLog from './pages/AuditLog'
-import Alerts from './pages/Alerts'
-import DeployHistory from './pages/DeployHistory'
-import ScheduledTasks from './pages/ScheduledTasks'
-import HealthCheck from './pages/HealthCheck'
-import ComposeEditor from './pages/ComposeEditor'
-import ResourceReports from './pages/ResourceReports'
 import { ServerProvider } from './context/ServerContext'
 import i18n from './i18n'
 
+// 路由级别的懒加载 - 减少初始加载的 JavaScript 大小
+const ServerList = lazy(() => import('./pages/ServerList'))
+const ServerDetail = lazy(() => import('./pages/ServerDetail'))
+const ServerGroups = lazy(() => import('./pages/ServerGroups'))
+const Templates = lazy(() => import('./pages/Templates'))
+const Apps = lazy(() => import('./pages/Apps'))
+const AppDetail = lazy(() => import('./pages/AppDetail'))
+const Deploy = lazy(() => import('./pages/Deploy'))
+const BatchDeploy = lazy(() => import('./pages/BatchDeploy'))
+const Images = lazy(() => import('./pages/Images'))
+const Volumes = lazy(() => import('./pages/Volumes'))
+const Networks = lazy(() => import('./pages/Networks'))
+const ContainerTerminal = lazy(() => import('./pages/ContainerTerminal'))
+const Settings = lazy(() => import('./pages/Settings'))
+const AuditLog = lazy(() => import('./pages/AuditLog'))
+const Alerts = lazy(() => import('./pages/Alerts'))
+const DeployHistory = lazy(() => import('./pages/DeployHistory'))
+const ScheduledTasks = lazy(() => import('./pages/ScheduledTasks'))
+const HealthCheck = lazy(() => import('./pages/HealthCheck'))
+const ComposeEditor = lazy(() => import('./pages/ComposeEditor'))
+const ResourceReports = lazy(() => import('./pages/ResourceReports'))
+
 type ThemeMode = 'system' | 'dark' | 'light'
+
+// 懒加载 fallback 组件 - 使用 useMemo 避免重复创建
+const PageLoading: React.FC = () => (
+  <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '400px' }}>
+    <Spin size="large" />
+  </div>
+)
 
 const App: React.FC = () => {
   const { i18n: i18nInstance } = useTranslation()
@@ -97,29 +106,31 @@ const App: React.FC = () => {
         <ServerProvider>
           <BrowserRouter>
             <LayoutComponent>
-              <Routes>
-                <Route path="/" element={<Navigate to="/servers" replace />} />
-                <Route path="/servers" element={<ServerList />} />
-                <Route path="/servers/:id" element={<ServerDetail />} />
-                <Route path="/server-groups" element={<ServerGroups />} />
-                <Route path="/templates" element={<Templates />} />
-                <Route path="/apps" element={<Apps />} />
-                <Route path="/apps/deploy" element={<Deploy />} />
-                <Route path="/batch-deploy" element={<BatchDeploy />} />
-                <Route path="/apps/:id" element={<AppDetail />} />
-                <Route path="/images" element={<Images />} />
-                <Route path="/volumes" element={<Volumes />} />
-                <Route path="/networks" element={<Networks />} />
-                <Route path="/terminal" element={<ContainerTerminal />} />
-                <Route path="/deploy-history" element={<DeployHistory />} />
-                <Route path="/audit-logs" element={<AuditLog />} />
-                <Route path="/alerts" element={<Alerts />} />
-                <Route path="/scheduled-tasks" element={<ScheduledTasks />} />
-                <Route path="/health-check" element={<HealthCheck />} />
-                <Route path="/resource-reports" element={<ResourceReports />} />
-                <Route path="/compose-editor" element={<ComposeEditor />} />
-                <Route path="/settings" element={<Settings />} />
-              </Routes>
+              <Suspense fallback={<PageLoading />}>
+                <Routes>
+                  <Route path="/" element={<Navigate to="/servers" replace />} />
+                  <Route path="/servers" element={<ServerList />} />
+                  <Route path="/servers/:id" element={<ServerDetail />} />
+                  <Route path="/server-groups" element={<ServerGroups />} />
+                  <Route path="/templates" element={<Templates />} />
+                  <Route path="/apps" element={<Apps />} />
+                  <Route path="/apps/deploy" element={<Deploy />} />
+                  <Route path="/batch-deploy" element={<BatchDeploy />} />
+                  <Route path="/apps/:id" element={<AppDetail />} />
+                  <Route path="/images" element={<Images />} />
+                  <Route path="/volumes" element={<Volumes />} />
+                  <Route path="/networks" element={<Networks />} />
+                  <Route path="/terminal" element={<ContainerTerminal />} />
+                  <Route path="/deploy-history" element={<DeployHistory />} />
+                  <Route path="/audit-logs" element={<AuditLog />} />
+                  <Route path="/alerts" element={<Alerts />} />
+                  <Route path="/scheduled-tasks" element={<ScheduledTasks />} />
+                  <Route path="/health-check" element={<HealthCheck />} />
+                  <Route path="/resource-reports" element={<ResourceReports />} />
+                  <Route path="/compose-editor" element={<ComposeEditor />} />
+                  <Route path="/settings" element={<Settings />} />
+                </Routes>
+              </Suspense>
             </LayoutComponent>
           </BrowserRouter>
         </ServerProvider>

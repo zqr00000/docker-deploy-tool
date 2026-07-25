@@ -212,6 +212,58 @@ function createTables(): void {
 
     CREATE INDEX IF NOT EXISTS idx_resource_metrics_server_time ON resource_metrics(serverId, timestamp);
     CREATE INDEX IF NOT EXISTS idx_resource_metrics_app_time ON resource_metrics(appId, timestamp);
+
+    -- 性能优化索引：加速频繁查询
+    -- servers 表索引
+    CREATE INDEX IF NOT EXISTS idx_servers_status ON servers(status);
+    CREATE INDEX IF NOT EXISTS idx_servers_name ON servers(name);
+
+    -- apps 表索引
+    CREATE INDEX IF NOT EXISTS idx_apps_serverId ON apps(serverId);
+    CREATE INDEX IF NOT EXISTS idx_apps_templateId ON apps(templateId);
+    CREATE INDEX IF NOT EXISTS idx_apps_status ON apps(status);
+    CREATE INDEX IF NOT EXISTS idx_apps_server_status ON apps(serverId, status);
+
+    -- audit_logs 表索引
+    CREATE INDEX IF NOT EXISTS idx_audit_logs_timestamp ON audit_logs(timestamp);
+    CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action);
+    CREATE INDEX IF NOT EXISTS idx_audit_logs_targetType ON audit_logs(targetType);
+    CREATE INDEX IF NOT EXISTS idx_audit_logs_serverId ON audit_logs(serverId);
+    CREATE INDEX IF NOT EXISTS idx_audit_logs_status ON audit_logs(status);
+
+    -- deployment_history 表索引
+    CREATE INDEX IF NOT EXISTS idx_deployment_history_appId ON deployment_history(appId);
+    CREATE INDEX IF NOT EXISTS idx_deployment_history_deployedAt ON deployment_history(deployedAt);
+    CREATE INDEX IF NOT EXISTS idx_deployment_history_serverId ON deployment_history(serverId);
+
+    -- alert_rules 表索引
+    CREATE INDEX IF NOT EXISTS idx_alert_rules_serverId ON alert_rules(serverId);
+    CREATE INDEX IF NOT EXISTS idx_alert_rules_appId ON alert_rules(appId);
+    CREATE INDEX IF NOT EXISTS idx_alert_rules_enabled ON alert_rules(enabled);
+
+    -- alert_history 表索引
+    CREATE INDEX IF NOT EXISTS idx_alert_history_ruleId ON alert_history(ruleId);
+    CREATE INDEX IF NOT EXISTS idx_alert_history_triggeredAt ON alert_history(triggeredAt);
+    CREATE INDEX IF NOT EXISTS idx_alert_history_status ON alert_history(status);
+
+    -- scheduled_tasks 表索引
+    CREATE INDEX IF NOT EXISTS idx_scheduled_tasks_serverId ON scheduled_tasks(serverId);
+    CREATE INDEX IF NOT EXISTS idx_scheduled_tasks_appId ON scheduled_tasks(appId);
+    CREATE INDEX IF NOT EXISTS idx_scheduled_tasks_enabled ON scheduled_tasks(enabled);
+
+    -- health_check_configs 表索引
+    CREATE INDEX IF NOT EXISTS idx_health_check_configs_appId ON health_check_configs(appId);
+
+    -- health_check_history 表索引
+    CREATE INDEX IF NOT EXISTS idx_health_check_history_appId ON health_check_history(appId);
+    CREATE INDEX IF NOT EXISTS idx_health_check_history_checkTime ON health_check_history(checkTime);
+    CREATE INDEX IF NOT EXISTS idx_health_check_history_app_time ON health_check_history(appId, checkTime);
+
+    -- server_group_members 表索引
+    CREATE INDEX IF NOT EXISTS idx_server_group_members_serverId ON server_group_members(serverId);
+
+    -- templates 表索引
+    CREATE INDEX IF NOT EXISTS idx_templates_category ON templates(category);
   `)
 
   migrateAppsTable()

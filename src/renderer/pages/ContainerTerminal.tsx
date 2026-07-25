@@ -147,7 +147,6 @@ const ContainerTerminalPage: React.FC = () => {
 
       if (result.success && result.sessionId) {
         const sessionId = result.sessionId
-        const elementId = `terminal-${sessionId}`
 
         // 创建 tab
         const newTab: TerminalTab = {
@@ -179,44 +178,13 @@ const ContainerTerminalPage: React.FC = () => {
             rows
           }),
           fitAddon: new FitAddon(),
-          elementId
+          elementId: `terminal-${sessionId}`
         }
 
         newTab.terminal.loadAddon(newTab.fitAddon)
 
         setTabs(prev => [...prev, newTab])
         setActiveTabKey(sessionId)
-
-        // 延迟挂载终端到 DOM
-        setTimeout(() => {
-          const container = terminalContainersRef.current.get(sessionId)
-          if (container) {
-            newTab.terminal.open(container)
-            newTab.fitAddon.fit()
-
-            // 获取实际 cols/rows
-            const dims = newTab.fitAddon.proposeDimensions()
-            if (dims) {
-              newTab.terminal.resize(dims.cols, dims.rows)
-              window.electronAPI.terminal.resize(sessionId, dims.cols, dims.rows)
-            }
-
-            // 监听用户输入
-            newTab.terminal.onData((data) => {
-              window.electronAPI.terminal.write(sessionId, data)
-            })
-
-            // 监听窗口大小变化
-            const handleResize = () => {
-              newTab.fitAddon.fit()
-              const newDims = newTab.fitAddon.proposeDimensions()
-              if (newDims) {
-                window.electronAPI.terminal.resize(sessionId, newDims.cols, newDims.rows)
-              }
-            }
-            window.addEventListener('resize', handleResize)
-          }
-        }, 100)
 
         message.success(t('terminal.openSuccess'))
       } else {
@@ -228,6 +196,25 @@ const ContainerTerminalPage: React.FC = () => {
       setLoading(false)
     }
   }
+
+  // 挂载终端到 DOM
+  const mountTerminal = useCallback((tab: TerminalTab) => {
+    const container = terminalContainersRef.current.get(tab.sessionId)
+    if (container && !tab.terminal.element) {
+      tab.terminal.open(container)
+      tab.fitAddon.fit()
+
+      const dims = tab.fitAddon.proposeDimensions()
+      if (dims) {
+        tab.terminal.resize(dims.cols, dims.rows)
+        window.electronAPI.terminal.resize(tab.sessionId, dims.cols, dims.rows)
+      }
+
+      tab.terminal.onData((data) => {
+        window.electronAPI.terminal.write(tab.sessionId, data)
+      })
+    }
+  }, [])
 
   // 关闭终端标签页
   const closeTerminalTab = async (sessionId: string) => {
@@ -270,6 +257,15 @@ const ContainerTerminalPage: React.FC = () => {
     }
   }, [])
 
+  // 当 tabs 变化时，挂载新终端
+  useEffect(() => {
+    tabs.forEach(tab => {
+      if (!tab.terminal.element) {
+        mountTerminal(tab)
+      }
+    })
+  }, [tabs, mountTerminal])
+
   // 当活动 tab 变化时，重新 fit 终端
   useEffect(() => {
     if (activeTabKey) {
@@ -284,6 +280,24 @@ const ContainerTerminalPage: React.FC = () => {
         }
       }, 50)
     }
+  }, [activeTabKey, tabs])
+
+  // 监听窗口大小变化
+  useEffect(() => {
+    const handleResize = () => {
+      if (activeTabKey) {
+        const tab = tabs.find(t => t.sessionId === activeTabKey)
+        if (tab) {
+          tab.fitAddon.fit()
+          const dims = tab.fitAddon.proposeDimensions()
+          if (dims) {
+            window.electronAPI.terminal.resize(tab.sessionId, dims.cols, dims.rows)
+          }
+        }
+      }
+    }
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
   }, [activeTabKey, tabs])
 
   // 设置终端容器 ref
