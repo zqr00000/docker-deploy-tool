@@ -30,7 +30,7 @@ import {
   WarningOutlined,
   ReloadOutlined,
   InfoCircleOutlined,
-  ShieldAltOutlined,
+  SafetyOutlined,
   BugOutlined,
   SafetyCertificateOutlined
 } from '@ant-design/icons'
@@ -439,7 +439,7 @@ const SecurityScan: React.FC = () => {
       key: 'securityChecks',
       label: (
         <span>
-          <ShieldAltOutlined />
+          <SafetyOutlined />
           {t('securityScan.securityChecks')}
         </span>
       ),

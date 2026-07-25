@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, memo } from 'react'
-import { Menu, Typography, theme, Grid, Button, Drawer, Input, Space } from 'antd'
+import { Menu, Typography, theme, Grid, Button, Drawer, Input, Space, Tag } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useLocation } from 'react-router-dom'
 import {
@@ -100,6 +100,16 @@ const LayoutComponent: React.FC<LayoutProps> = memo(({ children }) => {
   const [searchVisible, setSearchVisible] = useState(false)
   const [onboardingVisible, setOnboardingVisible] = useState(false)
 
+  // 响应式断点计算
+  const isXs = !!screens.xs
+  const isSm = !!screens.sm
+  const isMd = !!screens.md
+  const isLg = !!screens.lg
+  const isXl = !!screens.xl
+  const isMobile = isXs || (!isMd && isSm)
+  const isTablet = isMd && !isLg
+  const isDesktop = isLg || isXl
+
   // 首次访问时显示引导
   useEffect(() => {
     const onboardingCompleted = localStorage.getItem('onboardingCompleted')
@@ -126,12 +136,16 @@ const LayoutComponent: React.FC<LayoutProps> = memo(({ children }) => {
 
   // 根据屏幕尺寸自动折叠侧边栏
   useEffect(() => {
-    if (screens.xs) {
+    if (isXs) {
       setCollapsed(true)
-    } else if (screens.sm && !screens.md) {
+    } else if (isSm && !isMd) {
       setCollapsed(true)
+    } else if (isMd && !isLg) {
+      setCollapsed(true)
+    } else {
+      setCollapsed(false)
     }
-  }, [screens])
+  }, [isXs, isSm, isMd, isLg])
 
   useEffect(() => {
     const path = location.pathname.replace('/', '')
@@ -139,8 +153,6 @@ const LayoutComponent: React.FC<LayoutProps> = memo(({ children }) => {
       setSelectedKey(path)
     }
   }, [location.pathname])
-
-  const isMobile = screens.xs || (!screens.md && screens.sm)
 
   // 使用 useMemo 缓存菜单项，避免每次渲染重新创建
   const menuItems = useMemo(() => {
@@ -155,31 +167,28 @@ const LayoutComponent: React.FC<LayoutProps> = memo(({ children }) => {
   const handleMenuClick = useCallback(({ key }: { key: string }) => {
     setSelectedKey(key)
     navigate(`/${key}`)
-    if (screens.xs || (!screens.md && screens.sm)) {
+    if (isMobile) {
       setMobileDrawerOpen(false)
     }
-  }, [navigate, screens])
+  }, [navigate, isMobile])
 
   const handleToggleSidebar = useCallback(() => {
-    if (screens.xs || (!screens.md && screens.sm)) {
+    if (isMobile) {
       setMobileDrawerOpen(prev => !prev)
     } else {
       setCollapsed(prev => !prev)
     }
-  }, [screens])
+  }, [isMobile])
 
-  const sidebarWidth = collapsed ? 60 : 220
+  // 响应式侧边栏宽度
+  const sidebarWidth = collapsed ? (isMobile ? 0 : 60) : (isMobile ? 240 : 220)
 
   // 缓存 header 样式对象
   const headerStyle = useMemo(() => ({
     background: colorBgContainer,
-    borderBottom: `1px solid ${colorPrimary}20`
-  }), [colorBgContainer, colorPrimary])
-
-  const headerStyleDesktop = useMemo(() => ({
-    ...headerStyle,
-    padding: '0 24px'
-  }), [headerStyle])
+    borderBottom: `1px solid ${colorPrimary}20`,
+    padding: isXs ? '0 12px' : isSm ? '0 16px' : '0 24px'
+  }), [colorBgContainer, colorPrimary, isXs, isSm])
 
   const sidebarStyle = useMemo(() => ({
     width: sidebarWidth,
@@ -189,16 +198,12 @@ const LayoutComponent: React.FC<LayoutProps> = memo(({ children }) => {
     transition: 'flex 0.2s ease, width 0.2s ease'
   }), [sidebarWidth, colorBgContainer, colorPrimary])
 
+  // 响应式内容区域样式
   const contentStyle = useMemo(() => ({
     background: colorBgContainer,
     borderRadius: 0,
-    padding: 24
-  }), [colorBgContainer])
-
-  const mobileContentStyle = useMemo(() => ({
-    background: colorBgContainer,
-    padding: 12
-  }), [colorBgContainer])
+    padding: isXs ? 12 : isSm ? 16 : 24
+  }), [colorBgContainer, isXs, isSm])
 
   // 移动端使用 Drawer
   if (isMobile) {
@@ -206,19 +211,28 @@ const LayoutComponent: React.FC<LayoutProps> = memo(({ children }) => {
       <div className="app-layout">
         {/* Header */}
         <header className="app-header" style={headerStyle}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: isXs ? 8 : 12 }}>
             <Button
               type="text"
               icon={mobileDrawerOpen ? <MenuFoldOutlined /> : <MenuUnfoldOutlined />}
               onClick={handleToggleSidebar}
               style={{ fontSize: 16 }}
             />
-            <Logo size={28} />
-            <Title level={4} style={{ margin: 0, color: colorPrimary }}>
-              {t('app.title')}
-            </Title>
+            <Logo size={isXs ? 24 : 28} />
+            {isSm && (
+              <Title level={5} style={{ margin: 0, color: colorPrimary }}>
+                {t('app.title')}
+              </Title>
+            )}
           </div>
-          <LanguageSwitcher />
+          <Space size={isXs ? 4 : 8}>
+            <Button
+              type="text"
+              icon={<SearchOutlined />}
+              onClick={() => setSearchVisible(true)}
+            />
+            <LanguageSwitcher />
+          </Space>
         </header>
 
         {/* Mobile Drawer */}
@@ -233,7 +247,7 @@ const LayoutComponent: React.FC<LayoutProps> = memo(({ children }) => {
           onClose={() => setMobileDrawerOpen(false)}
           open={mobileDrawerOpen}
           bodyStyle={{ padding: 0 }}
-          width={240}
+          width={isXs ? '100%' : 240}
         >
           <Menu
             mode="inline"
@@ -246,42 +260,55 @@ const LayoutComponent: React.FC<LayoutProps> = memo(({ children }) => {
 
         {/* Content */}
         <div className="app-content-wrapper">
-          <main className="app-content" style={mobileContentStyle}>
+          <main className="app-content" style={contentStyle}>
             {children}
           </main>
         </div>
+
+        {/* Global Search Modal */}
+        <GlobalSearch visible={searchVisible} onClose={() => setSearchVisible(false)} />
+        <OnboardingGuide visible={onboardingVisible} onClose={() => setOnboardingVisible(false)} />
       </div>
     )
   }
 
-  // 桌面端布局
+  // 桌面端布局（含平板）
   return (
     <div className="app-layout">
       {/* Header */}
-      <header className="app-header" style={headerStyleDesktop}>
+      <header className="app-header" style={headerStyle}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <Button
             type="text"
             icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
             onClick={handleToggleSidebar}
-            style={{ fontSize: 16, marginRight: 8 }}
+            style={{ fontSize: 16, marginRight: isMd ? 4 : 8 }}
           />
-          <Logo size={32} />
+          <Logo size={isMd ? 28 : 32} />
           {!collapsed && (
-            <Title level={4} style={{ margin: 0, color: colorPrimary }}>
+            <Title level={isMd ? 5 : 4} style={{ margin: 0, color: colorPrimary }}>
               {t('app.title')}
             </Title>
           )}
         </div>
-        <Space size="middle">
-          <Input
-            prefix={<SearchOutlined style={{ color: '#bfbfbf' }} />}
-            placeholder={t('globalSearch.triggerPlaceholder')}
-            readOnly
-            onClick={() => setSearchVisible(true)}
-            style={{ width: 220, cursor: 'pointer' }}
-            suffix={<Tag style={{ marginRight: 0 }}>⌘K</Tag>}
-          />
+        <Space size={isMd ? 8 : 12}>
+          {/* 平板显示搜索按钮，桌面显示搜索框 */}
+          {isMd ? (
+            <Button
+              type="text"
+              icon={<SearchOutlined />}
+              onClick={() => setSearchVisible(true)}
+            />
+          ) : (
+            <Input
+              prefix={<SearchOutlined style={{ color: '#bfbfbf' }} />}
+              placeholder={t('globalSearch.triggerPlaceholder')}
+              readOnly
+              onClick={() => setSearchVisible(true)}
+              style={{ width: isLg ? 220 : 180, cursor: 'pointer' }}
+              suffix={<Tag style={{ marginRight: 0 }}>⌘K</Tag>}
+            />
+          )}
           <Button
             type="text"
             icon={<QuestionCircleOutlined />}
