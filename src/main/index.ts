@@ -22,6 +22,15 @@ import { resourceReportsService } from './resource-reports'
 log.transports.file.level = 'info'
 log.transports.console.level = 'debug'
 
+// 全局异常处理
+process.on('uncaughtException', (error) => {
+  log.error('Uncaught Exception:', error)
+})
+
+process.on('unhandledRejection', (reason, promise) => {
+  log.error('Unhandled Rejection at:', promise, 'reason:', reason)
+})
+
 log.info('Docker Deploy Tool starting...')
 
 function createWindow(): void {
@@ -1439,6 +1448,54 @@ function registerIpcHandlers(): void {
       log.error('terminal:getAllSessions error:', error)
       return []
     }
+  })
+
+  // 日志流 IPC 处理器
+  const logStreams = new Map<string, boolean>()
+
+  ipcMain.handle('logs:start', async (_, serverId: string, containerId: string, options: { tail?: number; follow?: boolean } = {}) => {
+    try {
+      const streamId = `${serverId}:${containerId}`
+      
+      // 如果已经在流式传输，先停止
+      if (logStreams.get(streamId)) {
+        logStreams.set(streamId, false)
+      }
+
+      logStreams.set(streamId, true)
+
+      const result = await sshService.getContainerLogs(
+        serverId,
+        containerId,
+        options,
+        (data) => {
+          if (logStreams.get(streamId)) {
+            mainWindow?.webContents.send('logs:data', streamId, data)
+          }
+        },
+        (data) => {
+          if (logStreams.get(streamId)) {
+            mainWindow?.webContents.send('logs:error', streamId, data)
+          }
+        },
+        (code) => {
+          logStreams.delete(streamId)
+          mainWindow?.webContents.send('logs:close', streamId, code)
+        }
+      )
+
+      return result
+    } catch (error) {
+      log.error('logs:start error:', error)
+      return { success: false, message: (error as Error).message }
+    }
+  })
+
+  ipcMain.handle('logs:stop', (_, serverId: string, containerId: string) => {
+    const streamId = `${serverId}:${containerId}`
+    logStreams.set(streamId, false)
+    logStreams.delete(streamId)
+    return { success: true }
   })
 
   // 部署历史 IPC 处理器

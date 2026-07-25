@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, memo } from 'react'
-import { Menu, Typography, theme, Grid, Button, Drawer } from 'antd'
+import { Menu, Typography, theme, Grid, Button, Drawer, Input, Space } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useLocation } from 'react-router-dom'
 import {
@@ -21,10 +21,16 @@ import {
   BuildOutlined,
   LineChartOutlined,
   MenuFoldOutlined,
-  MenuUnfoldOutlined
+  MenuUnfoldOutlined,
+  DashboardOutlined,
+  SearchOutlined,
+  QuestionCircleOutlined,
+  SafetyCertificateOutlined
 } from '@ant-design/icons'
 import LanguageSwitcher from './LanguageSwitcher'
 import Logo from './Logo'
+import GlobalSearch from './GlobalSearch'
+import OnboardingGuide from './OnboardingGuide'
 
 const { Title } = Typography
 const { useBreakpoint } = Grid
@@ -35,9 +41,15 @@ interface LayoutProps {
 
 // 菜单项配置 - 提取到组件外部避免每次渲染创建新对象
 const MENU_ITEM_CONFIG = [
+  { key: 'dashboard', iconKey: 'DashboardOutlined', labelKey: 'menu.dashboard' },
   { key: 'servers', iconKey: 'CloudServerOutlined', labelKey: 'menu.servers' },
   { key: 'templates', iconKey: 'FileTextOutlined', labelKey: 'menu.templates' },
   { key: 'apps', iconKey: 'AppstoreOutlined', labelKey: 'menu.apps' },
+  { key: 'batch-operations', iconKey: 'AppstoreOutlined', labelKey: 'menu.batchOperations' },
+  { key: 'container-performance', iconKey: 'DashboardOutlined', labelKey: 'menu.containerPerformance' },
+  { key: 'backup-restore', iconKey: 'DatabaseOutlined', labelKey: 'menu.backupRestore' },
+  { key: 'security-scan', iconKey: 'SafetyCertificateOutlined', labelKey: 'menu.securityScan' },
+  { key: 'cicd', iconKey: 'CloudUploadOutlined', labelKey: 'menu.cicd' },
   { key: 'images', iconKey: 'HddOutlined', labelKey: 'menu.images' },
   { key: 'volumes', iconKey: 'DatabaseOutlined', labelKey: 'menu.volumes' },
   { key: 'networks', iconKey: 'ApiOutlined', labelKey: 'menu.networks' },
@@ -54,6 +66,7 @@ const MENU_ITEM_CONFIG = [
 
 // 图标映射 - 静态对象，避免重复创建
 const ICON_MAP: Record<string, React.ReactNode> = {
+  DashboardOutlined: <DashboardOutlined />,
   CloudServerOutlined: <CloudServerOutlined />,
   FileTextOutlined: <FileTextOutlined />,
   AppstoreOutlined: <AppstoreOutlined />,
@@ -68,7 +81,8 @@ const ICON_MAP: Record<string, React.ReactNode> = {
   HeartOutlined: <HeartOutlined />,
   ScheduleOutlined: <ScheduleOutlined />,
   LineChartOutlined: <LineChartOutlined />,
-  SettingOutlined: <SettingOutlined />
+  SettingOutlined: <SettingOutlined />,
+  SafetyCertificateOutlined: <SafetyCertificateOutlined />
 }
 
 const LayoutComponent: React.FC<LayoutProps> = memo(({ children }) => {
@@ -83,6 +97,32 @@ const LayoutComponent: React.FC<LayoutProps> = memo(({ children }) => {
   const [selectedKey, setSelectedKey] = useState('servers')
   const [collapsed, setCollapsed] = useState(false)
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false)
+  const [searchVisible, setSearchVisible] = useState(false)
+  const [onboardingVisible, setOnboardingVisible] = useState(false)
+
+  // 首次访问时显示引导
+  useEffect(() => {
+    const onboardingCompleted = localStorage.getItem('onboardingCompleted')
+    if (!onboardingCompleted) {
+      const timer = setTimeout(() => {
+        setOnboardingVisible(true)
+      }, 1000)
+      return () => clearTimeout(timer)
+    }
+  }, [])
+
+  // 全局搜索快捷键 Ctrl/Cmd + K
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault()
+        setSearchVisible(prev => !prev)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
 
   // 根据屏幕尺寸自动折叠侧边栏
   useEffect(() => {
@@ -233,7 +273,23 @@ const LayoutComponent: React.FC<LayoutProps> = memo(({ children }) => {
             </Title>
           )}
         </div>
-        <LanguageSwitcher />
+        <Space size="middle">
+          <Input
+            prefix={<SearchOutlined style={{ color: '#bfbfbf' }} />}
+            placeholder={t('globalSearch.triggerPlaceholder')}
+            readOnly
+            onClick={() => setSearchVisible(true)}
+            style={{ width: 220, cursor: 'pointer' }}
+            suffix={<Tag style={{ marginRight: 0 }}>⌘K</Tag>}
+          />
+          <Button
+            type="text"
+            icon={<QuestionCircleOutlined />}
+            onClick={() => setOnboardingVisible(true)}
+            title={t('onboarding.helpButton')}
+          />
+          <LanguageSwitcher />
+        </Space>
       </header>
 
       {/* Body */}
@@ -261,6 +317,12 @@ const LayoutComponent: React.FC<LayoutProps> = memo(({ children }) => {
           </main>
         </div>
       </div>
+
+      {/* Global Search Modal */}
+      <GlobalSearch visible={searchVisible} onClose={() => setSearchVisible(false)} />
+
+      {/* Onboarding Guide Modal */}
+      <OnboardingGuide visible={onboardingVisible} onClose={() => setOnboardingVisible(false)} />
     </div>
   )
 })

@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { ConfigProvider, App as AntApp, theme, Spin } from 'antd'
 import { useTranslation } from 'react-i18next'
 import LayoutComponent from './components/Layout'
+import ErrorBoundary from './components/ErrorBoundary'
 import { ServerProvider } from './context/ServerContext'
 import i18n from './i18n'
 
@@ -27,6 +28,12 @@ const ScheduledTasks = lazy(() => import('./pages/ScheduledTasks'))
 const HealthCheck = lazy(() => import('./pages/HealthCheck'))
 const ComposeEditor = lazy(() => import('./pages/ComposeEditor'))
 const ResourceReports = lazy(() => import('./pages/ResourceReports'))
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+const BatchOperations = lazy(() => import('./pages/BatchOperations'))
+const ContainerPerformance = lazy(() => import('./pages/ContainerPerformance'))
+const BackupRestore = lazy(() => import('./pages/BackupRestore'))
+const SecurityScan = lazy(() => import('./pages/SecurityScan'))
+const CicdIntegration = lazy(() => import('./pages/CicdIntegration'))
 
 type ThemeMode = 'system' | 'dark' | 'light'
 
@@ -103,37 +110,45 @@ const App: React.FC = () => {
       }}
     >
       <AntApp>
-        <ServerProvider>
-          <BrowserRouter>
-            <LayoutComponent>
-              <Suspense fallback={<PageLoading />}>
-                <Routes>
-                  <Route path="/" element={<Navigate to="/servers" replace />} />
-                  <Route path="/servers" element={<ServerList />} />
-                  <Route path="/servers/:id" element={<ServerDetail />} />
-                  <Route path="/server-groups" element={<ServerGroups />} />
-                  <Route path="/templates" element={<Templates />} />
-                  <Route path="/apps" element={<Apps />} />
-                  <Route path="/apps/deploy" element={<Deploy />} />
-                  <Route path="/batch-deploy" element={<BatchDeploy />} />
-                  <Route path="/apps/:id" element={<AppDetail />} />
-                  <Route path="/images" element={<Images />} />
-                  <Route path="/volumes" element={<Volumes />} />
-                  <Route path="/networks" element={<Networks />} />
-                  <Route path="/terminal" element={<ContainerTerminal />} />
-                  <Route path="/deploy-history" element={<DeployHistory />} />
-                  <Route path="/audit-logs" element={<AuditLog />} />
-                  <Route path="/alerts" element={<Alerts />} />
-                  <Route path="/scheduled-tasks" element={<ScheduledTasks />} />
-                  <Route path="/health-check" element={<HealthCheck />} />
-                  <Route path="/resource-reports" element={<ResourceReports />} />
-                  <Route path="/compose-editor" element={<ComposeEditor />} />
-                  <Route path="/settings" element={<Settings />} />
-                </Routes>
-              </Suspense>
-            </LayoutComponent>
-          </BrowserRouter>
-        </ServerProvider>
+        <ErrorBoundary>
+          <ServerProvider>
+            <BrowserRouter>
+              <LayoutComponent>
+                <Suspense fallback={<PageLoading />}>
+                  <Routes>
+                    <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                    <Route path="/dashboard" element={<Dashboard />} />
+                    <Route path="/servers" element={<ServerList />} />
+                    <Route path="/servers/:id" element={<ServerDetail />} />
+                    <Route path="/server-groups" element={<ServerGroups />} />
+                    <Route path="/templates" element={<Templates />} />
+                    <Route path="/apps" element={<Apps />} />
+                    <Route path="/apps/deploy" element={<Deploy />} />
+                    <Route path="/batch-deploy" element={<BatchDeploy />} />
+                    <Route path="/batch-operations" element={<BatchOperations />} />
+                    <Route path="/container-performance" element={<ContainerPerformance />} />
+                    <Route path="/backup-restore" element={<BackupRestore />} />
+                    <Route path="/security-scan" element={<SecurityScan />} />
+                    <Route path="/cicd" element={<CicdIntegration />} />
+                    <Route path="/apps/:id" element={<AppDetail />} />
+                    <Route path="/images" element={<Images />} />
+                    <Route path="/volumes" element={<Volumes />} />
+                    <Route path="/networks" element={<Networks />} />
+                    <Route path="/terminal" element={<ContainerTerminal />} />
+                    <Route path="/deploy-history" element={<DeployHistory />} />
+                    <Route path="/audit-logs" element={<AuditLog />} />
+                    <Route path="/alerts" element={<Alerts />} />
+                    <Route path="/scheduled-tasks" element={<ScheduledTasks />} />
+                    <Route path="/health-check" element={<HealthCheck />} />
+                    <Route path="/resource-reports" element={<ResourceReports />} />
+                    <Route path="/compose-editor" element={<ComposeEditor />} />
+                    <Route path="/settings" element={<Settings />} />
+                  </Routes>
+                </Suspense>
+              </LayoutComponent>
+            </BrowserRouter>
+          </ServerProvider>
+        </ErrorBoundary>
       </AntApp>
     </ConfigProvider>
   )

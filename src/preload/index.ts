@@ -876,6 +876,19 @@ const electronAPI: ElectronAPI = {
       ipcRenderer.on('terminal:error', (_, sessionId: string, error: string) => callback(sessionId, error))
     }
   },
+  logs: {
+    start: (serverId: string, containerId: string, options?: { tail?: number; follow?: boolean }): Promise<{ success: boolean; message?: string }> => ipcRenderer.invoke('logs:start', serverId, containerId, options),
+    stop: (serverId: string, containerId: string): Promise<{ success: boolean }> => ipcRenderer.invoke('logs:stop', serverId, containerId),
+    onData: (callback: (streamId: string, data: string) => void): void => {
+      ipcRenderer.on('logs:data', (_, streamId: string, data: string) => callback(streamId, data))
+    },
+    onError: (callback: (streamId: string, error: string) => void): void => {
+      ipcRenderer.on('logs:error', (_, streamId: string, error: string) => callback(streamId, error))
+    },
+    onClose: (callback: (streamId: string, code: number) => void): void => {
+      ipcRenderer.on('logs:close', (_, streamId: string, code: number) => callback(streamId, code))
+    }
+  },
   deployHistory: {
     getByAppId: (appId: string): Promise<DeployHistoryRecord[]> => ipcRenderer.invoke('deployHistory:getByAppId', appId),
     getAll: (): Promise<DeployHistoryRecord[]> => ipcRenderer.invoke('deployHistory:getAll'),

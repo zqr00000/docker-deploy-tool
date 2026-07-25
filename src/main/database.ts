@@ -264,6 +264,16 @@ function createTables(): void {
 
     -- templates 表索引
     CREATE INDEX IF NOT EXISTS idx_templates_category ON templates(category);
+    CREATE INDEX IF NOT EXISTS idx_templates_isBuiltIn ON templates(isBuiltIn);
+
+    -- 复合索引：优化常用查询组合
+    CREATE INDEX IF NOT EXISTS idx_audit_logs_action_target ON audit_logs(action, targetType);
+    CREATE INDEX IF NOT EXISTS idx_alert_history_rule_status ON alert_history(ruleId, status);
+    CREATE INDEX IF NOT EXISTS idx_scheduled_tasks_server_enabled ON scheduled_tasks(serverId, enabled);
+    CREATE INDEX IF NOT EXISTS idx_deployment_history_app_status ON deployment_history(appId, status);
+
+    -- 覆盖索引：减少回表查询
+    CREATE INDEX IF NOT EXISTS idx_resource_metrics_cover ON resource_metrics(serverId, appId, timestamp, cpuPercent, memoryUsage);
   `)
 
   migrateAppsTable()

@@ -20,6 +20,14 @@ interface ConnectionEntry {
   authenticated: boolean
   keepAliveTimer?: NodeJS.Timeout
   connectConfig?: ConnectConfig
+  serverConfig?: SSHServerConfig
+  reconnectAttempts: number
+  maxReconnectAttempts: number
+  reconnectDelay: number
+  reconnectTimer?: NodeJS.Timeout
+  isReconnecting: boolean
+  lastActivity: Date
+  healthCheckTimer?: NodeJS.Timeout
 }
 
 class SSHService {
@@ -28,6 +36,56 @@ class SSHService {
   private maxConcurrentCommands = 5
   private commandQueues: Map<string, Array<() => void>> = new Map()
   private activeCommands: Map<string, number> = new Map()
+  private maxReconnectAttempts = 3
+  private reconnectDelayBase = 2000
+  private healthCheckInterval = 60000
+  private idleTimeout = 300000 // 5 minutes idle timeout
+  private maxConnections = 20 // Maximum concurrent connections
+  private idleCheckInterval = 60000 // Check idle connections every minute
+  private idleCheckTimer?: NodeJS.Timeout
+
+  constructor() {
+    // Start idle connection cleanup timer
+    this.idleCheckTimer = setInterval(() => {
+      this.cleanupIdleConnections()
+    }, this.idleCheckInterval)
+  }
+
+  // Cleanup idle connections to free resources
+  private cleanupIdleConnections(): void {
+    const now = Date.now()
+    const toDisconnect: string[] = []
+
+    for (const [serverId, entry] of this.connections.entries()) {
+      const idleTime = now - entry.lastActivity.getTime()
+      if (idleTime > this.idleTimeout && !this.activeCommands.get(serverId)) {
+        toDisconnect.push(serverId)
+      }
+    }
+
+    for (const serverId of toDisconnect) {
+      log.info(`Disconnecting idle connection for server: ${serverId}`)
+      this.disconnect(serverId)
+    }
+  }
+
+  // Get connection count
+  getConnectionCount(): number {
+    return this.connections.size
+  }
+
+  // Get active command count for a server
+  getActiveCommandCount(serverId: string): number {
+    return this.activeCommands.get(serverId) || 0
+  }
+
+  // Cleanup on service destroy
+  destroy(): void {
+    if (this.idleCheckTimer) {
+      clearInterval(this.idleCheckTimer)
+    }
+    this.disconnectAll()
+  }
 
   private async acquireCommandSlot(serverId: string): Promise<void> {
     const active = this.activeCommands.get(serverId) || 0
@@ -102,7 +160,13 @@ class SSHService {
         serverId,
         connectedAt: new Date(),
         authenticated: false,
-        connectConfig: { ...connectConfig }
+        connectConfig: { ...connectConfig },
+        serverConfig: { ...config },
+        reconnectAttempts: 0,
+        maxReconnectAttempts: this.maxReconnectAttempts,
+        reconnectDelay: this.reconnectDelayBase,
+        isReconnecting: false,
+        lastActivity: new Date()
       }
 
       const timeout = setTimeout(() => {
@@ -115,14 +179,12 @@ class SSHService {
         clearTimeout(timeout)
         log.info(`SSH connected to ${config.host}:${config.port}`)
         entry.authenticated = true
+        entry.reconnectAttempts = 0
+        entry.isReconnecting = false
+        entry.lastActivity = new Date()
 
-        const keepAliveTimer = setInterval(() => {
-          if (entry.authenticated) {
-            client.end()
-            this.disconnect(serverId)
-          }
-        }, 3600000)
-        entry.keepAliveTimer = keepAliveTimer
+        // 启动健康检查
+        this.startHealthCheck(serverId)
 
         this.connections.set(serverId, entry)
         resolve({ success: true, message: 'Connection established' })
@@ -137,12 +199,14 @@ class SSHService {
 
       client.on('close', () => {
         log.info(`SSH connection closed for ${config.host}`)
-        this.connections.delete(serverId)
+        entry.authenticated = false
+        this.handleDisconnect(serverId)
       })
 
       client.on('end', () => {
         log.info(`SSH connection ended for ${config.host}`)
-        this.connections.delete(serverId)
+        entry.authenticated = false
+        this.handleDisconnect(serverId)
       })
 
       try {
@@ -159,9 +223,7 @@ class SSHService {
   disconnect(serverId: string): void {
     const entry = this.connections.get(serverId)
     if (entry) {
-      if (entry.keepAliveTimer) {
-        clearInterval(entry.keepAliveTimer)
-      }
+      this.clearTimers(entry)
       entry.authenticated = false
       entry.client.end()
       this.connections.delete(serverId)
@@ -175,6 +237,102 @@ class SSHService {
       this.commandQueues.delete(serverId)
     }
     this.activeCommands.delete(serverId)
+  }
+
+  private clearTimers(entry: ConnectionEntry): void {
+    if (entry.keepAliveTimer) {
+      clearInterval(entry.keepAliveTimer)
+      entry.keepAliveTimer = undefined
+    }
+    if (entry.reconnectTimer) {
+      clearTimeout(entry.reconnectTimer)
+      entry.reconnectTimer = undefined
+    }
+    if (entry.healthCheckTimer) {
+      clearInterval(entry.healthCheckTimer)
+      entry.healthCheckTimer = undefined
+    }
+  }
+
+  private handleDisconnect(serverId: string): void {
+    const entry = this.connections.get(serverId)
+    if (!entry) return
+
+    // 清理定时器
+    if (entry.keepAliveTimer) {
+      clearInterval(entry.keepAliveTimer)
+      entry.keepAliveTimer = undefined
+    }
+    if (entry.healthCheckTimer) {
+      clearInterval(entry.healthCheckTimer)
+      entry.healthCheckTimer = undefined
+    }
+
+    // 尝试自动重连
+    if (entry.reconnectAttempts < entry.maxReconnectAttempts && entry.serverConfig) {
+      this.scheduleReconnect(serverId)
+    } else if (entry.reconnectAttempts >= entry.maxReconnectAttempts) {
+      log.warn(`Max reconnect attempts reached for server ${serverId}`)
+      this.connections.delete(serverId)
+    }
+  }
+
+  private scheduleReconnect(serverId: string): void {
+    const entry = this.connections.get(serverId)
+    if (!entry || !entry.serverConfig) return
+
+    entry.isReconnecting = true
+    entry.reconnectAttempts++
+
+    // 指数退避延迟
+    const delay = entry.reconnectDelay * Math.pow(2, entry.reconnectAttempts - 1)
+    log.info(`Scheduling reconnect for server ${serverId} in ${delay}ms (attempt ${entry.reconnectAttempts}/${entry.maxReconnectAttempts})`)
+
+    entry.reconnectTimer = setTimeout(async () => {
+      try {
+        const result = await this.connect(entry.serverConfig!)
+        if (result.success) {
+          log.info(`Reconnect successful for server ${serverId}`)
+        } else {
+          log.warn(`Reconnect failed for server ${serverId}: ${result.message}`)
+        }
+      } catch (error) {
+        log.error(`Reconnect error for server ${serverId}:`, error)
+      }
+    }, delay)
+  }
+
+  private startHealthCheck(serverId: string): void {
+    const entry = this.connections.get(serverId)
+    if (!entry) return
+
+    // 清除旧的定时器
+    if (entry.healthCheckTimer) {
+      clearInterval(entry.healthCheckTimer)
+    }
+
+    entry.healthCheckTimer = setInterval(async () => {
+      if (!this.isConnected(serverId)) {
+        if (entry.healthCheckTimer) {
+          clearInterval(entry.healthCheckTimer)
+          entry.healthCheckTimer = undefined
+        }
+        return
+      }
+
+      try {
+        // 简单的健康检查：执行 echo 命令
+        const result = await this.executeCommand(serverId, 'echo "ping"', 0, 5000, 10000)
+        if (!result.success) {
+          log.warn(`Health check failed for server ${serverId}`)
+          entry.lastActivity = new Date(Date.now() - this.healthCheckInterval * 2)
+        } else {
+          entry.lastActivity = new Date()
+        }
+      } catch {
+        log.warn(`Health check error for server ${serverId}`)
+      }
+    }, this.healthCheckInterval)
   }
 
   isConnected(serverId: string): boolean {
@@ -369,6 +527,72 @@ class SSHService {
         }
       })
     })
+  }
+
+  /**
+   * 执行长时间运行的命令并流式返回输出
+   */
+  async executeCommandStream(
+    serverId: string,
+    command: string,
+    onData: (data: string) => void,
+    onError: (data: string) => void,
+    onClose: (code: number) => void
+  ): Promise<{ success: boolean; message: string }> {
+    const entry = this.connections.get(serverId)
+    if (!entry || !entry.authenticated) {
+      return { success: false, message: 'Not connected to server' }
+    }
+
+    return new Promise((resolve) => {
+      try {
+        entry.client.exec(command, (err, stream) => {
+          if (err) {
+            resolve({ success: false, message: err.message })
+            return
+          }
+
+          stream.on('data', (data: Buffer) => {
+            onData(data.toString())
+          })
+
+          stream.stderr.on('data', (data: Buffer) => {
+            onError(data.toString())
+          })
+
+          stream.on('close', (code: number) => {
+            onClose(code)
+          })
+
+          resolve({ success: true, message: 'Stream started' })
+        })
+      } catch (err) {
+        const error = err as Error
+        resolve({ success: false, message: error.message })
+      }
+    })
+  }
+
+  /**
+   * 获取容器日志流
+   */
+  async getContainerLogs(
+    serverId: string,
+    containerId: string,
+    options: { tail?: number; follow?: boolean; since?: string } = {},
+    onData: (data: string) => void,
+    onError: (data: string) => void,
+    onClose: (code: number) => void
+  ): Promise<{ success: boolean; message: string }> {
+    const { tail = 100, follow = true, since } = options
+    
+    let command = `docker logs ${containerId}`
+    if (tail > 0) command += ` --tail ${tail}`
+    if (follow) command += ' -f'
+    if (since) command += ` --since ${since}`
+    command += ' --timestamps'
+
+    return this.executeCommandStream(serverId, command, onData, onError, onClose)
   }
 
   getConnectedServers(): string[] {
