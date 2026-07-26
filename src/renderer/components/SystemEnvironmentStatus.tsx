@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { Alert, Tag, Space, Button, Spin, Typography, Descriptions, Card, Progress, Modal, Steps, Upload, message } from 'antd'
 import { CheckCircleOutlined, CloseCircleOutlined, ReloadOutlined, LoadingOutlined, CloudServerOutlined, DashboardOutlined, FileTextOutlined, SettingOutlined, ToolOutlined, UploadOutlined, FileZipOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
-import type { SystemCheckResult, SystemInfo, HardwareInfo, NetworkInfo, PortInfo } from '../preload/index'
+import type { SystemCheckResult, SystemInfo, HardwareInfo, NetworkInfo, PortInfo } from '../types/global'
 
 interface InstallResult {
   success: boolean
@@ -34,11 +34,14 @@ const SystemEnvironmentStatus: React.FC<SystemEnvironmentStatusProps> = ({ serve
 
     try {
       const result = await window.electronAPI.server.installDependencies(serverId, {
-        installDocker: true,
-        installDockerCompose: true,
-        installPortainer: true
+        docker: true,
+        compose: true
       })
-      setInstallResult(result)
+      setInstallResult({
+        success: result.success,
+        message: result.message,
+        steps: []
+      })
     } catch (error) {
       setInstallResult({
         success: false,
@@ -151,7 +154,7 @@ const SystemEnvironmentStatus: React.FC<SystemEnvironmentStatusProps> = ({ serve
           <>
             <Descriptions.Item label={t('environment.ipAddresses')}>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {networkInfo.ipAddresses.map((ip, index) => (
+                {networkInfo.ipAddresses.map((ip: string, index: number) => (
                   <Tag key={index} color="blue">{ip}</Tag>
                 ))}
               </div>

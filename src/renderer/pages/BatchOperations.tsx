@@ -224,14 +224,14 @@ const BatchOperations: React.FC = () => {
       ),
       onClick: () => handleLoadTemplate(t)
     })),
-    templates.length > 0 && { type: 'divider' as const },
+    ...(templates.length > 0 ? [{ type: 'divider' as const, key: 'divider' }] : []),
     {
       key: 'save',
       icon: <SaveOutlined />,
       label: '保存当前操作为模板',
       onClick: () => setSaveTemplateModalVisible(true)
     }
-  ].filter(Boolean)
+  ]
 
   const handleConfirm = async () => {
     setVisible(false)

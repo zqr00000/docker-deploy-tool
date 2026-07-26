@@ -13,6 +13,7 @@ import {
   Divider,
   Card
 } from 'antd'
+import type { InputRef } from 'antd'
 import {
   SearchOutlined,
   CloudServerOutlined,
@@ -55,7 +56,7 @@ const GlobalSearch: React.FC<GlobalSearchProps> = ({ visible, onClose }) => {
   const [results, setResults] = useState<SearchResult[]>([])
   const [activeTab, setActiveTab] = useState('all')
   const [selectedIndex, setSelectedIndex] = useState(0)
-  const inputRef = useRef<Input>(null)
+  const inputRef = useRef<InputRef>(null)
   const listRef = useRef<HTMLDivElement>(null)
 
   // 焦点在搜索输入框

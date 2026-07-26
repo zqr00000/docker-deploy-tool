@@ -600,7 +600,7 @@ const Networks: React.FC = () => {
               <Descriptions.Item label={t('network.ipamDriver')}>
                 {selectedNetwork.ipam.driver}
               </Descriptions.Item>
-              {selectedNetwork.ipam.config.map((config, index) => (
+              {selectedNetwork.ipam.config.map((config: { subnet: string; gateway: string; ipRange?: string }, index: number) => (
                 <Descriptions.Item key={index} label={`${t('network.subnet')} ${index + 1}`}>
                   <Space direction="vertical" size={0}>
                     <span><strong>{t('network.subnet')}:</strong> {config.subnet}</span>
@@ -616,7 +616,7 @@ const Networks: React.FC = () => {
                 <Divider orientation="left">{t('network.labels')}</Divider>
                 <div style={{ marginBottom: 16 }}>
                   {Object.entries(selectedNetwork.labels).map(([key, value]) => (
-                    <Tag key={key}>{key}={value}</Tag>
+                    <Tag key={key}>{key}={String(value)}</Tag>
                   ))}
                 </div>
               </>
@@ -627,7 +627,7 @@ const Networks: React.FC = () => {
                 <Divider orientation="left">{t('network.options')}</Divider>
                 <div style={{ marginBottom: 16 }}>
                   {Object.entries(selectedNetwork.options).map(([key, value]) => (
-                    <Tag key={key} color="blue">{key}={value}</Tag>
+                    <Tag key={key} color="blue">{key}={String(value)}</Tag>
                   ))}
                 </div>
               </>
@@ -639,7 +639,7 @@ const Networks: React.FC = () => {
                 size="small"
                 bordered
                 dataSource={selectedNetwork.containers}
-                renderItem={(item) => (
+                renderItem={(item: { id: string; name: string; ipv4Address: string; ipv6Address: string; macAddress: string }) => (
                   <List.Item
                     actions={[
                       <Popconfirm

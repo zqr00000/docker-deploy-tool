@@ -19,7 +19,7 @@ const BatchDeploy = lazy(() => import('./pages/BatchDeploy'))
 const Images = lazy(() => import('./pages/Images'))
 const Volumes = lazy(() => import('./pages/Volumes'))
 const Networks = lazy(() => import('./pages/Networks'))
-const ContainerTerminal = lazy(() => import('./pages/ContainerTerminal'))
+
 const Settings = lazy(() => import('./pages/Settings'))
 const AuditLog = lazy(() => import('./pages/AuditLog'))
 const Alerts = lazy(() => import('./pages/Alerts'))
@@ -34,6 +34,7 @@ const ContainerPerformance = lazy(() => import('./pages/ContainerPerformance'))
 const BackupRestore = lazy(() => import('./pages/BackupRestore'))
 const SecurityScan = lazy(() => import('./pages/SecurityScan'))
 const CicdIntegration = lazy(() => import('./pages/CicdIntegration'))
+const AgentTerminal = lazy(() => import('./pages/AgentTerminal'))
 
 type ThemeMode = 'system' | 'dark' | 'light'
 
@@ -130,11 +131,12 @@ const App: React.FC = () => {
                     <Route path="/backup-restore" element={<BackupRestore />} />
                     <Route path="/security-scan" element={<SecurityScan />} />
                     <Route path="/cicd" element={<CicdIntegration />} />
+                    <Route path="/agent-terminal" element={<AgentTerminal />} />
                     <Route path="/apps/:id" element={<AppDetail />} />
                     <Route path="/images" element={<Images />} />
                     <Route path="/volumes" element={<Volumes />} />
                     <Route path="/networks" element={<Networks />} />
-                    <Route path="/terminal" element={<ContainerTerminal />} />
+
                     <Route path="/deploy-history" element={<DeployHistory />} />
                     <Route path="/audit-logs" element={<AuditLog />} />
                     <Route path="/alerts" element={<Alerts />} />

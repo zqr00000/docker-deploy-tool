@@ -40,7 +40,7 @@ class ContainerTerminalService {
   }
 
   /**
-   * 打开一个终端会话，通过 docker exec 进入容器
+   * 打开一个终端会话，通过 docker exec 进入容器或直接 SSH 到服务器
    */
   openTerminal(
     serverId: string,
@@ -57,6 +57,13 @@ class ContainerTerminalService {
 
       const sessionId = randomUUID()
 
+      // 服务器终端：直接 SSH 到服务器
+      if (containerId === '__server__') {
+        this.openServerTerminal(serverId, sessionId, cols, rows, resolve)
+        return
+      }
+
+      // 容器终端：使用 docker exec
       // 先尝试使用 bash，如果失败则使用 sh
       const tryOpenShell = (shell: string) => {
         const command = `docker exec -it ${containerId} ${shell}`
@@ -270,6 +277,84 @@ class ContainerTerminalService {
   closeAllSessions(): void {
     for (const sessionId of this.sessions.keys()) {
       this.closeTerminal(sessionId)
+    }
+  }
+
+  /**
+   * 打开服务器终端（直接 SSH 到服务器）
+   */
+  private openServerTerminal(
+    serverId: string,
+    sessionId: string,
+    cols: number,
+    rows: number,
+    resolve: (value: { success: boolean; sessionId?: string; message?: string }) => void
+  ): void {
+    // 获取 SSH 连接的底层 client
+    const sshClient = (sshService as any).connections.get(serverId)?.client
+    if (!sshClient) {
+      resolve({ success: false, message: 'SSH client not found' })
+      return
+    }
+
+    const client = new Client()
+
+    client.on('ready', () => {
+      // 设置伪终端并打开 shell
+      client.shell(
+        { term: 'xterm-256color', cols, rows },
+        (err, stream) => {
+          if (err) {
+            log.error(`Server terminal shell error: ${err.message}`)
+            client.end()
+            resolve({ success: false, message: err.message })
+            return
+          }
+
+          const session: TerminalSession = {
+            sessionId,
+            serverId,
+            containerId: '__server__',
+            client,
+            stream,
+            cols,
+            rows,
+            createdAt: new Date(),
+            shell: 'ssh'
+          }
+
+          // 监听服务器输出数据并转发到渲染进程
+          stream.on('data', (data: Buffer) => {
+            this.sendToRenderer('terminal:data', sessionId, data.toString('utf-8'))
+          })
+
+          stream.stderr.on('data', (data: Buffer) => {
+            this.sendToRenderer('terminal:data', sessionId, data.toString('utf-8'))
+          })
+
+          stream.on('close', () => {
+            this.sendToRenderer('terminal:close', sessionId)
+            this.sessions.delete(sessionId)
+            log.info(`Server terminal stream closed: ${sessionId}`)
+          })
+
+          this.sessions.set(sessionId, session)
+          resolve({ success: true, sessionId })
+        }
+      )
+    })
+
+    client.on('error', (err) => {
+      log.error(`Server terminal SSH error: ${err.message}`)
+      resolve({ success: false, message: err.message })
+    })
+
+    // 使用已有的 SSH 配置连接
+    const connectConfig = (sshService as any).connections.get(serverId)?.connectConfig
+    if (connectConfig) {
+      client.connect(connectConfig)
+    } else {
+      resolve({ success: false, message: 'SSH config not found' })
     }
   }
 

@@ -468,14 +468,14 @@ const Volumes: React.FC = () => {
             {selectedVolume.labels && Object.keys(selectedVolume.labels).length > 0 && (
               <Descriptions.Item label={t('volume.labels')}>
                 {Object.entries(selectedVolume.labels).map(([key, value]) => (
-                  <Tag key={key}>{key}={value}</Tag>
+                  <Tag key={key}>{key}={String(value)}</Tag>
                 ))}
               </Descriptions.Item>
             )}
             {selectedVolume.options && Object.keys(selectedVolume.options).length > 0 && (
               <Descriptions.Item label={t('volume.options')}>
                 {Object.entries(selectedVolume.options).map(([key, value]) => (
-                  <Tag key={key} color="blue">{key}={value}</Tag>
+                  <Tag key={key} color="blue">{key}={String(value)}</Tag>
                 ))}
               </Descriptions.Item>
             )}

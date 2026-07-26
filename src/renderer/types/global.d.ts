@@ -1,4 +1,60 @@
-import type { Template, TemplateFormData, Server, ServerFormData, App, DeployOptions, DeployResult, ContainerInfo, ContainerStats, SystemInfo, HardwareInfo, NetworkInfo, PortInfo, SystemCheckResult, HardwareRequirements, ConfigImportResult, DialogResult, DockerImage, VolumeInfo, VolumeDetail, PruneResult, AuditLogRow, AuditLogFilter, AuditLogResult, TerminalSession, DockerNetworkInfo, DockerNetworkDetail, DockerNetworkCreateOptions, DockerNetworkPruneResult, ResourceMetricRow, ResourceMetricsQuery, MetricsSummary, ResourceMetricsResult } from '../preload/index'
+import type { Template, TemplateFormData, Server, ServerFormData, App, DeployOptions, DeployResult, ContainerInfo, ContainerStats, SystemInfo, HardwareInfo, NetworkInfo, PortInfo, SystemCheckResult, HardwareRequirements, ConfigImportResult, DialogResult, DockerImage, VolumeInfo, VolumeDetail, PruneResult, AuditLogRow, AuditLogFilter, AuditLogResult, TerminalSession, DockerNetworkInfo, DockerNetworkDetail, DockerNetworkCreateOptions, DockerNetworkPruneResult, ResourceMetricRow, ResourceMetricsQuery, MetricsSummary, ResourceMetricsResult, DeployHistoryRecord, RollbackResult, ServerGroup, BatchDeployOptions, BatchDeployResult, BatchOperationResult, ServerStatusInfo, AlertRule, AlertRuleFormData, AlertHistoryEntry, AlertStats, ScheduledTask, ScheduledTaskFormData, ContainerHealthStatus, AppHealthStatus, HealthCheckConfig, HealthCheckConfigFormData, HealthCheckHistoryRecord, HealthCheckReport } from '../preload/index'
+
+// Re-export types for use in renderer process
+export type {
+  Template,
+  TemplateFormData,
+  Server,
+  ServerFormData,
+  App,
+  DeployOptions,
+  DeployResult,
+  ContainerInfo,
+  ContainerStats,
+  SystemInfo,
+  HardwareInfo,
+  NetworkInfo,
+  PortInfo,
+  SystemCheckResult,
+  HardwareRequirements,
+  ConfigImportResult,
+  DialogResult,
+  DockerImage,
+  VolumeInfo,
+  VolumeDetail,
+  PruneResult,
+  AuditLogRow,
+  AuditLogFilter,
+  AuditLogResult,
+  TerminalSession,
+  DockerNetworkInfo,
+  DockerNetworkDetail,
+  DockerNetworkCreateOptions,
+  DockerNetworkPruneResult,
+  ResourceMetricRow,
+  ResourceMetricsQuery,
+  MetricsSummary,
+  ResourceMetricsResult,
+  DeployHistoryRecord,
+  RollbackResult,
+  ServerGroup,
+  BatchDeployOptions,
+  BatchDeployResult,
+  BatchOperationResult,
+  ServerStatusInfo,
+  AlertRule,
+  AlertRuleFormData,
+  AlertHistoryEntry,
+  AlertStats,
+  ScheduledTask,
+  ScheduledTaskFormData,
+  ContainerHealthStatus,
+  AppHealthStatus,
+  HealthCheckConfig,
+  HealthCheckConfigFormData,
+  HealthCheckHistoryRecord,
+  HealthCheckReport
+}
 
 export interface ElectronAPI {
   getAppVersion: () => Promise<string>
@@ -21,6 +77,8 @@ export interface ElectronAPI {
     getHardwareInfo: (serverId: string) => Promise<HardwareInfo | null>
     getNetworkInfo: (serverId: string) => Promise<NetworkInfo | null>
     openPort: (serverId: string, port: number) => Promise<boolean>
+    installDependencies: (serverId: string, options: { docker?: boolean; compose?: boolean }) => Promise<{ success: boolean; message: string }>
+    uploadOfflinePackage: (serverId: string, fileName: string, content: string) => Promise<{ success: boolean; message: string }>
   }
   template: {
     getAll: () => Promise<Template[]>
@@ -49,6 +107,7 @@ export interface ElectronAPI {
     startContainer: (serverId: string, containerId: string) => Promise<{ success: boolean; message: string }>
     stopContainer: (serverId: string, containerId: string) => Promise<{ success: boolean; message: string }>
     restartContainer: (serverId: string, containerId: string) => Promise<{ success: boolean; message: string }>
+    removeContainer: (serverId: string, containerId: string) => Promise<{ success: boolean; message: string }>
   }
   config: {
     exportConfig: (filePath: string) => Promise<{ success: boolean; message: string }>
@@ -81,14 +140,6 @@ export interface ElectronAPI {
     prune: (serverId: string, force?: boolean) => Promise<DockerNetworkPruneResult>
     getContainers: (serverId: string) => Promise<Array<{ id: string; name: string; status: string }>>
   }
-  auditLog: {
-    query: (filter: AuditLogFilter) => Promise<AuditLogResult>
-    getActions: () => Promise<string[]>
-    getTargetTypes: () => Promise<string[]>
-    exportCSV: (filter: AuditLogFilter) => Promise<{ success: boolean; message: string }>
-    cleanup: (days?: number) => Promise<{ success: boolean; deleted: number }>
-    clear: () => Promise<{ success: boolean }>
-  }
   terminal: {
     open: (serverId: string, containerId: string, cols?: number, rows?: number) => Promise<{ success: boolean; sessionId?: string; message?: string }>
     write: (sessionId: string, data: string) => Promise<{ success: boolean; message?: string }>
@@ -118,6 +169,72 @@ export interface ElectronAPI {
   }
   alert: {
     getStats: () => Promise<AlertStats>
+    getActiveAlerts: () => Promise<AlertHistoryEntry[]>
+  }
+  auditLog: {
+    query: (filter: AuditLogFilter) => Promise<AuditLogResult>
+    getAll: (options?: { limit?: number }) => Promise<AuditLogResult>
+    getActions: () => Promise<string[]>
+    getTargetTypes: () => Promise<string[]>
+    exportCSV: (filter: AuditLogFilter) => Promise<{ success: boolean; message: string }>
+    cleanup: (days?: number) => Promise<{ success: boolean; deleted: number }>
+    clear: () => Promise<{ success: boolean }>
+  }
+  logs: {
+    start: (serverId: string, containerId: string, options?: { tail?: number; follow?: boolean }) => Promise<{ success: boolean; message?: string }>
+    stop: (serverId: string, containerId: string) => Promise<{ success: boolean }>
+    onData: (callback: (streamId: string, data: string) => void) => void
+    onError: (callback: (streamId: string, error: string) => void) => void
+    onClose: (callback: (streamId: string, code: number) => void) => void
+  }
+  deployHistory: {
+    getByAppId: (appId: string) => Promise<DeployHistoryRecord[]>
+    getAll: () => Promise<DeployHistoryRecord[]>
+    getById: (id: string) => Promise<DeployHistoryRecord | undefined>
+    rollback: (historyId: string) => Promise<RollbackResult>
+    compare: (historyId1: string, historyId2: string) => Promise<{ version1: number; version2: number; compose1: string; compose2: string } | null>
+  }
+  serverGroup: {
+    getAll: () => Promise<ServerGroup[]>
+    getById: (id: string) => Promise<ServerGroup | undefined>
+    create: (group: { name: string; description?: string }) => Promise<ServerGroup>
+    update: (id: string, updates: Partial<{ name: string; description: string }>) => Promise<void>
+    delete: (id: string) => Promise<void>
+    getServers: (groupId: string) => Promise<Server[]>
+    addServer: (groupId: string, serverId: string) => Promise<{ success: boolean; message?: string }>
+    removeServer: (groupId: string, serverId: string) => Promise<{ success: boolean; message?: string }>
+    getServerGroups: (serverId: string) => Promise<ServerGroup[]>
+  }
+  batch: {
+    deploy: (options: BatchDeployOptions) => Promise<BatchDeployResult>
+    start: (appIds: string[]) => Promise<BatchOperationResult>
+    stop: (appIds: string[]) => Promise<BatchOperationResult>
+    restart: (appIds: string[]) => Promise<BatchOperationResult>
+    getServerStatuses: (serverIds: string[]) => Promise<ServerStatusInfo[]>
+    getAllServerStatuses: () => Promise<ServerStatusInfo[]>
+  }
+  scheduledTask: {
+    getAll: () => Promise<ScheduledTask[]>
+    getById: (id: string) => Promise<ScheduledTask | undefined>
+    create: (task: ScheduledTaskFormData) => Promise<ScheduledTask>
+    update: (id: string, updates: Partial<ScheduledTaskFormData>) => Promise<ScheduledTask | undefined>
+    delete: (id: string) => Promise<{ success: boolean }>
+    toggle: (id: string, enabled: boolean) => Promise<{ success: boolean; message?: string }>
+    runNow: (id: string) => Promise<{ success: boolean; message: string }>
+    getActiveCount: () => Promise<number>
+  }
+  healthCheck: {
+    getContainerHealth: (serverId: string, containerId: string) => Promise<ContainerHealthStatus | null>
+    getAppHealth: (serverId: string, projectPath: string) => Promise<AppHealthStatus | null>
+    updateConfig: (appId: string, config: HealthCheckConfigFormData) => Promise<HealthCheckConfig>
+    getConfig: (appId: string) => Promise<HealthCheckConfig | null>
+    performCheck: (appId?: string) => Promise<AppHealthStatus[]>
+    getHistory: (appId: string, limit?: number) => Promise<HealthCheckHistoryRecord[]>
+    getReport: (appId: string) => Promise<HealthCheckReport | null>
+    getAllReports: () => Promise<HealthCheckReport[]>
+    cleanupHistory: (days?: number) => Promise<{ success: boolean; deleted: number }>
+    startPeriodic: (intervalMs?: number) => Promise<{ success: boolean }>
+    stopPeriodic: () => Promise<{ success: boolean }>
   }
   resourceReport: {
     collectMetrics: (serverId: string, appId: string, containerId: string) => Promise<{
@@ -140,6 +257,10 @@ export interface ElectronAPI {
     getActiveCollectionCount: () => Promise<number>
     getLatestMetrics: (serverId: string) => Promise<ResourceMetricRow | null>
     getLatestMetricsByContainer: (containerId: string) => Promise<ResourceMetricRow | null>
+  }
+  ai: {
+    getModels: (provider: string, apiKey: string, baseUrl?: string) => Promise<{ success: boolean; data?: any[]; error?: string }>
+    chat: (provider: string, apiKey: string, model: string, messages: any[], temperature: number, maxTokens: number, baseUrl?: string) => Promise<{ success: boolean; data?: any; error?: string }>
   }
 }
 

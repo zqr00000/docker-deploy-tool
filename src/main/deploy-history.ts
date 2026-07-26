@@ -176,7 +176,7 @@ class DeployHistoryService {
         appName: `${appName} (rollback to v${version})`,
         serverId,
         dockerCompose,
-        envVariables,
+        envVariables: envVariables ?? undefined,
         status: 'success'
       })
 

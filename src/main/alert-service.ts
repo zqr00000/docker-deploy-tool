@@ -1,7 +1,7 @@
 import log from 'electron-log'
 import { Notification } from 'electron'
 import { generateId } from './ssh'
-import { alertRuleQueries, alertHistoryQueries, AlertRuleRow, AlertHistoryRow } from './database'
+import { alertRuleQueries, alertHistoryQueries, serverQueries, appQueries, AlertRuleRow, AlertHistoryRow } from './database'
 
 export type AlertRuleType = 'container_exit' | 'container_restart_loop' | 'high_cpu' | 'high_memory' | 'high_disk'
 export type AlertSeverity = 'info' | 'warning' | 'critical'
@@ -125,7 +125,6 @@ class AlertService {
   // 创建告警规则
   createRule(data: AlertRuleFormData): AlertRule {
     const id = generateId()
-    const now = new Date().toISOString()
     alertRuleQueries.insert({
       id,
       name: data.name,
@@ -134,9 +133,7 @@ class AlertService {
       appId: data.appId || null,
       threshold: data.threshold ?? null,
       enabled: data.enabled !== false ? 1 : 0,
-      notifyChannels: JSON.stringify(data.notifyChannels || ['system']),
-      createdAt: now,
-      updatedAt: now
+      notifyChannels: JSON.stringify(data.notifyChannels || ['system'])
     })
     return this.getRuleById(id)!
   }
@@ -504,7 +501,6 @@ class AlertService {
       if (rules.length === 0) return
 
       // 获取所有服务器
-      const { serverQueries } = require('./database')
       const servers = serverQueries.getAll()
 
       for (const server of servers) {
@@ -513,7 +509,6 @@ class AlertService {
 
         try {
           // 获取服务器上的容器
-          const { appQueries } = require('./database')
           const apps = appQueries.getByServerId(server.id)
 
           for (const app of apps) {
@@ -591,7 +586,7 @@ class AlertService {
         memoryPercent?: number
       }> = []
 
-      const lines = result.stdout.trim().split('\n').filter(line => line.trim())
+      const lines = result.stdout.trim().split('\n').filter((line: string) => line.trim())
       for (const line of lines) {
         const [id, name, status] = line.split('|')
         if (id && name) {

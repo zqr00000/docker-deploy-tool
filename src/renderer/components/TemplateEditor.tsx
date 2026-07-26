@@ -281,7 +281,7 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({
               dataSource={envSchema}
               pagination={false}
               bordered
-              rowKey={(record, index) => index.toString()}
+              rowKey={(record, index) => index?.toString() ?? ''}
               columns={[
                 {
                   title: t('template.variableName'),

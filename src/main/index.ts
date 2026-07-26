@@ -1,6 +1,8 @@
 import { app, BrowserWindow, ipcMain, dialog } from 'electron'
 import { join } from 'path'
 import { writeFile, readFile } from 'fs/promises'
+import https from 'https'
+import { URL } from 'url'
 import log from 'electron-log'
 import { initDatabase, closeDatabase, serverQueries, templateQueries, appQueries, initDefaultTemplates, configQueries, scheduledTaskQueries, serverGroupQueries } from './database'
 import { sshService, generateId } from './ssh'
@@ -22,6 +24,9 @@ import { resourceReportsService } from './resource-reports'
 log.transports.file.level = 'info'
 log.transports.console.level = 'debug'
 
+// 主窗口引用（模块级变量，供 IPC 处理器使用）
+let mainWindow: BrowserWindow | null = null
+
 // 全局异常处理
 process.on('uncaughtException', (error) => {
   log.error('Uncaught Exception:', error)
@@ -36,7 +41,7 @@ log.info('Docker Deploy Tool starting...')
 function createWindow(): void {
   log.info('Creating main window...')
 
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     minWidth: 900,
@@ -51,16 +56,16 @@ function createWindow(): void {
     show: false
   })
 
-  mainWindow.on('ready-to-show', () => {
+  mainWindow!.on('ready-to-show', () => {
     log.info('Window ready, showing window')
-    mainWindow.show()
+    mainWindow!.show()
   })
 
   // Suppress harmless Autofill DevTools protocol errors
-  mainWindow.webContents.on('devtools-opened', () => {
+  mainWindow!.webContents.on('devtools-opened', () => {
     try {
-      mainWindow.webContents.debugger.attach('1.3')
-      mainWindow.webContents.debugger.sendCommand('Autofill.disable').catch(() => {})
+      mainWindow!.webContents.debugger.attach('1.3')
+      mainWindow!.webContents.debugger.sendCommand('Autofill.disable').catch(() => {})
     } catch {
       // Debugger not available
     }
@@ -69,16 +74,17 @@ function createWindow(): void {
   if (process.env.NODE_ENV === 'development') {
     const devServerUrl = process.env.ELECTRON_RENDERER_URL || 'http://localhost:5173'
     log.info(`Development mode, loading dev server: ${devServerUrl}`)
-    mainWindow.loadURL(devServerUrl)
-    mainWindow.webContents.openDevTools()
+    mainWindow!.loadURL(devServerUrl)
+    mainWindow!.webContents.openDevTools()
   } else {
     const indexPath = join(__dirname, '../renderer/index.html')
     log.info(`Production mode, loading file: ${indexPath}`)
-    mainWindow.loadFile(indexPath)
+    mainWindow!.loadFile(indexPath)
   }
 
-  mainWindow.on('closed', () => {
+  mainWindow!.on('closed', () => {
     log.info('Main window closed')
+    mainWindow = null
   })
 }
 
@@ -2137,6 +2143,246 @@ function registerIpcHandlers(): void {
     } catch (error) {
       log.error('resourceReport:getLatestMetricsByContainer error:', error)
       return null
+    }
+  })
+
+  // AI API 代理 IPC 处理器 - 绕过 CORS 限制
+  ipcMain.handle('ai:getModels', async (_, provider: string, apiKey: string, baseUrl?: string) => {
+    try {
+      let url: string
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+
+      switch (provider) {
+        case 'anthropic':
+          // Anthropic 不支持 /models 端点，返回空列表
+          return { success: true, data: [] }
+        case 'gemini': {
+          const geminiBase = (baseUrl || 'https://generativelanguage.googleapis.com/v1beta').replace(/\/$/, '')
+          url = `${geminiBase}/models?key=${apiKey}`
+          break
+        }
+        case 'azure': {
+          // Azure 需要特殊处理，返回空列表让用户手动输入
+          return { success: true, data: [] }
+        }
+        case 'ollama': {
+          const ollamaBase = (baseUrl || 'http://localhost:11434').replace(/\/$/, '')
+          url = `${ollamaBase}/api/tags`
+          break
+        }
+        case 'custom':
+          url = `${(baseUrl || '').replace(/\/$/, '')}/models`
+          headers['Authorization'] = `Bearer ${apiKey}`
+          break
+        default:
+          url = `${(baseUrl || 'https://api.openai.com/v1').replace(/\/$/, '')}/models`
+          headers['Authorization'] = `Bearer ${apiKey}`
+      }
+
+      return new Promise((resolve) => {
+        const urlObj = new URL(url)
+        const options = {
+          hostname: urlObj.hostname,
+          port: urlObj.port || (urlObj.protocol === 'https:' ? 443 : 80),
+          path: urlObj.pathname + urlObj.search,
+          method: 'GET',
+          headers,
+          rejectUnauthorized: false // 允许自签名证书
+        }
+
+        const req = https.request(options, (res) => {
+          let data = ''
+          res.on('data', (chunk) => { data += chunk })
+          res.on('end', () => {
+            try {
+              if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+                const jsonData = JSON.parse(data)
+                // 不同提供商响应格式不同
+                if (provider === 'ollama') {
+                  // Ollama: { models: [{ name: "..." }] }
+                  const models = (jsonData.models || []).map((m: any) => ({
+                    id: m.name,
+                    name: m.name
+                  }))
+                  resolve({ success: true, data: models })
+                } else if (provider === 'gemini') {
+                  // Gemini: { models: [{ name: "models/..." }] }
+                  const models = (jsonData.models || []).map((m: any) => ({
+                    id: m.name,
+                    name: m.name
+                  }))
+                  resolve({ success: true, data: models })
+                } else {
+                  // OpenAI: { data: [{ id: "..." }] }
+                  resolve({ success: true, data: jsonData.data || [] })
+                }
+              } else {
+                resolve({ success: false, error: `HTTP ${res.statusCode}: ${data}` })
+              }
+            } catch (e) {
+              resolve({ success: false, error: `解析响应失败: ${(e as Error).message}` })
+            }
+          })
+        })
+
+        req.on('error', (error) => {
+          log.error('ai:getModels request error:', error)
+          resolve({ success: false, error: `请求失败: ${error.message}` })
+        })
+
+        req.setTimeout(30000, () => {
+          req.destroy()
+          resolve({ success: false, error: '请求超时' })
+        })
+
+        req.end()
+      })
+    } catch (error) {
+      log.error('ai:getModels error:', error)
+      return { success: false, error: (error as Error).message }
+    }
+  })
+
+  ipcMain.handle('ai:chat', async (_, provider: string, apiKey: string, model: string, messages: any[], temperature: number, maxTokens: number, baseUrl?: string, extraParams?: any) => {
+    try {
+      let url: string
+      let requestBody: any
+      let requestHeaders: Record<string, string> = {
+        'Content-Type': 'application/json'
+      }
+
+      const ep = extraParams || {}
+
+      switch (provider) {
+        case 'anthropic':
+          url = `${baseUrl || 'https://api.anthropic.com'}/v1/messages`
+          requestHeaders['x-api-key'] = apiKey
+          requestHeaders['anthropic-version'] = '2023-06-01'
+          requestHeaders['anthropic-dangerous-direct-browser-access'] = 'true'
+          {
+            const systemMessage = messages.find(m => m.role === 'system')
+            const systemPrompt = ep.systemPrompt || systemMessage?.content
+            requestBody = {
+              model,
+              max_tokens: maxTokens,
+              messages: messages.filter(m => m.role !== 'system')
+            }
+            if (systemPrompt) {
+              requestBody.system = systemPrompt
+            }
+          }
+          break
+        case 'gemini': {
+          // Google Gemini OpenAI 兼容端点
+          const geminiBase = (baseUrl || 'https://generativelanguage.googleapis.com/v1beta').replace(/\/$/, '')
+          url = `${geminiBase}/openai/chat/completions`
+          requestHeaders['Authorization'] = `Bearer ${apiKey}`
+          requestBody = {
+            model,
+            messages,
+            temperature,
+            max_tokens: maxTokens
+          }
+          break
+        }
+        case 'azure': {
+          // Azure OpenAI
+          const azureBase = (baseUrl || ep.azureEndpoint || '').replace(/\/$/, '')
+          const deployment = model
+          const apiVersion = ep.apiVersion || '2024-02-01'
+          url = `${azureBase}/openai/deployments/${deployment}/chat/completions?api-version=${apiVersion}`
+          requestHeaders['api-key'] = apiKey
+          requestBody = {
+            messages,
+            temperature,
+            max_tokens: maxTokens
+          }
+          break
+        }
+        case 'ollama': {
+          // Ollama OpenAI 兼容端点
+          const ollamaBase = (baseUrl || 'http://localhost:11434/v1').replace(/\/$/, '')
+          url = `${ollamaBase}/chat/completions`
+          requestBody = {
+            model,
+            messages,
+            temperature,
+            max_tokens: maxTokens,
+            stream: false
+          }
+          break
+        }
+        case 'custom':
+          url = `${(baseUrl || '').replace(/\/$/, '')}/chat/completions`
+          requestHeaders['Authorization'] = `Bearer ${apiKey}`
+          requestBody = {
+            model,
+            messages,
+            temperature,
+            max_tokens: maxTokens
+          }
+          break
+        default:
+          // OpenAI
+          url = `${(baseUrl || 'https://api.openai.com/v1').replace(/\/$/, '')}/chat/completions`
+          requestHeaders['Authorization'] = `Bearer ${apiKey}`
+          requestBody = {
+            model,
+            messages,
+            temperature,
+            max_tokens: maxTokens
+          }
+      }
+
+      return new Promise((resolve) => {
+        const urlObj = new URL(url)
+        const postData = JSON.stringify(requestBody)
+        
+        const options = {
+          hostname: urlObj.hostname,
+          port: urlObj.port || 443,
+          path: urlObj.pathname + urlObj.search,
+          method: 'POST',
+          headers: {
+            ...requestHeaders,
+            'Content-Length': Buffer.byteLength(postData)
+          },
+          rejectUnauthorized: false
+        }
+
+        const req = https.request(options, (res) => {
+          let data = ''
+          res.on('data', (chunk) => { data += chunk })
+          res.on('end', () => {
+            try {
+              if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+                const jsonData = JSON.parse(data)
+                resolve({ success: true, data: jsonData })
+              } else {
+                resolve({ success: false, error: `HTTP ${res.statusCode}: ${data}` })
+              }
+            } catch (e) {
+              resolve({ success: false, error: `解析响应失败: ${(e as Error).message}` })
+            }
+          })
+        })
+
+        req.on('error', (error) => {
+          log.error('ai:chat request error:', error)
+          resolve({ success: false, error: `请求失败: ${error.message}` })
+        })
+
+        req.setTimeout(30000, () => {
+          req.destroy()
+          resolve({ success: false, error: '请求超时 (30s)，请检查网络或 API 地址' })
+        })
+
+        req.write(postData)
+        req.end()
+      })
+    } catch (error) {
+      log.error('ai:chat error:', error)
+      return { success: false, error: (error as Error).message }
     }
   })
 

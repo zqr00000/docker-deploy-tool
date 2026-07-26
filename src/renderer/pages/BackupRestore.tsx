@@ -21,7 +21,8 @@ import {
   Tabs,
   Statistic,
   Divider,
-  Badge
+  Badge,
+  Switch
 } from 'antd'
 import {
   DatabaseOutlined,
@@ -440,9 +441,8 @@ const BackupRestore: React.FC = () => {
                   <Card
                     hoverable
                     size="small"
-                    style={{ textAlign: 'center', height: '100%' }}
-                    onClick={() => handleBackup('database')}
-                    disabled={!selectedServer || backupInProgress}
+                    style={{ textAlign: 'center', height: '100%', opacity: (!selectedServer || backupInProgress) ? 0.5 : 1, cursor: (!selectedServer || backupInProgress) ? 'not-allowed' : 'pointer' }}
+                    onClick={() => (!selectedServer || backupInProgress) ? undefined : handleBackup('database')}
                   >
                     <Space direction="vertical" style={{ width: '100%' }}>
                       <DatabaseOutlined style={{ fontSize: 32, color: '#1890ff' }} />
@@ -457,9 +457,8 @@ const BackupRestore: React.FC = () => {
                   <Card
                     hoverable
                     size="small"
-                    style={{ textAlign: 'center', height: '100%' }}
-                    onClick={() => handleBackup('volume')}
-                    disabled={!selectedServer || backupInProgress}
+                    style={{ textAlign: 'center', height: '100%', opacity: (!selectedServer || backupInProgress) ? 0.5 : 1, cursor: (!selectedServer || backupInProgress) ? 'not-allowed' : 'pointer' }}
+                    onClick={() => (!selectedServer || backupInProgress) ? undefined : handleBackup('volume')}
                   >
                     <Space direction="vertical" style={{ width: '100%' }}>
                       <HddOutlined style={{ fontSize: 32, color: '#52c41a' }} />
@@ -474,9 +473,8 @@ const BackupRestore: React.FC = () => {
                   <Card
                     hoverable
                     size="small"
-                    style={{ textAlign: 'center', height: '100%' }}
-                    onClick={() => handleBackup('config')}
-                    disabled={!selectedServer || backupInProgress}
+                    style={{ textAlign: 'center', height: '100%', opacity: (!selectedServer || backupInProgress) ? 0.5 : 1, cursor: (!selectedServer || backupInProgress) ? 'not-allowed' : 'pointer' }}
+                    onClick={() => (!selectedServer || backupInProgress) ? undefined : handleBackup('config')}
                   >
                     <Space direction="vertical" style={{ width: '100%' }}>
                       <SettingOutlined style={{ fontSize: 32, color: '#faad14' }} />

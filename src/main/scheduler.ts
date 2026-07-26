@@ -129,7 +129,15 @@ class SchedulerService {
 
     // 确保服务器已连接
     if (!sshService.isConnected(task.serverId)) {
-      const connectResult = await sshService.connect(server)
+      const connectResult = await sshService.connect({
+        id: server.id,
+        host: server.host,
+        port: server.port,
+        username: server.username,
+        authType: server.authType,
+        password: server.password ?? undefined,
+        privateKey: server.privateKey ?? undefined
+      })
       if (!connectResult.success) {
         throw new Error(`Failed to connect to server: ${connectResult.message}`)
       }
@@ -162,7 +170,15 @@ class SchedulerService {
 
     // 确保服务器已连接
     if (!sshService.isConnected(task.serverId)) {
-      const connectResult = await sshService.connect(server)
+      const connectResult = await sshService.connect({
+        id: server.id,
+        host: server.host,
+        port: server.port,
+        username: server.username,
+        authType: server.authType,
+        password: server.password ?? undefined,
+        privateKey: server.privateKey ?? undefined
+      })
       if (!connectResult.success) {
         throw new Error(`Failed to connect to server: ${connectResult.message}`)
       }
@@ -195,7 +211,15 @@ class SchedulerService {
 
     // 确保服务器已连接
     if (!sshService.isConnected(task.serverId)) {
-      const connectResult = await sshService.connect(server)
+      const connectResult = await sshService.connect({
+        id: server.id,
+        host: server.host,
+        port: server.port,
+        username: server.username,
+        authType: server.authType,
+        password: server.password ?? undefined,
+        privateKey: server.privateKey ?? undefined
+      })
       if (!connectResult.success) {
         throw new Error(`Failed to connect to server: ${connectResult.message}`)
       }
@@ -252,7 +276,15 @@ class SchedulerService {
 
     // 确保服务器已连接
     if (!sshService.isConnected(task.serverId)) {
-      const connectResult = await sshService.connect(server)
+      const connectResult = await sshService.connect({
+        id: server.id,
+        host: server.host,
+        port: server.port,
+        username: server.username,
+        authType: server.authType,
+        password: server.password ?? undefined,
+        privateKey: server.privateKey ?? undefined
+      })
       if (!connectResult.success) {
         throw new Error(`Failed to connect to server: ${connectResult.message}`)
       }
@@ -280,8 +312,7 @@ class SchedulerService {
     }
 
     // 创建卷备份（使用临时容器打包卷数据）
-    const volumeList = volumes.join(' ')
-    const backupCmd = `docker run --rm -v /var/lib/docker/volumes:/volumes:ro -v ${backupDir}:/backup alpine tar czf /backup/volumes-backup-${task.serverId}-${timestamp}.tar.gz -C /volumes ${volumeList.join(' ')} 2>/dev/null || echo "Backup completed with warnings"`
+    const backupCmd = `docker run --rm -v /var/lib/docker/volumes:/volumes:ro -v ${backupDir}:/backup alpine tar czf /backup/volumes-backup-${task.serverId}-${timestamp}.tar.gz -C /volumes ${volumes.join(' ')} 2>/dev/null || echo "Backup completed with warnings"`
     
     const result = await sshService.executeCommand(task.serverId, backupCmd, 2, 1000, 120000)
     
@@ -296,7 +327,15 @@ class SchedulerService {
 
     // 确保服务器已连接
     if (!sshService.isConnected(task.serverId)) {
-      const connectResult = await sshService.connect(server)
+      const connectResult = await sshService.connect({
+        id: server.id,
+        host: server.host,
+        port: server.port,
+        username: server.username,
+        authType: server.authType,
+        password: server.password ?? undefined,
+        privateKey: server.privateKey ?? undefined
+      })
       if (!connectResult.success) {
         throw new Error(`Failed to connect to server: ${connectResult.message}`)
       }
@@ -332,7 +371,15 @@ class SchedulerService {
 
     // 确保服务器已连接
     if (!sshService.isConnected(task.serverId)) {
-      const connectResult = await sshService.connect(server)
+      const connectResult = await sshService.connect({
+        id: server.id,
+        host: server.host,
+        port: server.port,
+        username: server.username,
+        authType: server.authType,
+        password: server.password ?? undefined,
+        privateKey: server.privateKey ?? undefined
+      })
       if (!connectResult.success) {
         throw new Error(`Failed to connect to server: ${connectResult.message}`)
       }

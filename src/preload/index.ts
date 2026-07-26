@@ -204,9 +204,10 @@ export interface VolumeDetail {
 
 export interface PruneResult {
   success: boolean
-  deletedVolumes: string[]
-  spaceReclaimed: string
   message: string
+  deletedVolumes?: string[]
+  deletedImages?: string[]
+  spaceReclaimed?: string
 }
 
 export interface ConfigImportResult {
@@ -229,13 +230,6 @@ export interface DockerImage {
   tag: string
   size: string
   created: string
-}
-
-export interface PruneResult {
-  success: boolean
-  message: string
-  deletedImages?: string[]
-  spaceReclaimed?: string
 }
 
 export interface DockerNetworkInfo {
@@ -632,6 +626,8 @@ export interface ElectronAPI {
     getHardwareInfo: (serverId: string) => Promise<HardwareInfo | null>
     getNetworkInfo: (serverId: string) => Promise<NetworkInfo | null>
     openPort: (serverId: string, port: number) => Promise<boolean>
+    installDependencies: (serverId: string, options: { docker?: boolean; compose?: boolean }) => Promise<{ success: boolean; message: string }>
+    uploadOfflinePackage: (serverId: string, fileName: string, content: string) => Promise<{ success: boolean; message: string }>
   }
   template: {
     getAll: () => Promise<Template[]>
@@ -660,6 +656,7 @@ export interface ElectronAPI {
     startContainer: (serverId: string, containerId: string) => Promise<{ success: boolean; message: string }>
     stopContainer: (serverId: string, containerId: string) => Promise<{ success: boolean; message: string }>
     restartContainer: (serverId: string, containerId: string) => Promise<{ success: boolean; message: string }>
+    removeContainer: (serverId: string, containerId: string) => Promise<{ success: boolean; message: string }>
   }
   config: {
     exportConfig: (filePath: string) => Promise<{ success: boolean; message: string }>
@@ -694,6 +691,7 @@ export interface ElectronAPI {
   }
   auditLog: {
     query: (filter: AuditLogFilter) => Promise<AuditLogResult>
+    getAll: (options?: { limit?: number }) => Promise<AuditLogResult>
     getActions: () => Promise<string[]>
     getTargetTypes: () => Promise<string[]>
     exportCSV: (filter: AuditLogFilter) => Promise<{ success: boolean; message: string }>
@@ -709,6 +707,13 @@ export interface ElectronAPI {
     onData: (callback: (sessionId: string, data: string) => void) => void
     onClose: (callback: (sessionId: string) => void) => void
     onError: (callback: (sessionId: string, error: string) => void) => void
+  }
+  logs: {
+    start: (serverId: string, containerId: string, options?: { tail?: number; follow?: boolean }) => Promise<{ success: boolean; message?: string }>
+    stop: (serverId: string, containerId: string) => Promise<{ success: boolean }>
+    onData: (callback: (streamId: string, data: string) => void) => void
+    onError: (callback: (streamId: string, error: string) => void) => void
+    onClose: (callback: (streamId: string, code: number) => void) => void
   }
   alertRule: {
     getAll: () => Promise<AlertRule[]>
@@ -729,6 +734,11 @@ export interface ElectronAPI {
   }
   alert: {
     getStats: () => Promise<AlertStats>
+    getActiveAlerts: () => Promise<AlertHistoryEntry[]>
+  }
+  ai: {
+    getModels: (provider: string, apiKey: string, baseUrl?: string) => Promise<{ success: boolean; data?: any[]; error?: string }>
+    chat: (provider: string, apiKey: string, model: string, messages: any[], temperature: number, maxTokens: number, baseUrl?: string) => Promise<{ success: boolean; data?: any; error?: string }>
   }
   healthCheck: {
     getContainerHealth: (serverId: string, containerId: string) => Promise<ContainerHealthStatus | null>
@@ -765,6 +775,42 @@ export interface ElectronAPI {
     getLatestMetrics: (serverId: string) => Promise<ResourceMetricRow | null>
     getLatestMetricsByContainer: (containerId: string) => Promise<ResourceMetricRow | null>
   }
+  deployHistory: {
+    getByAppId: (appId: string) => Promise<DeployHistoryRecord[]>
+    getAll: () => Promise<DeployHistoryRecord[]>
+    getById: (id: string) => Promise<DeployHistoryRecord | undefined>
+    rollback: (historyId: string) => Promise<RollbackResult>
+    compare: (historyId1: string, historyId2: string) => Promise<{ version1: number; version2: number; compose1: string; compose2: string } | null>
+  }
+  serverGroup: {
+    getAll: () => Promise<ServerGroup[]>
+    getById: (id: string) => Promise<ServerGroup | undefined>
+    create: (group: { name: string; description?: string }) => Promise<ServerGroup>
+    update: (id: string, updates: Partial<{ name: string; description: string }>) => Promise<void>
+    delete: (id: string) => Promise<void>
+    getServers: (groupId: string) => Promise<Server[]>
+    addServer: (groupId: string, serverId: string) => Promise<{ success: boolean; message?: string }>
+    removeServer: (groupId: string, serverId: string) => Promise<{ success: boolean; message?: string }>
+    getServerGroups: (serverId: string) => Promise<ServerGroup[]>
+  }
+  batch: {
+    deploy: (options: BatchDeployOptions) => Promise<BatchDeployResult>
+    start: (appIds: string[]) => Promise<BatchOperationResult>
+    stop: (appIds: string[]) => Promise<BatchOperationResult>
+    restart: (appIds: string[]) => Promise<BatchOperationResult>
+    getServerStatuses: (serverIds: string[]) => Promise<ServerStatusInfo[]>
+    getAllServerStatuses: () => Promise<ServerStatusInfo[]>
+  }
+  scheduledTask: {
+    getAll: () => Promise<ScheduledTask[]>
+    getById: (id: string) => Promise<ScheduledTask | undefined>
+    create: (task: ScheduledTaskFormData) => Promise<ScheduledTask>
+    update: (id: string, updates: Partial<ScheduledTaskFormData>) => Promise<ScheduledTask | undefined>
+    delete: (id: string) => Promise<{ success: boolean }>
+    toggle: (id: string, enabled: boolean) => Promise<{ success: boolean; message?: string }>
+    runNow: (id: string) => Promise<{ success: boolean; message: string }>
+    getActiveCount: () => Promise<number>
+  }
 }
 
 const electronAPI: ElectronAPI = {
@@ -789,7 +835,9 @@ const electronAPI: ElectronAPI = {
     getSystemInfo: (serverId: string): Promise<SystemInfo | null> => ipcRenderer.invoke('server:getSystemInfo', serverId),
     getHardwareInfo: (serverId: string): Promise<HardwareInfo | null> => ipcRenderer.invoke('server:getHardwareInfo', serverId),
     getNetworkInfo: (serverId: string): Promise<NetworkInfo | null> => ipcRenderer.invoke('server:getNetworkInfo', serverId),
-    openPort: (serverId: string, port: number): Promise<boolean> => ipcRenderer.invoke('server:openPort', serverId, port)
+    openPort: (serverId: string, port: number): Promise<boolean> => ipcRenderer.invoke('server:openPort', serverId, port),
+    installDependencies: (serverId: string, options: { docker?: boolean; compose?: boolean }): Promise<{ success: boolean; message: string }> => ipcRenderer.invoke('server:installDependencies', serverId, options),
+    uploadOfflinePackage: (serverId: string, fileName: string, content: string): Promise<{ success: boolean; message: string }> => ipcRenderer.invoke('server:uploadOfflinePackage', serverId, fileName, content)
   },
 
   template: {
@@ -819,7 +867,8 @@ const electronAPI: ElectronAPI = {
     getContainerLogs: (serverId: string, containerId: string, lines?: number): Promise<string> => ipcRenderer.invoke('app:getContainerLogs', serverId, containerId, lines),
     startContainer: (serverId: string, containerId: string): Promise<{ success: boolean; message: string }> => ipcRenderer.invoke('app:startContainer', serverId, containerId),
     stopContainer: (serverId: string, containerId: string): Promise<{ success: boolean; message: string }> => ipcRenderer.invoke('app:stopContainer', serverId, containerId),
-    restartContainer: (serverId: string, containerId: string): Promise<{ success: boolean; message: string }> => ipcRenderer.invoke('app:restartContainer', serverId, containerId)
+    restartContainer: (serverId: string, containerId: string): Promise<{ success: boolean; message: string }> => ipcRenderer.invoke('app:restartContainer', serverId, containerId),
+    removeContainer: (serverId: string, containerId: string): Promise<{ success: boolean; message: string }> => ipcRenderer.invoke('app:removeContainer', serverId, containerId)
   },
   config: {
     exportConfig: (filePath: string): Promise<{ success: boolean; message: string }> => ipcRenderer.invoke('config:export', filePath),
@@ -854,6 +903,7 @@ const electronAPI: ElectronAPI = {
   },
   auditLog: {
     query: (filter: AuditLogFilter): Promise<AuditLogResult> => ipcRenderer.invoke('auditLog:query', filter),
+    getAll: (options?: { limit?: number }): Promise<AuditLogResult> => ipcRenderer.invoke('auditLog:getAll', options),
     getActions: (): Promise<string[]> => ipcRenderer.invoke('auditLog:getActions'),
     getTargetTypes: (): Promise<string[]> => ipcRenderer.invoke('auditLog:getTargetTypes'),
     exportCSV: (filter: AuditLogFilter): Promise<{ success: boolean; message: string }> => ipcRenderer.invoke('auditLog:exportCSV', filter),
@@ -933,7 +983,12 @@ const electronAPI: ElectronAPI = {
     cleanup: (days?: number): Promise<{ success: boolean; deleted: number }> => ipcRenderer.invoke('alertHistory:cleanup', days)
   },
   alert: {
-    getStats: (): Promise<AlertStats> => ipcRenderer.invoke('alert:getStats')
+    getStats: (): Promise<AlertStats> => ipcRenderer.invoke('alert:getStats'),
+    getActiveAlerts: (): Promise<AlertHistoryEntry[]> => ipcRenderer.invoke('alertHistory:getActive')
+  },
+  ai: {
+    getModels: (provider: string, apiKey: string, baseUrl?: string): Promise<{ success: boolean; data?: any[]; error?: string }> => ipcRenderer.invoke('ai:getModels', provider, apiKey, baseUrl),
+    chat: (provider: string, apiKey: string, model: string, messages: any[], temperature: number, maxTokens: number, baseUrl?: string, extraParams?: any): Promise<{ success: boolean; data?: any; error?: string }> => ipcRenderer.invoke('ai:chat', provider, apiKey, model, messages, temperature, maxTokens, baseUrl, extraParams)
   },
   scheduledTask: {
     getAll: (): Promise<ScheduledTask[]> => ipcRenderer.invoke('scheduledTask:getAll'),

@@ -83,6 +83,7 @@ interface App {
   id: string
   name: string
   serverId: string
+  containerIds?: string
 }
 
 const PERIOD_OPTIONS = [

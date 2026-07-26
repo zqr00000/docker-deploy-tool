@@ -67,6 +67,8 @@ interface PerformanceMetrics {
   memoryUsage: string
   memoryLimit: string
   memoryPercent: number
+  networkRx: number
+  networkTx: number
   networkIO: string
   blockIO: string
   pids: number
@@ -162,6 +164,8 @@ const ContainerPerformance: React.FC = () => {
             memoryUsage: result.memoryUsage || '0B',
             memoryLimit: result.memoryLimit || '0B',
             memoryPercent: result.memoryPercent || 0,
+            networkRx: 0,
+            networkTx: 0,
             networkIO: result.networkIO || '0B / 0B',
             blockIO: result.blockIO || '0B / 0B',
             pids: result.pids || 0,

@@ -23,6 +23,7 @@ export type AuditAction =
   | 'scheduled_task_update'
   | 'scheduled_task_delete'
   | 'scheduled_task_toggle'
+  | 'scheduled_task_execute'
 
 export type AuditTargetType =
   | 'server'

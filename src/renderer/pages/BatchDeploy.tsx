@@ -296,12 +296,12 @@ const BatchDeploy: React.FC = () => {
                   allowClear
                   value={selectedTemplateId}
                   onChange={(value) => setSelectedTemplateId(value)}
-                  options={templates.map(t => ({
-                    value: t.id,
+                  options={templates.map(template => ({
+                    value: template.id,
                     label: (
                       <Space>
-                        {t.name}
-                        {t.isBuiltIn && <Tag color="blue">{t('template.builtIn')}</Tag>}
+                        {template.name}
+                        {template.isBuiltIn && <Tag color="blue">{t('template.builtIn')}</Tag>}
                       </Space>
                     )
                   }))}

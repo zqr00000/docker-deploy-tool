@@ -391,7 +391,7 @@ const DeployForm: React.FC<DeployFormProps> = ({
                   dataSource={envVariables}
                   pagination={false}
                   bordered
-                  rowKey={(record, index) => index.toString()}
+                  rowKey={(record, index) => index?.toString() ?? ''}
                   columns={[
                     {
                       title: t('app.variableName'),
@@ -400,7 +400,7 @@ const DeployForm: React.FC<DeployFormProps> = ({
                       render: (_, record, index) => (
                         <Input
                           value={record.name}
-                          onChange={(e) => handleEnvVariableChange(index, 'name', e.target.value)}
+                          onChange={(e) => handleEnvVariableChange(index ?? 0, 'name', e.target.value)}
                           placeholder={t('app.variableNamePlaceholder')}
                           disabled={deploying}
                         />
@@ -413,7 +413,7 @@ const DeployForm: React.FC<DeployFormProps> = ({
                       render: (_, record, index) => (
                         <Input
                           value={record.value}
-                          onChange={(e) => handleEnvVariableChange(index, 'value', e.target.value)}
+                          onChange={(e) => handleEnvVariableChange(index ?? 0, 'value', e.target.value)}
                           placeholder={t('app.variableValuePlaceholder')}
                           disabled={deploying}
                         />
@@ -425,7 +425,7 @@ const DeployForm: React.FC<DeployFormProps> = ({
                       render: (_, __, index) => (
                         <Popconfirm
                           title={t('app.confirmDeleteEnvVariable')}
-                          onConfirm={() => removeEnvVariable(index)}
+                          onConfirm={() => removeEnvVariable(index ?? 0)}
                           okText={t('common.yes')}
                           cancelText={t('common.no')}
                         >

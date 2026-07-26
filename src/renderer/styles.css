@@ -218,9 +218,36 @@ body {
   height: calc(100vh - 64px);
 }
 
+/* Agent Terminal 页面禁止滚动 */
+.app-content-wrapper.no-scroll {
+  overflow: hidden !important;
+}
+
 .app-content {
   flex: 1;
   padding: 24px;
+}
+
+/* Agent Terminal Page - 独立滚动 */
+.agent-terminal-page {
+  height: 100% !important;
+  overflow: hidden !important;
+  padding: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.agent-terminal-page .app-content-wrapper {
+  overflow: hidden !important;
+  height: 100% !important;
+}
+
+.agent-terminal-page .app-content {
+  height: 100% !important;
+  overflow: hidden !important;
+  padding: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
 }
 
 /* ====== Content Card Styling ====== */

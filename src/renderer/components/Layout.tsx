@@ -12,7 +12,6 @@ import {
   AuditOutlined,
   TeamOutlined,
   RocketOutlined,
-  CodeOutlined,
   HistoryOutlined,
   BellOutlined,
   ApiOutlined,
@@ -25,7 +24,9 @@ import {
   DashboardOutlined,
   SearchOutlined,
   QuestionCircleOutlined,
-  SafetyCertificateOutlined
+  SafetyCertificateOutlined,
+  CodeOutlined,
+  RobotOutlined
 } from '@ant-design/icons'
 import LanguageSwitcher from './LanguageSwitcher'
 import Logo from './Logo'
@@ -50,11 +51,11 @@ const MENU_ITEM_CONFIG = [
   { key: 'backup-restore', iconKey: 'DatabaseOutlined', labelKey: 'menu.backupRestore' },
   { key: 'security-scan', iconKey: 'SafetyCertificateOutlined', labelKey: 'menu.securityScan' },
   { key: 'cicd', iconKey: 'CloudUploadOutlined', labelKey: 'menu.cicd' },
+  { key: 'agent-terminal', iconKey: 'RobotOutlined', labelKey: 'menu.agentTerminal' },
   { key: 'images', iconKey: 'HddOutlined', labelKey: 'menu.images' },
   { key: 'volumes', iconKey: 'DatabaseOutlined', labelKey: 'menu.volumes' },
   { key: 'networks', iconKey: 'ApiOutlined', labelKey: 'menu.networks' },
   { key: 'compose-editor', iconKey: 'BuildOutlined', labelKey: 'menu.composeEditor' },
-  { key: 'terminal', iconKey: 'CodeOutlined', labelKey: 'menu.terminal' },
   { key: 'deploy-history', iconKey: 'HistoryOutlined', labelKey: 'menu.deployHistory' },
   { key: 'audit-logs', iconKey: 'AuditOutlined', labelKey: 'menu.auditLogs' },
   { key: 'alerts', iconKey: 'BellOutlined', labelKey: 'menu.alerts' },
@@ -82,7 +83,8 @@ const ICON_MAP: Record<string, React.ReactNode> = {
   ScheduleOutlined: <ScheduleOutlined />,
   LineChartOutlined: <LineChartOutlined />,
   SettingOutlined: <SettingOutlined />,
-  SafetyCertificateOutlined: <SafetyCertificateOutlined />
+  SafetyCertificateOutlined: <SafetyCertificateOutlined />,
+  RobotOutlined: <RobotOutlined />
 }
 
 const LayoutComponent: React.FC<LayoutProps> = memo(({ children }) => {
@@ -259,8 +261,8 @@ const LayoutComponent: React.FC<LayoutProps> = memo(({ children }) => {
         </Drawer>
 
         {/* Content */}
-        <div className="app-content-wrapper">
-          <main className="app-content" style={contentStyle}>
+        <div className={`app-content-wrapper ${location.pathname === '/agent-terminal' ? 'no-scroll' : ''}`}>
+          <main className="app-content" style={{ ...contentStyle, ...(location.pathname === '/agent-terminal' ? { padding: 0, height: '100%', overflow: 'hidden' } : {}) }}>
             {children}
           </main>
         </div>
@@ -338,8 +340,8 @@ const LayoutComponent: React.FC<LayoutProps> = memo(({ children }) => {
         </aside>
 
         {/* Content */}
-        <div className="app-content-wrapper">
-          <main className="app-content" style={contentStyle}>
+        <div className={`app-content-wrapper ${location.pathname === '/agent-terminal' ? 'no-scroll' : ''}`}>
+          <main className="app-content" style={{ ...contentStyle, ...(location.pathname === '/agent-terminal' ? { padding: 0, height: '100%', overflow: 'hidden' } : {}) }}>
             {children}
           </main>
         </div>

@@ -183,7 +183,9 @@ const ScheduledTasks: React.FC = () => {
     }
   }
 
-  const handleViewDetail = (task: ScheduledTask) => {
+  const handleViewDetail = (taskOrId: ScheduledTask | string) => {
+    const task = typeof taskOrId === 'string' ? tasks.find(t => t.id === taskOrId) : taskOrId
+    if (!task) return
     setSelectedTask(task)
     setDetailModalVisible(true)
   }

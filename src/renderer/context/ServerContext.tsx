@@ -6,7 +6,7 @@ interface ServerContextType {
   servers: Server[]
   loading: boolean
   error: string | null
-  refreshServers: () => Promise<void>
+  refreshServers: () => Promise<Server[]>
   addServer: (server: ServerFormData) => Promise<Server>
   updateServer: (id: string, server: Partial<ServerFormData>) => Promise<void>
   deleteServer: (id: string) => Promise<void>

@@ -281,9 +281,7 @@ class HealthCheckService {
         autoRestart: config.autoRestart ? 1 : 0,
         maxRestarts: config.maxRestarts ?? 3,
         restartWindow: config.restartWindow ?? 3600,
-        notifyOnRestart: config.notifyOnRestart !== false ? 1 : 0,
-        createdAt: now,
-        updatedAt: now
+        notifyOnRestart: config.notifyOnRestart !== false ? 1 : 0
       })
     }
 

@@ -47,7 +47,7 @@ export interface ContainerStats {
 
 class AppDeployService {
   async deployApp(options: DeployOptions): Promise<DeployResult> {
-    const { serverId, appName, dockerCompose, projectPath, templateId } = options
+    const { serverId, appName, dockerCompose, projectPath, templateId, envVariables } = options
 
     log.info(`Starting deployment of app ${appName} to server ${serverId}`)
 

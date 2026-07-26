@@ -28,6 +28,7 @@ import {
 } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import type { AuditLogRow } from '../types/global'
 
 const { Title, Text, Paragraph } = Typography
 
@@ -137,7 +138,7 @@ const Dashboard: React.FC = () => {
       setServers(serverStatuses.slice(0, 5))
 
       // 转换审计日志为最近操作
-      const operations: RecentOperation[] = auditLogs.map(log => ({
+      const operations: RecentOperation[] = auditLogs.map((log: AuditLogRow) => ({
         id: log.id,
         action: log.action,
         target: log.targetName || log.targetType,
@@ -448,18 +449,7 @@ const Dashboard: React.FC = () => {
               <div style={{ marginTop: 8, fontSize: 12 }}>部署应用</div>
             </Card>
           </Col>
-          <Col xs={12} sm={8} md={4}>
-            <Card
-              size="small"
-              hoverable
-              style={{ textAlign: 'center', cursor: 'pointer' }}
-              bodyStyle={{ padding: 16 }}
-              onClick={() => navigate('/terminal')}
-            >
-              <DashboardOutlined style={{ fontSize: 24, color: '#faad14' }} />
-              <div style={{ marginTop: 8, fontSize: 12 }}>终端</div>
-            </Card>
-          </Col>
+
           <Col xs={12} sm={8} md={4}>
             <Card
               size="small"

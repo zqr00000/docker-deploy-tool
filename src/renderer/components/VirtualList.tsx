@@ -20,14 +20,16 @@ interface VirtualListItemProps<T> {
   renderItem: (item: T, index: number) => React.ReactNode
 }
 
-const VirtualListItem = memo(<T,>({ item, index, style, renderItem }: VirtualListItemProps<T>) => {
+function VirtualListItemComponent<T>({ item, index, style, renderItem }: VirtualListItemProps<T>) {
   return (
     <div style={style}>
       {renderItem(item, index)}
     </div>
   )
-})
-VirtualListItem.displayName = 'VirtualListItem'
+}
+
+const VirtualListItem = memo(VirtualListItemComponent) as typeof VirtualListItemComponent
+(VirtualListItem as { displayName?: string }).displayName = 'VirtualListItem'
 
 function VirtualList<T>({
   items,
