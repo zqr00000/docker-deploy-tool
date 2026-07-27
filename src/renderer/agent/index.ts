@@ -14,13 +14,16 @@ import type {
   DiagnosticResult,
   CommandHistoryItem
 } from './types'
-export { DEFAULT_MODEL_CONFIG, PROVIDER_PRESETS } from './types'
+import { DEFAULT_MODEL_CONFIG, PROVIDER_PRESETS } from './types'
 import { ToolRegistry, createBuiltInTools, assessRiskLevel } from './tool-registry'
 import { SafetySystem } from './safety-system'
 import { ContextManager } from './context-manager'
 import { PlanningAgent } from './planning-agent'
 import { ExecutionAgent } from './execution-agent'
 import { PersistenceManager } from './persistence-manager'
+
+// 导出常量
+export { DEFAULT_MODEL_CONFIG, PROVIDER_PRESETS }
 
 export class AIAgent {
   private toolRegistry: ToolRegistry
