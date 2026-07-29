@@ -61,7 +61,10 @@ function createTables(): void {
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
       description TEXT,
+      category TEXT NOT NULL DEFAULT 'app',
       dockerCompose TEXT NOT NULL,
+      isBuiltIn INTEGER NOT NULL DEFAULT 0,
+      envSchema TEXT DEFAULT '[]',
       createdAt TEXT NOT NULL,
       updatedAt TEXT NOT NULL
     );
@@ -262,10 +265,6 @@ function createTables(): void {
     -- server_group_members 表索引
     CREATE INDEX IF NOT EXISTS idx_server_group_members_serverId ON server_group_members(serverId);
 
-    -- templates 表索引
-    CREATE INDEX IF NOT EXISTS idx_templates_category ON templates(category);
-    CREATE INDEX IF NOT EXISTS idx_templates_isBuiltIn ON templates(isBuiltIn);
-
     -- 复合索引：优化常用查询组合
     CREATE INDEX IF NOT EXISTS idx_audit_logs_action_target ON audit_logs(action, targetType);
     CREATE INDEX IF NOT EXISTS idx_alert_history_rule_status ON alert_history(ruleId, status);
@@ -278,6 +277,13 @@ function createTables(): void {
 
   migrateAppsTable()
   migrateTemplatesTable()
+
+  // templates 表索引（需在迁移后创建，确保列存在）
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_templates_category ON templates(category);
+    CREATE INDEX IF NOT EXISTS idx_templates_isBuiltIn ON templates(isBuiltIn);
+  `)
+
   log.info('Database tables created/verified')
 }
 

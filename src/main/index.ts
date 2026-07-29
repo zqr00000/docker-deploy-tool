@@ -1350,6 +1350,16 @@ function registerIpcHandlers(): void {
     }
   })
 
+  ipcMain.handle('auditLog:getAll', (_, options?: { limit?: number }) => {
+    try {
+      const limit = options?.limit || 50
+      return auditLogService.query({ limit, page: 1, pageSize: limit })
+    } catch (error) {
+      log.error('auditLog:getAll error:', error)
+      return { logs: [], total: 0, page: 1, pageSize: limit }
+    }
+  })
+
   ipcMain.handle('auditLog:getActions', () => {
     try {
       return auditLogService.getActions()

@@ -704,9 +704,9 @@ export interface ElectronAPI {
     resize: (sessionId: string, cols: number, rows: number) => Promise<{ success: boolean; message?: string }>
     close: (sessionId: string) => Promise<{ success: boolean; message?: string }>
     getAllSessions: () => Promise<TerminalSession[]>
-    onData: (callback: (sessionId: string, data: string) => void) => void
-    onClose: (callback: (sessionId: string) => void) => void
-    onError: (callback: (sessionId: string, error: string) => void) => void
+    onData: (callback: (sessionId: string, data: string) => void) => () => void
+    onClose: (callback: (sessionId: string) => void) => () => void
+    onError: (callback: (sessionId: string, error: string) => void) => () => void
   }
   logs: {
     start: (serverId: string, containerId: string, options?: { tail?: number; follow?: boolean }) => Promise<{ success: boolean; message?: string }>
@@ -916,14 +916,20 @@ const electronAPI: ElectronAPI = {
     resize: (sessionId: string, cols: number, rows: number): Promise<{ success: boolean; message?: string }> => ipcRenderer.invoke('terminal:resize', sessionId, cols, rows),
     close: (sessionId: string): Promise<{ success: boolean; message?: string }> => ipcRenderer.invoke('terminal:close', sessionId),
     getAllSessions: (): Promise<TerminalSession[]> => ipcRenderer.invoke('terminal:getAllSessions'),
-    onData: (callback: (sessionId: string, data: string) => void): void => {
-      ipcRenderer.on('terminal:data', (_, sessionId: string, data: string) => callback(sessionId, data))
+    onData: (callback: (sessionId: string, data: string) => void): (() => void) => {
+      const listener = (_: any, sessionId: string, data: string) => callback(sessionId, data)
+      ipcRenderer.on('terminal:data', listener)
+      return () => ipcRenderer.removeListener('terminal:data', listener)
     },
-    onClose: (callback: (sessionId: string) => void): void => {
-      ipcRenderer.on('terminal:close', (_, sessionId: string) => callback(sessionId))
+    onClose: (callback: (sessionId: string) => void): (() => void) => {
+      const listener = (_: any, sessionId: string) => callback(sessionId)
+      ipcRenderer.on('terminal:close', listener)
+      return () => ipcRenderer.removeListener('terminal:close', listener)
     },
-    onError: (callback: (sessionId: string, error: string) => void): void => {
-      ipcRenderer.on('terminal:error', (_, sessionId: string, error: string) => callback(sessionId, error))
+    onError: (callback: (sessionId: string, error: string) => void): (() => void) => {
+      const listener = (_: any, sessionId: string, error: string) => callback(sessionId, error)
+      ipcRenderer.on('terminal:error', listener)
+      return () => ipcRenderer.removeListener('terminal:error', listener)
     }
   },
   logs: {

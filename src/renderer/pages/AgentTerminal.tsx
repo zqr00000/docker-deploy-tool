@@ -170,6 +170,8 @@ const AgentTerminalPage: React.FC = () => {
   const [selectedContainerId, setSelectedContainerId] = useState<string | undefined>()
   const tabsRef = useRef<TerminalTab[]>(terminalTabs)
   const terminalContainersRef = useRef<Map<string, HTMLDivElement>>(new Map())
+  const terminalInstancesRef = useRef<Map<string, Terminal>>(new Map())
+  const fitAddonsRef = useRef<Map<string, FitAddon>>(new Map())
 
   // Terminal mode
   const [terminalMode, setTerminalMode] = useState<'server' | 'container'>('server')
@@ -546,17 +548,91 @@ const AgentTerminalPage: React.FC = () => {
     })
   }
 
+  // 初始化 xterm 实例
   useEffect(() => {
-    const handleTerminalData = (_sessionId: string, _data: string) => {}
-    const handleTerminalClose = (sessionId: string) => {
-      setTerminalTabs(prev => prev.filter(t => t.sessionId !== sessionId))
-    }
-    const handleTerminalError = (_sessionId: string, _error: string) => {}
+    terminalTabs.forEach(tab => {
+      const container = terminalContainersRef.current.get(tab.sessionId)
+      const existingTerm = terminalInstancesRef.current.get(tab.sessionId)
 
-    window.electronAPI.terminal.onData(handleTerminalData)
-    window.electronAPI.terminal.onClose(handleTerminalClose)
-    window.electronAPI.terminal.onError(handleTerminalError)
-  }, [activeTerminalTab])
+      if (container && !existingTerm) {
+        const term = new Terminal({
+          cursorBlink: true,
+          fontSize: 13,
+          fontFamily: 'Consolas, "Courier New", monospace',
+          theme: {
+            background: '#0d1117',
+            foreground: '#e6edf3',
+            cursor: '#00d4aa',
+            selection: '#264f78',
+            black: '#0d1117',
+            red: '#ff7b72',
+            green: '#3fb950',
+            yellow: '#d29922',
+            blue: '#58a6ff',
+            magenta: '#bc8cff',
+            cyan: '#39d2c0',
+            white: '#e6edf3'
+          },
+          scrollback: 10000
+        })
+
+        const fitAddon = new FitAddon()
+        term.loadAddon(fitAddon)
+        term.open(container)
+        fitAddon.fit()
+
+        terminalInstancesRef.current.set(tab.sessionId, term)
+        fitAddonsRef.current.set(tab.sessionId, fitAddon)
+
+        // 处理用户输入
+        term.onData(data => {
+          window.electronAPI.terminal.write(tab.sessionId, data)
+        })
+      }
+    })
+
+    // 清理已关闭的终端
+    terminalInstancesRef.current.forEach((term, sessionId) => {
+      if (!terminalTabs.find(t => t.sessionId === sessionId)) {
+        term.dispose()
+        terminalInstancesRef.current.delete(sessionId)
+        fitAddonsRef.current.delete(sessionId)
+      }
+    })
+  }, [terminalTabs])
+
+  // 终端数据处理器
+  useEffect(() => {
+    const removeDataListener = window.electronAPI.terminal.onData((sessionId, data) => {
+      const term = terminalInstancesRef.current.get(sessionId)
+      if (term) {
+        term.write(data)
+      }
+    })
+
+    const removeCloseListener = window.electronAPI.terminal.onClose((sessionId) => {
+      const term = terminalInstancesRef.current.get(sessionId)
+      if (term) {
+        term.dispose()
+        terminalInstancesRef.current.delete(sessionId)
+        fitAddonsRef.current.delete(sessionId)
+      }
+      setTerminalTabs(prev => prev.filter(t => t.sessionId !== sessionId))
+    })
+
+    const removeErrorListener = window.electronAPI.terminal.onError((sessionId, error) => {
+      const term = terminalInstancesRef.current.get(sessionId)
+      if (term) {
+        term.write(`\r\n\x1b[31mError: ${error}\x1b[0m\r\n`)
+      }
+    })
+
+    return () => {
+      removeDataListener()
+      removeCloseListener()
+      removeErrorListener()
+    }
+  }, [])
 
   useEffect(() => {
     if (messagesRef.current) {
