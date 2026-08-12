@@ -122,6 +122,12 @@ app.on('quit', () => {
   closeDatabase()
 })
 
+// ==================== 运维 Agent (Mastra) ====================
+import { setAgentModelConfig, setApprovalSender, chatWithAgent, resolveApproval, getAgentConfig } from './ops-agent'
+
+// 流式对话请求（用于取消）
+const opsAgentStreams = new Map<string, AbortController>()
+
 function registerIpcHandlers(): void {
   ipcMain.handle('app:version', () => {
     return app.getVersion()
@@ -2289,147 +2295,80 @@ function registerIpcHandlers(): void {
     }
   })
 
-  ipcMain.handle('ai:chat', async (_, provider: string, apiKey: string, model: string, messages: any[], temperature: number, maxTokens: number, baseUrl?: string, extraParams?: any) => {
+  // ==================== 运维 Agent (Mastra) IPC ====================
+
+  // 设置 Agent 模型配置（配置变化时重建 Agent）
+  ipcMain.handle('opsAgent:setConfig', (_, config: any) => {
     try {
-      let url: string
-      let requestBody: any
-      let requestHeaders: Record<string, string> = {
-        'Content-Type': 'application/json'
-      }
-
-      const ep = extraParams || {}
-
-      switch (provider) {
-        case 'anthropic':
-          url = `${baseUrl || 'https://api.anthropic.com'}/v1/messages`
-          requestHeaders['x-api-key'] = apiKey
-          requestHeaders['anthropic-version'] = '2023-06-01'
-          requestHeaders['anthropic-dangerous-direct-browser-access'] = 'true'
-          {
-            const systemMessage = messages.find(m => m.role === 'system')
-            const systemPrompt = ep.systemPrompt || systemMessage?.content
-            requestBody = {
-              model,
-              max_tokens: maxTokens,
-              messages: messages.filter(m => m.role !== 'system')
-            }
-            if (systemPrompt) {
-              requestBody.system = systemPrompt
-            }
-          }
-          break
-        case 'gemini': {
-          // Google Gemini OpenAI 兼容端点
-          const geminiBase = (baseUrl || 'https://generativelanguage.googleapis.com/v1beta').replace(/\/$/, '')
-          url = `${geminiBase}/openai/chat/completions`
-          requestHeaders['Authorization'] = `Bearer ${apiKey}`
-          requestBody = {
-            model,
-            messages,
-            temperature,
-            max_tokens: maxTokens
-          }
-          break
-        }
-        case 'azure': {
-          // Azure OpenAI
-          const azureBase = (baseUrl || ep.azureEndpoint || '').replace(/\/$/, '')
-          const deployment = model
-          const apiVersion = ep.apiVersion || '2024-02-01'
-          url = `${azureBase}/openai/deployments/${deployment}/chat/completions?api-version=${apiVersion}`
-          requestHeaders['api-key'] = apiKey
-          requestBody = {
-            messages,
-            temperature,
-            max_tokens: maxTokens
-          }
-          break
-        }
-        case 'ollama': {
-          // Ollama OpenAI 兼容端点
-          const ollamaBase = (baseUrl || 'http://localhost:11434/v1').replace(/\/$/, '')
-          url = `${ollamaBase}/chat/completions`
-          requestBody = {
-            model,
-            messages,
-            temperature,
-            max_tokens: maxTokens,
-            stream: false
-          }
-          break
-        }
-        case 'custom':
-          url = `${(baseUrl || '').replace(/\/$/, '')}/chat/completions`
-          requestHeaders['Authorization'] = `Bearer ${apiKey}`
-          requestBody = {
-            model,
-            messages,
-            temperature,
-            max_tokens: maxTokens
-          }
-          break
-        default:
-          // OpenAI
-          url = `${(baseUrl || 'https://api.openai.com/v1').replace(/\/$/, '')}/chat/completions`
-          requestHeaders['Authorization'] = `Bearer ${apiKey}`
-          requestBody = {
-            model,
-            messages,
-            temperature,
-            max_tokens: maxTokens
-          }
-      }
-
-      return new Promise((resolve) => {
-        const urlObj = new URL(url)
-        const postData = JSON.stringify(requestBody)
-        
-        const options = {
-          hostname: urlObj.hostname,
-          port: urlObj.port || 443,
-          path: urlObj.pathname + urlObj.search,
-          method: 'POST',
-          headers: {
-            ...requestHeaders,
-            'Content-Length': Buffer.byteLength(postData)
-          },
-          rejectUnauthorized: false
-        }
-
-        const req = https.request(options, (res) => {
-          let data = ''
-          res.on('data', (chunk) => { data += chunk })
-          res.on('end', () => {
-            try {
-              if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
-                const jsonData = JSON.parse(data)
-                resolve({ success: true, data: jsonData })
-              } else {
-                resolve({ success: false, error: `HTTP ${res.statusCode}: ${data}` })
-              }
-            } catch (e) {
-              resolve({ success: false, error: `解析响应失败: ${(e as Error).message}` })
-            }
-          })
-        })
-
-        req.on('error', (error) => {
-          log.error('ai:chat request error:', error)
-          resolve({ success: false, error: `请求失败: ${error.message}` })
-        })
-
-        req.setTimeout(30000, () => {
-          req.destroy()
-          resolve({ success: false, error: '请求超时 (30s)，请检查网络或 API 地址' })
-        })
-
-        req.write(postData)
-        req.end()
-      })
+      setAgentModelConfig(config)
+      return { success: true }
     } catch (error) {
-      log.error('ai:chat error:', error)
       return { success: false, error: (error as Error).message }
     }
+  })
+
+  ipcMain.handle('opsAgent:getConfig', () => {
+    return { success: true, data: getAgentConfig() }
+  })
+
+  // 审批请求发送器：转发到渲染进程审批 UI
+  setApprovalSender((payload) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('opsAgent:approval-request', payload)
+    }
+  })
+
+  // 审批回传
+  ipcMain.handle('opsAgent:approval', (_, id: string, approved: boolean) => {
+    resolveApproval(id, approved)
+    return { success: true }
+  })
+
+  // 流式对话
+  ipcMain.handle('opsAgent:chat', async (event, requestId: string, options: any) => {
+    const sendEvent = (type: string, payload: any) => {
+      if (!event.sender.isDestroyed()) {
+        event.sender.send(type, payload)
+      }
+    }
+
+    try {
+      const controller = new AbortController()
+      opsAgentStreams.set(requestId, controller)
+
+      await chatWithAgent({
+        serverId: options?.serverId,
+        serverName: options?.serverName,
+        userInput: options?.userInput,
+        threadId: options?.threadId || `thread-${Date.now()}`,
+        signal: controller.signal,
+        callbacks: {
+          onDelta: (delta) => sendEvent('opsAgent:chunk', { requestId, delta }),
+          onToolCall: (toolName, args) => sendEvent('opsAgent:toolCall', { requestId, toolName, args }),
+          onToolResult: (toolName, success, output) => sendEvent('opsAgent:toolResult', { requestId, toolName, success, output }),
+          onError: (error) => sendEvent('opsAgent:error', { requestId, error }),
+          onDone: () => sendEvent('opsAgent:done', { requestId })
+        }
+      })
+
+      opsAgentStreams.delete(requestId)
+      return { success: true, requestId }
+    } catch (error) {
+      log.error('opsAgent:chat error:', error)
+      sendEvent('opsAgent:error', { requestId, error: (error as Error).message })
+      return { success: false, error: (error as Error).message }
+    }
+  })
+
+  // 取消对话
+  ipcMain.handle('opsAgent:cancel', (_, requestId: string) => {
+    const controller = opsAgentStreams.get(requestId)
+    if (controller) {
+      controller.abort()
+      opsAgentStreams.delete(requestId)
+      return { success: true }
+    }
+    return { success: false, error: '未找到对应请求' }
   })
 
   // 启动告警监控

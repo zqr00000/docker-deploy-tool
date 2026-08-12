@@ -63,7 +63,17 @@ export interface ChatMessage {
   timestamp: string
   status?: 'running' | 'success' | 'error'
   commands?: ExecutedCommand[]
+  toolCalls?: ToolCallRecord[]
   metadata?: MessageMetadata
+}
+
+// Function Calling 工具调用记录（用于展示）
+export interface ToolCallRecord {
+  name: string
+  params: any
+  result: string
+  status: 'running' | 'success' | 'error'
+  duration?: number
 }
 
 export interface MessageMetadata {
@@ -112,7 +122,7 @@ export interface Tool {
   execute: (params: any) => Promise<ToolResult>
   validate?: (params: any) => ValidationResult
   riskLevel: RiskLevel
-  requiresApproval: boolean
+  requiresApproval: boolean | ((params: any) => boolean)
 }
 
 export interface ToolParameterSchema {

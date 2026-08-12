@@ -72,8 +72,8 @@ import { Terminal } from 'xterm'
 import { FitAddon } from 'xterm-addon-fit'
 import 'xterm/css/xterm.css'
 
-// 导入 Agent 模块
-import { aiAgent } from '../agent'
+// 导入会话持久化与类型（会话存储为纯前端 localStorage，非 agent 逻辑）
+import { persistenceManager } from '../agent/persistence-manager'
 import type { 
   ChatMessage, 
   ChatSession, 
@@ -82,9 +82,10 @@ import type {
   CommandHistoryItem,
   DiagnosticResult,
   ContainerOption,
-  TerminalTab
-} from '../agent'
-import { DEFAULT_MODEL_CONFIG, assessRiskLevel, PROVIDER_PRESETS } from '../agent'
+  TerminalTab,
+  ToolCallRecord
+} from '../agent/types'
+import { DEFAULT_MODEL_CONFIG, PROVIDER_PRESETS } from '../agent/types'
 import type { Server } from '../types/server'
 
 const { Text, Title } = Typography
@@ -147,6 +148,8 @@ const AgentTerminalPage: React.FC = () => {
   const [loading, setLoading] = useState(false)
   const [loadingModels, setLoadingModels] = useState(false)
   const [availableModels, setAvailableModels] = useState<string[]>([])
+  const [streamingToolCalls, setStreamingToolCalls] = useState<ToolCallRecord[]>([])
+  const streamingToolCallsRef = useRef<ToolCallRecord[]>([])
   const messagesRef = useRef<HTMLDivElement>(null)
 
   // Session state
@@ -187,7 +190,9 @@ const AgentTerminalPage: React.FC = () => {
 
   // Approval handling
   const [approvalRequest, setApprovalRequest] = useState<any>(null)
-  const approvalCallback = useRef<((approved: boolean) => void) | null>(null)
+
+  // 当前流式请求 ID（用于取消）
+  const currentRequestIdRef = useRef<string | null>(null)
 
   // Stats
   const [stats, setStats] = useState({
@@ -199,24 +204,23 @@ const AgentTerminalPage: React.FC = () => {
   // ==================== 初始化 ====================
 
   useEffect(() => {
-    aiAgent.updateModelConfig(modelConfig)
+    // 同步模型配置到主进程 Mastra Agent
+    window.electronAPI.opsAgent.setConfig(modelConfig)
     loadSessions()
     loadCommandHistory()
 
-    const handleApproval = (e: CustomEvent) => {
-      const { request, callback } = e.detail
-      setApprovalRequest(request)
-      approvalCallback.current = callback
-    }
-    window.addEventListener('agent:approval-request', handleApproval as EventListener)
+    // 审批请求监听（主进程 Mastra 工具触发）
+    const removeApproval = window.electronAPI.opsAgent.onApprovalRequest((payload) => {
+      setApprovalRequest(payload)
+    })
 
     return () => {
-      window.removeEventListener('agent:approval-request', handleApproval as EventListener)
+      removeApproval()
     }
   }, [modelConfig])
 
   const loadSessions = async () => {
-    const allSessions = await aiAgent.getAllSessions()
+    const allSessions = await persistenceManager.getAllSessions()
     setSessions(allSessions)
     if (allSessions.length > 0 && !activeSessionId) {
       setActiveSessionId(allSessions[0].id)
@@ -224,7 +228,7 @@ const AgentTerminalPage: React.FC = () => {
   }
 
   const loadCommandHistory = async () => {
-    const history = await aiAgent.getCommandHistory()
+    const history = await persistenceManager.getCommandHistory()
     setCommandHistory(history)
     updateStats(history)
   }
@@ -291,14 +295,21 @@ const AgentTerminalPage: React.FC = () => {
   // ==================== 会话管理 ====================
 
   const createSession = async () => {
-    const session = aiAgent.createSession()
+    const session: ChatSession = {
+      id: `session-${Date.now()}`,
+      name: `对话 ${new Date().toLocaleString()}`,
+      messages: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    }
+    await persistenceManager.saveSession(session)
     await loadSessions()
     setActiveSessionId(session.id)
     setMessages([])
   }
 
   const deleteSession = async (sessionId: string) => {
-    await aiAgent.deleteSession(sessionId)
+    await persistenceManager.deleteSession(sessionId)
     if (activeSessionId === sessionId) {
       const remaining = sessions.filter(s => s.id !== sessionId)
       setActiveSessionId(remaining.length > 0 ? remaining[0].id : undefined)
@@ -319,16 +330,27 @@ const AgentTerminalPage: React.FC = () => {
 
   const sendMessage = async () => {
     if (!inputText.trim() || loading) return
+    if (!modelConfig.apiKey || !modelConfig.model) {
+      message.warning('请先配置 AI 模型')
+      setShowConfig(true)
+      return
+    }
+    const userInput = inputText.trim()
+    setInputText('')
+    await doSendMessage(userInput)
+  }
 
+  // 流式发送消息（走主进程 Mastra Agent，支持工具调用与审批）
+  const doSendMessage = async (userInput: string) => {
     if (!modelConfig.apiKey || !modelConfig.model) {
       message.warning('请先配置 AI 模型')
       setShowConfig(true)
       return
     }
 
-    const userInput = inputText.trim()
-    setInputText('')
     setLoading(true)
+    setStreamingToolCalls([])
+    streamingToolCallsRef.current = []
 
     const userMessage: ChatMessage = {
       id: `msg-${Date.now()}`,
@@ -338,35 +360,118 @@ const AgentTerminalPage: React.FC = () => {
     }
     setMessages(prev => [...prev, userMessage])
 
-    const loadingMessage: ChatMessage = {
-      id: `msg-${Date.now()}-loading`,
+    // 流式占位消息
+    const assistantId = `msg-${Date.now()}-assistant`
+    setMessages(prev => [...prev, {
+      id: assistantId,
       role: 'assistant',
-      content: '正在分析...',
+      content: '',
       timestamp: new Date().toISOString(),
       status: 'running'
+    }])
+
+    const requestId = `ops-${Date.now()}`
+    currentRequestIdRef.current = requestId
+    const threadId = activeSessionId || `thread-${Date.now()}`
+    const server = selectedServer ? servers.find(s => s.id === selectedServer) : undefined
+
+    // 注册一次性流式事件监听
+    const removeChunk = window.electronAPI.opsAgent.onChunk(({ requestId: rid, delta }) => {
+      if (rid !== requestId) return
+      setMessages(prev => prev.map(m =>
+        m.id === assistantId ? { ...m, content: m.content + delta } : m
+      ))
+    })
+
+    const removeToolCall = window.electronAPI.opsAgent.onToolCall(({ requestId: rid, toolName, args }) => {
+      if (rid !== requestId) return
+      streamingToolCallsRef.current = [
+        ...streamingToolCallsRef.current,
+        { name: toolName, params: args, result: '执行中...', status: 'running' }
+      ]
+      setStreamingToolCalls([...streamingToolCallsRef.current])
+    })
+
+    const removeToolResult = window.electronAPI.opsAgent.onToolResult(({ requestId: rid, toolName, success, output }) => {
+      if (rid !== requestId) return
+      const summary = typeof output === 'string' ? output : JSON.stringify(output, null, 2)
+      streamingToolCallsRef.current = streamingToolCallsRef.current.map(t =>
+        t.name === toolName && t.status === 'running'
+          ? { ...t, result: summary, status: success ? 'success' : 'error' }
+          : t
+      )
+      setStreamingToolCalls([...streamingToolCallsRef.current])
+    })
+
+    const removeError = window.electronAPI.opsAgent.onError(({ requestId: rid, error }) => {
+      if (rid !== requestId) return
+      const cancelled = error === 'cancelled'
+      setMessages(prev => prev.map(m =>
+        m.id === assistantId
+          ? { ...m, status: 'error', content: cancelled ? '已取消生成' : `错误: ${error}` }
+          : m
+      ))
+    })
+
+    const removeDone = window.electronAPI.opsAgent.onDone(({ requestId: rid }) => {
+      if (rid !== requestId) return
+      // 完成：更新消息为最终状态并持久化会话
+      setMessages(prev => {
+        const updated = prev.map(m =>
+          m.id === assistantId
+            ? { ...m, status: 'success' as const, toolCalls: streamingToolCallsRef.current.length > 0 ? streamingToolCallsRef.current : undefined }
+            : m
+        )
+        if (activeSessionId) {
+          const session = persistenceManager
+          const saved = updated
+          session.saveSession({
+            id: activeSessionId,
+            name: sessions.find(s => s.id === activeSessionId)?.name || `对话 ${new Date().toLocaleString()}`,
+            messages: saved,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          })
+        }
+        return updated
+      })
+      setLoading(false)
+      setStreamingToolCalls([])
+      cleanup()
+    })
+
+    const cleanup = () => {
+      if (currentRequestIdRef.current === requestId) currentRequestIdRef.current = null
+      removeChunk()
+      removeToolCall()
+      removeToolResult()
+      removeError()
+      removeDone()
     }
-    setMessages(prev => [...prev, loadingMessage])
 
     try {
-      const response = await aiAgent.sendMessage(userInput)
-      setMessages(prev => {
-        const filtered = prev.filter(m => m.id !== loadingMessage.id)
-        return [...filtered, response]
+      const result = await window.electronAPI.opsAgent.chat(requestId, {
+        serverId: selectedServer,
+        serverName: server?.name,
+        userInput,
+        threadId
       })
+      if (!result.success) {
+        setMessages(prev => prev.map(m =>
+          m.id === assistantId ? { ...m, status: 'error', content: `错误: ${result.error}` } : m
+        ))
+        setLoading(false)
+        cleanup()
+      }
     } catch (error) {
-      setMessages(prev => {
-        const filtered = prev.filter(m => m.id !== loadingMessage.id)
-        return [...filtered, {
-          id: `msg-${Date.now()}-error`,
-          role: 'assistant',
-          content: `错误: ${(error as Error).message}`,
-          timestamp: new Date().toISOString(),
-          status: 'error'
-        }]
-      })
-    } finally {
+      const errMsg = (error as Error).message
+      setMessages(prev => prev.map(m =>
+        m.id === assistantId
+          ? { ...m, status: 'error', content: errMsg.includes('cancelled') ? '已取消生成' : `错误: ${errMsg}` }
+          : m
+      ))
       setLoading(false)
-      await loadSessions()
+      cleanup()
     }
   }
 
@@ -377,9 +482,31 @@ const AgentTerminalPage: React.FC = () => {
       message.warning('请先选择服务器')
       return null
     }
-    const result = await aiAgent.executeCommand(command, selectedServer)
+    const startTime = Date.now()
+    const result = await window.electronAPI.server.executeCommand(selectedServer, command)
+    const executedCommand: ExecutedCommand = {
+      command,
+      output: result.success ? result.stdout : result.stderr,
+      status: result.success ? 'success' : 'error',
+      riskLevel,
+      executionTime: Date.now() - startTime,
+      serverId: selectedServer,
+      timestamp: new Date().toISOString()
+    }
+    // 保存命令历史
+    await persistenceManager.saveCommandHistory({
+      id: `cmd-${Date.now()}`,
+      command,
+      description: '',
+      timestamp: executedCommand.timestamp!,
+      serverId: selectedServer,
+      success: result.success,
+      executionTime: executedCommand.executionTime!,
+      riskLevel: riskLevel || 'low',
+      output: result.stdout
+    })
     await loadCommandHistory()
-    return result
+    return executedCommand
   }
 
   const executeMessageCommands = async (messageId: string) => {
@@ -415,6 +542,54 @@ const AgentTerminalPage: React.FC = () => {
 
   // ==================== 系统诊断 ====================
 
+  // 本地诊断：执行固定诊断命令（读取类，无需审批），返回诊断结果
+  const collectDiagnostics = async (serverId: string): Promise<DiagnosticResult[]> => {
+    const diagnosticCommands: Array<{ type: DiagnosticResult['type']; cmd: string }> = [
+      { type: 'cpu', cmd: "top -bn1 | grep 'Cpu(s)' | awk '{print $2}'" },
+      { type: 'memory', cmd: "free | grep Mem | awk '{print ($3/$2) * 100}'" },
+      { type: 'disk', cmd: "df / | tail -1 | awk '{print $5}' | sed 's/%//'" },
+      { type: 'docker', cmd: "docker ps --format '{{.Names}}' | wc -l" }
+    ]
+
+    const results: DiagnosticResult[] = []
+    for (const diag of diagnosticCommands) {
+      try {
+        const result = await window.electronAPI.server.executeCommand(serverId, diag.cmd)
+        const value = parseFloat(result.stdout) || 0
+        let status: 'healthy' | 'warning' | 'critical' = 'healthy'
+        let diagMessage = ''
+        let suggestion: string | undefined
+
+        switch (diag.type) {
+          case 'cpu':
+            if (value > 90) { status = 'critical'; diagMessage = 'CPU使用率过高'; suggestion = '建议检查高负载进程' }
+            else if (value > 70) { status = 'warning'; diagMessage = 'CPU使用率较高' }
+            else diagMessage = 'CPU使用率正常'
+            break
+          case 'memory':
+            if (value > 90) { status = 'critical'; diagMessage = '内存使用率过高'; suggestion = '建议释放内存或增加内存' }
+            else if (value > 70) { status = 'warning'; diagMessage = '内存使用率较高' }
+            else diagMessage = '内存使用率正常'
+            break
+          case 'disk':
+            if (value > 90) { status = 'critical'; diagMessage = '磁盘空间不足'; suggestion = '建议清理磁盘空间' }
+            else if (value > 70) { status = 'warning'; diagMessage = '磁盘空间较少' }
+            else diagMessage = '磁盘空间充足'
+            break
+          case 'docker':
+            diagMessage = `运行 ${value} 个容器`
+            break
+          default:
+            break
+        }
+        results.push({ type: diag.type, status, value, message: diagMessage, suggestion, timestamp: new Date().toISOString() })
+      } catch {
+        results.push({ type: diag.type, status: 'critical', value: 0, message: '诊断失败', timestamp: new Date().toISOString() })
+      }
+    }
+    return results
+  }
+
   const runDiagnostics = async () => {
     if (!selectedServer) {
       message.warning('请先选择服务器')
@@ -423,11 +598,44 @@ const AgentTerminalPage: React.FC = () => {
 
     setRunningDiagnostics(true)
     try {
-      const results = await aiAgent.runDiagnostics(selectedServer)
+      const results = await collectDiagnostics(selectedServer)
       setDiagnostics(results)
       setShowDiagnostics(true)
     } catch {
       message.error('诊断失败')
+    } finally {
+      setRunningDiagnostics(false)
+    }
+  }
+
+  // 智能诊断闭环：诊断 → AI分析 → 工具修复 → 验证
+  const runIntelligentDiagnosis = async () => {
+    if (!selectedServer) {
+      message.warning('请先选择服务器')
+      return
+    }
+    if (!modelConfig.apiKey || !modelConfig.model) {
+      message.warning('请先配置 AI 模型')
+      setShowConfig(true)
+      return
+    }
+    if (loading) return
+
+    setRunningDiagnostics(true)
+    try {
+      const results = await collectDiagnostics(selectedServer)
+      setDiagnostics(results)
+      setShowDiagnostics(true)
+
+      const diagText = results.map(d =>
+        `[${d.type}] ${d.status}: ${d.message}${d.suggestion ? ` (建议: ${d.suggestion})` : ''}`
+      ).join('\n')
+
+      await doSendMessage(
+        `请针对当前服务器执行一次智能诊断分析并给出处理方案。\n\n检测结果如下：\n${diagText}\n\n请使用工具进行深入检查（如查看容器状态、日志、资源占用等），定位问题根因并给出可执行的修复步骤。高风险操作需要经过我的确认。`
+      )
+    } catch {
+      message.error('智能诊断失败')
     } finally {
       setRunningDiagnostics(false)
     }
@@ -441,7 +649,7 @@ const AgentTerminalPage: React.FC = () => {
       return
     }
     localStorage.setItem(CONFIG_KEY, JSON.stringify(modelConfig))
-    aiAgent.updateModelConfig(modelConfig)
+    window.electronAPI.opsAgent.setConfig(modelConfig)
     setConfigSaved(true)
     message.success('配置已保存')
     setTimeout(() => setConfigSaved(false), 2000)
@@ -485,7 +693,30 @@ const AgentTerminalPage: React.FC = () => {
     }
     setTestingConnection(true)
     try {
-      await aiAgent.sendMessage('你好，请确认连接正常。')
+      const requestId = `ops-test-${Date.now()}`
+      const result = await window.electronAPI.opsAgent.chat(requestId, {
+        serverId: selectedServer,
+        userInput: '你好，请确认连接正常。',
+        threadId: `thread-test-${Date.now()}`
+      })
+      if (!result.success) {
+        throw new Error(result.error || '连接失败')
+      }
+      // 等待流结束
+      await new Promise<void>((resolve, reject) => {
+        const removeError = window.electronAPI.opsAgent.onError(({ requestId: rid, error }) => {
+          if (rid !== requestId) return
+          removeDone()
+          removeError()
+          reject(new Error(error === 'cancelled' ? '已取消' : error))
+        })
+        const removeDone = window.electronAPI.opsAgent.onDone(({ requestId: rid }) => {
+          if (rid !== requestId) return
+          removeDone()
+          removeError()
+          resolve()
+        })
+      })
       message.success('连接测试成功！')
     } catch (error) {
       message.error(`连接失败: ${(error as Error).message}`)
@@ -497,11 +728,10 @@ const AgentTerminalPage: React.FC = () => {
   // ==================== 审批处理 ====================
 
   const handleApproval = (approved: boolean) => {
-    if (approvalCallback.current) {
-      approvalCallback.current(approved)
+    if (approvalRequest?.id) {
+      window.electronAPI.opsAgent.approval(approvalRequest.id, approved)
     }
     setApprovalRequest(null)
-    approvalCallback.current = null
   }
 
   // ==================== 终端管理 ====================
@@ -563,7 +793,6 @@ const AgentTerminalPage: React.FC = () => {
             background: '#0d1117',
             foreground: '#e6edf3',
             cursor: '#00d4aa',
-            selection: '#264f78',
             black: '#0d1117',
             red: '#ff7b72',
             green: '#3fb950',
@@ -664,18 +893,23 @@ const AgentTerminalPage: React.FC = () => {
       <div className="agent-terminal-page" style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#0d1117', overflow: 'hidden' }}>
         
         {/* ========== 顶部状态栏 ========== */}
-        <div style={{ 
+        <div className="agent-terminal-header" style={{ 
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', 
-          padding: '10px 20px', background: '#161b22', borderBottom: '1px solid #30363d' 
+          padding: '10px 20px', borderBottom: '1px solid #30363d' 
         }}>
           <Space size="large">
             <Space>
-              <RobotOutlined style={{ fontSize: 20, color: '#00d4aa' }} />
-              <Title level={4} style={{ margin: 0, color: '#e6edf3', fontFamily: 'inherit' }}>
-                AI OPS TERMINAL
-              </Title>
+              <div style={{ width: 34, height: 34, borderRadius: 9, background: 'linear-gradient(135deg, rgba(0,212,170,0.18), rgba(88,166,255,0.18))', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(0,212,170,0.35)', boxShadow: '0 0 18px rgba(0,212,170,0.15)' }}>
+                <RobotOutlined style={{ fontSize: 18, color: '#00d4aa' }} />
+              </div>
+              <div>
+                <Title level={4} className="agent-terminal-brand" style={{ margin: 0, fontSize: 17, lineHeight: 1.2, fontFamily: 'inherit' }}>
+                  AI OPS TERMINAL
+                </Title>
+                <Text style={{ fontSize: 10, color: '#6e7681', letterSpacing: 0.8 }}>Mastra Agent Console</Text>
+              </div>
             </Space>
-            <Divider type="vertical" style={{ background: '#30363d' }} />
+            <Divider type="vertical" style={{ background: '#30363d', height: 28 }} />
             <Space size="small">
               <CloudOutlined style={{ color: '#8b949e' }} />
               <Select value={selectedServer} onChange={handleServerChange} style={{ minWidth: 180 }} 
@@ -688,23 +922,25 @@ const AgentTerminalPage: React.FC = () => {
                     <Text type="secondary">({s.host})</Text>
                   </Space> 
                 }))} />
-              {connected && <Tag color="success" icon={<LinkOutlined />}>已连接</Tag>}
+              {connected && <Tag color="success" icon={<LinkOutlined />} style={{ border: '1px solid rgba(63,185,80,0.4)', background: 'rgba(63,185,80,0.1)' }}>已连接</Tag>}
             </Space>
           </Space>
           
           <Space size="middle">
             {/* 统计信息 */}
-            <Space size={4} style={{ padding: '4px 8px', background: '#21262d', borderRadius: 4 }}>
-              <DashboardOutlined style={{ color: '#8b949e', fontSize: 11 }} />
+            <Space size={6} style={{ padding: '4px 12px', background: 'rgba(33,38,45,0.8)', borderRadius: 999, border: '1px solid #21262d' }}>
+              <DashboardOutlined style={{ color: '#00d4aa', fontSize: 11 }} />
               <Text style={{ color: '#8b949e', fontSize: 11 }}>
-                {stats.totalCommands} 命令 | {stats.successRate}% 成功
+                <Text strong style={{ color: '#e6edf3', fontSize: 11 }}>{stats.totalCommands}</Text> 命令
+                <span style={{ margin: '0 6px', color: '#30363d' }}>|</span>
+                <Text strong style={{ color: stats.successRate >= 90 ? '#3fb950' : stats.successRate >= 60 ? '#d29922' : '#ff7b72', fontSize: 11 }}>{stats.successRate}%</Text> 成功
               </Text>
             </Space>
             
-            <Tag color={modelConfig.apiKey && modelConfig.model ? 'success' : 'default'} icon={<ApiOutlined />}>
+            <Tag color={modelConfig.apiKey && modelConfig.model ? 'success' : 'default'} icon={<ApiOutlined />} style={{ border: '1px solid rgba(63,185,80,0.35)', background: 'rgba(63,185,80,0.08)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {modelConfig.model || '未配置'}
             </Tag>
-            <Tooltip title="配置"><Button size="small" icon={<SettingOutlined />} type={showConfig ? 'primary' : 'default'} onClick={() => setShowConfig(!showConfig)} style={showConfig ? { background: '#00d4aa' } : {}} /></Tooltip>
+            <Tooltip title="配置"><Button size="small" icon={<SettingOutlined />} type={showConfig ? 'primary' : 'default'} onClick={() => setShowConfig(!showConfig)} style={showConfig ? { background: '#00d4aa', borderColor: '#00d4aa' } : {}} /></Tooltip>
             <Dropdown menu={{ items: sessionMenuItems }}>
               <Button size="small" icon={<MessageOutlined />}>会话 ({sessions.length})</Button>
             </Dropdown>
@@ -713,7 +949,17 @@ const AgentTerminalPage: React.FC = () => {
 
         {/* ========== 配置面板 ========== */}
         {showConfig && (
-          <div style={{ padding: 16, background: '#161b22', borderBottom: '1px solid #30363d' }}>
+          <div style={{ padding: 16, background: 'rgba(22,27,34,0.92)', backdropFilter: 'blur(10px)', borderBottom: '1px solid #30363d', borderTop: '1px solid rgba(0,212,170,0.12)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              <Space>
+                <div style={{ width: 24, height: 24, borderRadius: 6, background: 'rgba(88,166,255,0.14)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(88,166,255,0.3)' }}>
+                  <SettingOutlined style={{ color: '#58a6ff', fontSize: 12 }} />
+                </div>
+                <Text strong style={{ color: '#e6edf3', fontSize: 13, letterSpacing: 0.5 }}>模型配置</Text>
+                <Text style={{ color: '#6e7681', fontSize: 11 }}>Mastra Agent · AI SDK</Text>
+              </Space>
+              <Button size="small" type="text" icon={<CloseOutlined />} onClick={() => setShowConfig(false)} style={{ color: '#8b949e' }} />
+            </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: 16 }}>
               <Space direction="vertical" size="small">
                 <Text strong style={{ color: '#e6edf3', fontSize: 11, textTransform: 'uppercase' }}>提供商</Text>
@@ -816,14 +1062,16 @@ const AgentTerminalPage: React.FC = () => {
         <div style={{ flex: 1, display: 'flex', minHeight: 0, overflow: 'hidden' }}>
           
           {/* ========== 左侧：终端面板 ========== */}
-          <div style={{ flex: '1 1 55%', display: 'flex', flexDirection: 'column', borderRight: '1px solid #30363d', overflow: 'hidden', minHeight: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: '#161b22', borderBottom: '1px solid #30363d' }}>
+          <div style={{ flex: '1 1 55%', display: 'flex', flexDirection: 'column', borderRight: '1px solid rgba(48,54,61,0.7)', overflow: 'hidden', minHeight: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 14px', background: 'rgba(22,27,34,0.7)', backdropFilter: 'blur(8px)', borderBottom: '1px solid #30363d' }}>
               <Space>
-                <LaptopOutlined style={{ color: '#00d4aa' }} />
+                <div style={{ width: 26, height: 26, borderRadius: 7, background: 'rgba(0,212,170,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(0,212,170,0.25)' }}>
+                  <LaptopOutlined style={{ color: '#00d4aa', fontSize: 13 }} />
+                </div>
                 <Text strong style={{ color: '#e6edf3', fontSize: 12 }}>终端</Text>
-                <div style={{ display: 'flex', gap: 4, marginLeft: 8 }}>
-                  <Button size="small" type={terminalMode === 'server' ? 'primary' : 'default'} onClick={() => setTerminalMode('server')} style={terminalMode === 'server' ? { background: '#00d4aa' } : {}}>服务器</Button>
-                  <Button size="small" type={terminalMode === 'container' ? 'primary' : 'default'} onClick={() => setTerminalMode('container')} style={terminalMode === 'container' ? { background: '#00d4aa' } : {}}>容器</Button>
+                <div style={{ display: 'flex', gap: 4, marginLeft: 8, background: '#0d1117', borderRadius: 6, padding: 2, border: '1px solid #21262d' }}>
+                  <Button size="small" type="text" onClick={() => setTerminalMode('server')} style={terminalMode === 'server' ? { background: '#21262d', color: '#00d4aa', borderRadius: 4, fontSize: 11 } : { color: '#8b949e', fontSize: 11, borderRadius: 4 }}>服务器</Button>
+                  <Button size="small" type="text" onClick={() => setTerminalMode('container')} style={terminalMode === 'container' ? { background: '#21262d', color: '#00d4aa', borderRadius: 4, fontSize: 11 } : { color: '#8b949e', fontSize: 11, borderRadius: 4 }}>容器</Button>
                 </div>
               </Space>
               <Space size="small">
@@ -839,23 +1087,26 @@ const AgentTerminalPage: React.FC = () => {
                     }
                   }}
                   disabled={!selectedServer || (terminalMode === 'container' && containers.length === 0)}
-                  style={{ background: '#00d4aa', borderColor: '#00d4aa' }}>新建终端</Button>
+                  style={{ background: 'linear-gradient(135deg, #00d4aa 0%, #00a896 100%)', borderColor: 'transparent', boxShadow: '0 2px 10px rgba(0,212,170,0.3)' }}>新建终端</Button>
               </Space>
             </div>
             
             {terminalTabs.length === 0 ? (
-              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0d1117' }}>
-                <Empty description={<span style={{ color: '#8b949e' }}>选择 {terminalMode === 'server' ? '服务器' : '容器'} 打开终端</span>} />
+              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent' }}>
+                <Empty
+                  image={<LaptopOutlined style={{ fontSize: 44, color: '#30363d' }} />}
+                  description={<span style={{ color: '#8b949e' }}>选择 {terminalMode === 'server' ? '服务器' : '容器'} 打开终端</span>} />
               </div>
             ) : (
               <>
-                <div style={{ display: 'flex', background: '#161b22', borderBottom: '1px solid #30363d', overflowX: 'auto' }}>
+                <div style={{ display: 'flex', background: 'rgba(22,27,34,0.85)', borderBottom: '1px solid #30363d', overflowX: 'auto' }}>
                   {terminalTabs.map(tab => (
                     <div key={tab.sessionId} onClick={() => setActiveTerminalTab(tab.sessionId)}
-                      style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', cursor: 'pointer', borderRight: '1px solid #30363d', background: activeTerminalTab === tab.sessionId ? '#0d1117' : 'transparent', fontSize: 12, whiteSpace: 'nowrap' }}>
-                      <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#3fb950' }} />
-                      <span style={{ maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', color: '#e6edf3' }}>{tab.containerName}</span>
-                      <CloseOutlined style={{ fontSize: 10, color: '#8b949e' }} onClick={(e) => { e.stopPropagation(); closeTerminalTab(tab.sessionId) }} />
+                      className={`terminal-tab ${activeTerminalTab === tab.sessionId ? 'active' : ''}`}
+                      style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 7, padding: '8px 16px', cursor: 'pointer', borderRight: '1px solid #21262d', background: activeTerminalTab === tab.sessionId ? 'rgba(0,212,170,0.06)' : 'transparent', fontSize: 12, whiteSpace: 'nowrap' }}>
+                      <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: activeTerminalTab === tab.sessionId ? '#3fb950' : '#30363d', boxShadow: activeTerminalTab === tab.sessionId ? '0 0 6px rgba(63,185,80,0.7)' : 'none' }} />
+                      <span style={{ maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', color: activeTerminalTab === tab.sessionId ? '#e6edf3' : '#8b949e' }}>{tab.containerName}</span>
+                      <CloseOutlined style={{ fontSize: 10, color: '#6e7681', transition: 'color .15s' }} onClick={(e) => { e.stopPropagation(); closeTerminalTab(tab.sessionId) }} />
                     </div>
                   ))}
                 </div>
@@ -872,16 +1123,23 @@ const AgentTerminalPage: React.FC = () => {
 
           {/* ========== 右侧：AI对话面板 ========== */}
           <div style={{ flex: '1 1 45%', display: 'flex', flexDirection: 'column', background: '#0d1117', overflow: 'hidden' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 16px', background: '#161b22', borderBottom: '1px solid #30363d' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 16px', background: 'rgba(22,27,34,0.7)', backdropFilter: 'blur(8px)', borderBottom: '1px solid rgba(48,54,61,0.8)' }}>
               <Space>
-                <RobotOutlined style={{ color: '#00d4aa' }} />
-                <Text strong style={{ color: '#e6edf3', fontSize: 12 }}>AI 对话</Text>
-                {activeSessionId && <Tag color="blue" style={{ margin: 0, fontSize: 11 }}>{sessions.find(s => s.id === activeSessionId)?.name}</Tag>}
+                <div style={{ width: 26, height: 26, borderRadius: 7, background: 'linear-gradient(135deg, rgba(0,212,170,0.16), rgba(88,166,255,0.16))', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(0,212,170,0.3)' }}>
+                  <RobotOutlined style={{ color: '#00d4aa', fontSize: 13 }} />
+                </div>
+                <Text strong style={{ color: '#e6edf3', fontSize: 12, letterSpacing: 0.5 }}>AI 对话</Text>
+                {activeSessionId && (
+                  <Tag style={{ margin: 0, fontSize: 11, background: 'rgba(88,166,255,0.12)', border: '1px solid rgba(88,166,255,0.35)', color: '#58a6ff', borderRadius: 999 }}>
+                    {sessions.find(s => s.id === activeSessionId)?.name}
+                  </Tag>
+                )}
               </Space>
-              <Space size="small">
-                <Tooltip title="系统诊断"><Button size="small" type="text" icon={<ScanOutlined />} onClick={runDiagnostics} loading={runningDiagnostics} /></Tooltip>
-                <Tooltip title="命令历史"><Button size="small" type="text" icon={<HistoryOutlined />} onClick={() => setShowHistory(true)} /></Tooltip>
-                <Tooltip title="新建对话"><Button size="small" type="text" icon={<PlusOutlined />} onClick={createSession} /></Tooltip>
+              <Space size={2}>
+                <Tooltip title="智能诊断修复"><Button size="small" type="text" icon={<ThunderboltFilled />} onClick={runIntelligentDiagnosis} loading={runningDiagnostics} style={{ color: '#00d4aa' }} /></Tooltip>
+                <Tooltip title="系统诊断"><Button size="small" type="text" icon={<ScanOutlined />} onClick={runDiagnostics} loading={runningDiagnostics} style={{ color: '#8b949e' }} /></Tooltip>
+                <Tooltip title="命令历史"><Button size="small" type="text" icon={<HistoryOutlined />} onClick={() => setShowHistory(true)} style={{ color: '#8b949e' }} /></Tooltip>
+                <Tooltip title="新建对话"><Button size="small" type="text" icon={<PlusOutlined />} onClick={createSession} style={{ color: '#8b949e' }} /></Tooltip>
                 <Tooltip title="清空对话"><Button size="small" type="text" icon={<ClearOutlined />} onClick={() => setMessages([])} disabled={messages.length === 0} /></Tooltip>
               </Space>
             </div>
@@ -889,13 +1147,16 @@ const AgentTerminalPage: React.FC = () => {
             <div ref={messagesRef} style={{ flex: 1, overflow: 'auto', padding: 16 }}>
               {messages.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '60px 0' }}>
-                  <RobotOutlined style={{ fontSize: 48, color: '#00d4aa', marginBottom: 16, display: 'block' }} />
-                  <Text style={{ color: '#8b949e', fontSize: 14 }}>开始与 AI 对话，管理你的服务器</Text>
-                  <div style={{ marginTop: 24 }}>
-                    <Text style={{ color: '#8b949e', fontSize: 12, marginBottom: 8, display: 'block' }}>快捷命令</Text>
-                    <Space wrap>
+                  <div style={{ width: 76, height: 76, margin: '0 auto 20px', borderRadius: 20, background: 'radial-gradient(circle at 30% 30%, rgba(0,212,170,0.25), rgba(88,166,255,0.08) 70%)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(0,212,170,0.2)', animation: 'glow-pulse 3.2s ease-in-out infinite' }}>
+                    <RobotOutlined style={{ fontSize: 32, color: '#00d4aa' }} />
+                  </div>
+                  <Text style={{ color: '#e6edf3', fontSize: 15, fontWeight: 600, display: 'block' }}>开始与 AI 对话，管理你的服务器</Text>
+                  <Text type="secondary" style={{ color: '#6e7681', fontSize: 12, display: 'block', marginTop: 6 }}>支持工具调用 · 智能诊断 · 风险审批</Text>
+                  <div style={{ marginTop: 28 }}>
+                    <Text style={{ color: '#8b949e', fontSize: 11, marginBottom: 12, display: 'block', letterSpacing: 1 }}>快捷命令</Text>
+                    <Space wrap size={8}>
                       {['检查系统状态', '查看Docker容器', '查看网络连接', '查看进程'].map(tip => (
-                        <Tag key={tip} style={{ cursor: 'pointer', background: '#21262d', border: '1px solid #30363d', color: '#8b949e', padding: '4px 12px', borderRadius: 4 }} onClick={() => setInputText(tip)}>{tip}</Tag>
+                        <Tag key={tip} className="quick-tip" onClick={() => setInputText(tip)}>{tip}</Tag>
                       ))}
                     </Space>
                   </div>
@@ -905,7 +1166,7 @@ const AgentTerminalPage: React.FC = () => {
                   <div key={msg.id} style={{ marginBottom: 16, display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
                     {/* 用户消息 */}
                     {msg.role === 'user' && (
-                      <div style={{ maxWidth: '85%', padding: '10px 14px', borderRadius: 8, background: 'linear-gradient(135deg, #00d4aa 0%, #00a896 100%)', color: '#fff' }}>
+                      <div className="user-msg-bubble" style={{ maxWidth: '85%', padding: '10px 14px', borderRadius: 12, background: 'linear-gradient(135deg, #00d4aa 0%, #00a896 100%)', color: '#fff', borderTopRightRadius: 4 }}>
                         <div style={{ fontSize: 13, whiteSpace: 'pre-wrap' }}>{msg.content}</div>
                         <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.6)', marginTop: 4 }}>{new Date(msg.timestamp).toLocaleTimeString()}</div>
                       </div>
@@ -915,26 +1176,70 @@ const AgentTerminalPage: React.FC = () => {
                     {msg.role === 'assistant' && (
                       <div style={{ maxWidth: '90%' }}>
                         {msg.status === 'running' ? (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: '#161b22', borderRadius: 8, border: '1px solid #30363d' }}>
-                            <Spin size="small" />
-                            <Text style={{ color: '#8b949e' }}>{msg.content}</Text>
+                          <div className="ai-msg-bubble" style={{ padding: '10px 14px', borderRadius: 12, borderTopLeftRadius: 4 }}>
+                            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                              <div style={{ width: 22, height: 22, borderRadius: 6, background: 'rgba(0,212,170,0.14)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 2 }}>
+                                <RobotOutlined style={{ color: '#00d4aa', fontSize: 12 }} />
+                              </div>
+                              <Text style={{ color: '#e6edf3', fontSize: 13, whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
+                                {msg.content || '思考中'}
+                                <span className="typing-cursor" />
+                              </Text>
+                            </div>
+                            {/* 流式工具调用 */}
+                            {streamingToolCalls.length > 0 && (
+                              <Space direction="vertical" size={6} style={{ width: '100%', marginTop: 10 }}>
+                                {streamingToolCalls.map((tc, idx) => (
+                                  <div key={idx} className="tool-card" style={{ background: 'rgba(13,17,23,0.8)', padding: 8, borderRadius: 8, border: '1px solid #21262d' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                      {tc.status === 'running' ? <Spin size="small" /> : tc.status === 'success' ? <CheckCircleOutlined style={{ color: '#3fb950' }} /> : <CloseCircleOutlined style={{ color: '#ff7b72' }} />}
+                                      <CodeOutlined style={{ color: '#58a6ff' }} />
+                                      <Text style={{ color: '#58a6ff', fontSize: 12, flex: 1, fontFamily: 'Consolas, monospace' }}>{tc.name}</Text>
+                                      <Tag color={tc.status === 'success' ? 'green' : tc.status === 'error' ? 'red' : 'blue'} style={{ fontSize: 10, margin: 0, borderRadius: 999 }}>
+                                        {tc.status === 'running' ? '执行中' : tc.status === 'success' ? '成功' : '失败'}
+                                      </Tag>
+                                    </div>
+                                  </div>
+                                ))}
+                              </Space>
+                            )}
                           </div>
                         ) : (
-                          <div style={{ padding: '10px 14px', borderRadius: 8, background: '#161b22', border: '1px solid #30363d' }}>
+                          <div className="ai-msg-bubble" style={{ padding: '12px 14px', borderRadius: 12, borderTopLeftRadius: 4 }}>
                             {/* 消息内容 */}
-                            <div style={{ fontSize: 13, lineHeight: 1.6, color: '#e6edf3' }} dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }} />
+                            <div style={{ fontSize: 13, lineHeight: 1.65, color: '#e6edf3' }} dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }} />
+
+                            {/* 工具调用记录 */}
+                            {msg.toolCalls && msg.toolCalls.length > 0 && (
+                              <Space direction="vertical" size={6} style={{ width: '100%', marginTop: 12 }}>
+                                <Text style={{ fontSize: 11, color: '#8b949e', letterSpacing: 0.5 }}>工具调用</Text>
+                                {msg.toolCalls.map((tc, idx) => (
+                                  <div key={idx} className="tool-card" style={{ background: 'rgba(13,17,23,0.8)', padding: 8, borderRadius: 8, border: '1px solid #21262d' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                      {tc.status === 'success' ? <CheckCircleOutlined style={{ color: '#3fb950' }} /> : <CloseCircleOutlined style={{ color: '#ff7b72' }} />}
+                                      <CodeOutlined style={{ color: '#58a6ff' }} />
+                                      <Text style={{ color: '#58a6ff', fontSize: 12, flex: 1, fontFamily: 'Consolas, monospace' }}>{tc.name}</Text>
+                                      {tc.duration && <Text type="secondary" style={{ fontSize: 11 }}>{tc.duration}ms</Text>}
+                                    </div>
+                                    <pre style={{ margin: '8px 0 0 24px', maxHeight: 160, overflow: 'auto', fontSize: 11, color: '#8b949e', background: 'rgba(22,27,34,0.6)', padding: 8, borderRadius: 4, whiteSpace: 'pre-wrap', border: '1px solid #21262d' }}>
+                                      {tc.result}
+                                    </pre>
+                                  </div>
+                                ))}
+                              </Space>
+                            )}
                             
                             {/* 命令列表 */}
                             {msg.commands && msg.commands.length > 0 && (
                               <Space direction="vertical" size={6} style={{ width: '100%', marginTop: 12 }}>
-                                <Text style={{ fontSize: 11, color: '#8b949e' }}>建议命令:</Text>
+                                <Text style={{ fontSize: 11, color: '#8b949e', letterSpacing: 0.5 }}>建议命令</Text>
                                 {msg.commands.map((cmd, idx) => (
-                                  <div key={idx} style={{ background: '#0d1117', padding: 8, borderRadius: 6, border: '1px solid #21262d' }}>
+                                  <div key={idx} className="cmd-card" style={{ background: 'rgba(13,17,23,0.8)', padding: 8, borderRadius: 8, border: '1px solid #21262d' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                       <CodeOutlined style={{ color: '#3fb950' }} />
-                                      <Text code style={{ color: '#3fb950', fontSize: 12, flex: 1, background: 'transparent', padding: 0 }}>$ {cmd.command}</Text>
+                                      <Text code style={{ color: '#3fb950', fontSize: 12, flex: 1, background: 'transparent', padding: 0, fontFamily: 'Consolas, monospace' }}>$ {cmd.command}</Text>
                                       {cmd.riskLevel && cmd.riskLevel !== 'low' && (
-                                        <Tag color={getRiskColor(cmd.riskLevel)} style={{ fontSize: 10, margin: 0, padding: '0 4px' }}>
+                                        <Tag color={getRiskColor(cmd.riskLevel)} style={{ fontSize: 10, margin: 0, padding: '0 6px', borderRadius: 999 }}>
                                           {cmd.riskLevel === 'high' ? '高风险' : '中风险'}
                                         </Tag>
                                       )}
@@ -948,7 +1253,7 @@ const AgentTerminalPage: React.FC = () => {
                                       </Tooltip>
                                     </div>
                                     {cmd.output && (
-                                      <pre style={{ marginTop: 8, marginBottom: 0, maxHeight: 120, overflow: 'auto', fontSize: 11, color: '#8b949e', background: '#161b22', padding: 8, borderRadius: 4 }}>
+                                      <pre style={{ marginTop: 8, marginBottom: 0, maxHeight: 120, overflow: 'auto', fontSize: 11, color: '#8b949e', background: 'rgba(22,27,34,0.6)', padding: 8, borderRadius: 4, border: '1px solid #21262d' }}>
                                         {cmd.output}
                                       </pre>
                                     )}
@@ -956,13 +1261,13 @@ const AgentTerminalPage: React.FC = () => {
                                 ))}
                                 {msg.status === 'success' && !msg.commands[0]?.output && (
                                   <Space size={8}>
-                                    <Button size="small" type="primary" icon={<PlayCircleOutlined />} onClick={() => executeMessageCommands(msg.id)} disabled={!connected} style={{ background: '#00d4aa', borderColor: '#00d4aa' }}>
+                                    <Button size="small" type="primary" icon={<PlayCircleOutlined />} onClick={() => executeMessageCommands(msg.id)} disabled={!connected} style={{ background: '#00d4aa', borderColor: '#00d4aa', borderRadius: 6 }}>
                                       后台执行
                                     </Button>
                                     <Button size="small" icon={<LaptopOutlined />} onClick={() => {
                                       if (!activeTerminalTab) { message.warning('请先打开终端'); return }
                                       msg.commands?.forEach(cmd => executeCommandInTerminal(cmd.command))
-                                    }} disabled={!activeTerminalTab} style={{ borderColor: '#30363d', color: '#e6edf3' }}>
+                                    }} disabled={!activeTerminalTab} style={{ borderColor: '#30363d', color: '#e6edf3', borderRadius: 6 }}>
                                       在终端中执行
                                     </Button>
                                   </Space>
@@ -971,9 +1276,9 @@ const AgentTerminalPage: React.FC = () => {
                             )}
                             
                             {/* 时间戳 */}
-                            <div style={{ fontSize: 10, color: '#484f58', marginTop: 8 }}>
+                            <div style={{ fontSize: 10, color: '#484f58', marginTop: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
                               {new Date(msg.timestamp).toLocaleTimeString()}
-                              {msg.metadata?.executionTime && <span style={{ marginLeft: 8 }}>⏱ {msg.metadata.executionTime}ms</span>}
+                              {msg.metadata?.executionTime && <span>⏱ {msg.metadata.executionTime}ms</span>}
                             </div>
                           </div>
                         )}
@@ -985,7 +1290,7 @@ const AgentTerminalPage: React.FC = () => {
             </div>
 
             {/* 输入区 */}
-            <div style={{ padding: 16, borderTop: '1px solid #30363d', background: '#161b22' }}>
+            <div className="agent-input" style={{ padding: 14, borderTop: '1px solid rgba(48,54,61,0.8)', background: 'rgba(22,27,34,0.85)' }}>
               <Space.Compact style={{ width: '100%' }}>
                 <TextArea 
                   placeholder={modelConfig.apiKey && modelConfig.model ? "输入你的问题，例如：检查服务器状态" : "请先配置 AI 模型"} 
@@ -994,11 +1299,25 @@ const AgentTerminalPage: React.FC = () => {
                   onPressEnter={e => { if (!e.shiftKey) { e.preventDefault(); sendMessage() } }}
                   autoSize={{ minRows: 1, maxRows: 4 }} 
                   disabled={loading || !modelConfig.apiKey || !modelConfig.model}
-                  style={{ background: '#0d1117', border: '1px solid #30363d', color: '#e6edf3' }} />
+                  style={{ background: '#0d1117', border: '1px solid #30363d', color: '#e6edf3', borderRadius: 8 }} />
+                {loading && (
+                  <Tooltip title="停止生成">
+                    <Button icon={<CloseOutlined />} onClick={() => {
+                      if (currentRequestIdRef.current) {
+                        window.electronAPI.opsAgent.cancel(currentRequestIdRef.current)
+                      }
+                    }}
+                      style={{ background: '#21262d', borderColor: '#30363d', color: '#ff7b72', borderRadius: 0 }} />
+                  </Tooltip>
+                )}
                 <Button type="primary" icon={loading ? <LoadingOutlined /> : <SendOutlined />} onClick={sendMessage}
                   disabled={loading || !inputText.trim() || !modelConfig.apiKey || !modelConfig.model} 
-                  style={{ background: '#00d4aa', borderColor: '#00d4aa' }} />
+                  style={{ background: 'linear-gradient(135deg, #00d4aa 0%, #00a896 100%)', borderColor: 'transparent', borderTopRightRadius: 8, borderBottomRightRadius: 8 }} />
               </Space.Compact>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6, padding: '0 2px' }}>
+                <Text style={{ fontSize: 10, color: '#484f58' }}>Enter 发送 · Shift+Enter 换行</Text>
+                {selectedServer && <Text style={{ fontSize: 10, color: '#3fb950' }}><LinkOutlined style={{ marginRight: 3 }} />已连接 {servers.find(s => s.id === selectedServer)?.name}</Text>}
+              </div>
             </div>
           </div>
         </div>
@@ -1006,28 +1325,28 @@ const AgentTerminalPage: React.FC = () => {
         {/* ========== 模态框 ========== */}
         
         {/* 容器选择 */}
-        <Modal title={<span style={{ color: '#e6edf3' }}>打开容器终端</span>} open={openNewModal} 
+        <Modal title={<Space><LaptopOutlined style={{ color: '#00d4aa' }} /><span style={{ color: '#e6edf3' }}>打开容器终端</span></Space>} open={openNewModal} 
           onOk={() => { if (selectedContainerId) { const c = containers.find(x => x.id === selectedContainerId); if (c) openNewTerminal(c.id, c.name, 'container') } setOpenNewModal(false) }} 
           onCancel={() => setOpenNewModal(false)} okButtonProps={{ disabled: !selectedContainerId }}
-          bodyStyle={{ background: '#161b22' }}>
+          styles={{ body: { background: '#161b22' }, content: { background: '#161b22', border: '1px solid #30363d' }, header: { background: '#161b22', borderBottom: '1px solid #21262d' } }}>
           <Select style={{ width: '100%' }} placeholder="请选择容器" value={selectedContainerId} onChange={setSelectedContainerId}
-            options={containers.map(c => ({ value: c.id, label: <Space><span style={{ color: '#e6edf3' }}>{c.name}</span><Tag color="blue">{c.image}</Tag><Tag color={c.status.includes('running') ? 'green' : 'default'}>{c.status}</Tag></Space> }))} />
+            options={containers.map(c => ({ value: c.id, label: <Space><span style={{ color: '#e6edf3' }}>{c.name}</span><Tag color="blue" style={{ borderRadius: 999 }}>{c.image}</Tag><Tag color={c.status.includes('running') ? 'green' : 'default'} style={{ borderRadius: 999 }}>{c.status}</Tag></Space> }))} />
         </Modal>
 
         {/* 诊断报告 */}
-        <Modal title={<span style={{ color: '#e6edf3' }}>🖥️ 系统诊断报告</span>} open={showDiagnostics} onCancel={() => setShowDiagnostics(false)} footer={null} width={600}
-          bodyStyle={{ background: '#161b22' }}>
+        <Modal title={<Space><ScanOutlined style={{ color: '#58a6ff' }} /><span style={{ color: '#e6edf3' }}>系统诊断报告</span></Space>} open={showDiagnostics} onCancel={() => setShowDiagnostics(false)} footer={null} width={600}
+          styles={{ body: { background: '#161b22' }, content: { background: '#161b22', border: '1px solid #30363d' }, header: { background: '#161b22', borderBottom: '1px solid #21262d' } }}>
           <Space direction="vertical" style={{ width: '100%' }} size="middle">
             {diagnostics.map((d, i) => (
-              <Card key={i} size="small" style={{ background: '#0d1117', border: '1px solid #21262d' }}>
+              <Card key={i} size="small" style={{ background: 'rgba(13,17,23,0.8)', border: '1px solid #21262d', borderRadius: 10 }}>
                 <Space>
-                  {d.status === 'healthy' && <CheckCircleOutlined style={{ color: '#52c41a', fontSize: 16 }} />}
+                  {d.status === 'healthy' && <CheckCircleOutlined style={{ color: '#3fb950', fontSize: 16 }} />}
                   {d.status === 'warning' && <ExclamationCircleOutlined style={{ color: '#faad14', fontSize: 16 }} />}
-                  {d.status === 'critical' && <CloseCircleOutlined style={{ color: '#ff4d4f', fontSize: 16 }} />}
+                  {d.status === 'critical' && <CloseCircleOutlined style={{ color: '#ff7b72', fontSize: 16 }} />}
                   <div>
                     <Text strong style={{ color: '#e6edf3', textTransform: 'capitalize' }}>{d.type}</Text>
                     <div><Text style={{ color: '#8b949e', fontSize: 12 }}>{d.message}</Text></div>
-                    {d.suggestion && <div><Text type="warning" style={{ fontSize: 11 }}>💡 {d.suggestion}</Text></div>}
+                    {d.suggestion && <div><Text style={{ color: '#d29922', fontSize: 11 }}>💡 {d.suggestion}</Text></div>}
                   </div>
                 </Space>
               </Card>
@@ -1036,15 +1355,15 @@ const AgentTerminalPage: React.FC = () => {
         </Modal>
 
         {/* 命令历史 */}
-        <Modal title={<span style={{ color: '#e6edf3' }}>📜 命令历史</span>} open={showHistory} onCancel={() => setShowHistory(false)} footer={null} width={700}
-          bodyStyle={{ background: '#161b22', maxHeight: 500, overflow: 'auto' }}>
+        <Modal title={<Space><HistoryOutlined style={{ color: '#58a6ff' }} /><span style={{ color: '#e6edf3' }}>命令历史</span></Space>} open={showHistory} onCancel={() => setShowHistory(false)} footer={null} width={700}
+          styles={{ body: { background: '#161b22', maxHeight: 500, overflow: 'auto' }, content: { background: '#161b22', border: '1px solid #30363d' }, header: { background: '#161b22', borderBottom: '1px solid #21262d' } }}>
           <List dataSource={commandHistory.slice(0, 50)} renderItem={item => (
             <List.Item style={{ borderBottom: '1px solid #21262d', padding: '8px 0' }}>
               <div style={{ width: '100%' }}>
                 <Space style={{ width: '100%', justifyContent: 'space-between' }}>
-                  <Text code style={{ color: '#3fb950', fontSize: 12 }}>{item.command}</Text>
+                  <Text code style={{ color: '#3fb950', fontSize: 12, background: 'rgba(13,17,23,0.6)', padding: '2px 8px', borderRadius: 4, fontFamily: 'Consolas, monospace' }}>{item.command}</Text>
                   <Space size={8}>
-                    {item.success ? <CheckCircleOutlined style={{ color: '#52c41a' }} /> : <CloseCircleOutlined style={{ color: '#ff4d4f' }} />}
+                    {item.success ? <CheckCircleOutlined style={{ color: '#3fb950' }} /> : <CloseCircleOutlined style={{ color: '#ff7b72' }} />}
                     <Text type="secondary" style={{ fontSize: 11 }}>{item.executionTime}ms</Text>
                   </Space>
                 </Space>
@@ -1058,12 +1377,13 @@ const AgentTerminalPage: React.FC = () => {
         <Modal title={<Space><SafetyOutlined style={{ color: '#faad14' }} /><span style={{ color: '#e6edf3' }}>安全审批</span></Space>} 
           open={!!approvalRequest} onCancel={() => handleApproval(false)} onOk={() => handleApproval(true)} 
           okText="确认执行" cancelText="取消" okButtonProps={{ danger: approvalRequest?.riskLevel === 'high' }}
-          bodyStyle={{ background: '#161b22' }}>
+          styles={{ body: { background: '#161b22' }, content: { background: '#161b22', border: '1px solid #30363d' }, header: { background: '#161b22', borderBottom: '1px solid #21262d' } }}>
           {approvalRequest && (
             <div>
               <Alert message={`风险等级: ${approvalRequest.riskLevel === 'high' ? '高风险' : '中风险'}`} 
-                type={approvalRequest.riskLevel === 'high' ? 'error' : 'warning'} showIcon style={{ marginBottom: 16 }} />
-              <pre style={{ background: '#0d1117', padding: 12, borderRadius: 6, color: '#ff7b72', border: '1px solid #21262d' }}>{approvalRequest.action}</pre>
+                type={approvalRequest.riskLevel === 'high' ? 'error' : 'warning'} showIcon style={{ marginBottom: 16, borderRadius: 8 }} />
+              <Text style={{ color: '#8b949e', fontSize: 11, display: 'block', marginBottom: 6 }}>执行命令</Text>
+              <pre style={{ background: 'rgba(13,17,23,0.85)', padding: 12, borderRadius: 8, color: '#ff7b72', border: '1px solid rgba(255,123,114,0.3)', fontFamily: 'Consolas, monospace', fontSize: 12, whiteSpace: 'pre-wrap' }}>{approvalRequest.action}</pre>
             </div>
           )}
         </Modal>

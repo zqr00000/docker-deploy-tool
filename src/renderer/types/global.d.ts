@@ -154,9 +154,9 @@ export interface ElectronAPI {
     resize: (sessionId: string, cols: number, rows: number) => Promise<{ success: boolean; message?: string }>
     close: (sessionId: string) => Promise<{ success: boolean; message?: string }>
     getAllSessions: () => Promise<TerminalSession[]>
-    onData: (callback: (sessionId: string, data: string) => void) => void
-    onClose: (callback: (sessionId: string) => void) => void
-    onError: (callback: (sessionId: string, error: string) => void) => void
+    onData: (callback: (sessionId: string, data: string) => void) => () => void
+    onClose: (callback: (sessionId: string) => void) => () => void
+    onError: (callback: (sessionId: string, error: string) => void) => () => void
   }
   alertRule: {
     getAll: () => Promise<AlertRule[]>
@@ -268,7 +268,19 @@ export interface ElectronAPI {
   }
   ai: {
     getModels: (provider: string, apiKey: string, baseUrl?: string) => Promise<{ success: boolean; data?: any[]; error?: string }>
-    chat: (provider: string, apiKey: string, model: string, messages: any[], temperature: number, maxTokens: number, baseUrl?: string) => Promise<{ success: boolean; data?: any; error?: string }>
+  }
+  opsAgent: {
+    setConfig: (config: any) => Promise<{ success: boolean; error?: string }>
+    getConfig: () => Promise<{ success: boolean; data?: any; error?: string }>
+    chat: (requestId: string, options: { serverId?: string; serverName?: string; userInput: string; threadId?: string }) => Promise<{ success: boolean; requestId?: string; error?: string }>
+    cancel: (requestId: string) => Promise<{ success: boolean; error?: string }>
+    approval: (id: string, approved: boolean) => Promise<{ success: boolean }>
+    onChunk: (callback: (payload: { requestId: string; delta: string }) => void) => () => void
+    onToolCall: (callback: (payload: { requestId: string; toolName: string; args: any }) => void) => () => void
+    onToolResult: (callback: (payload: { requestId: string; toolName: string; success: boolean; output: any }) => void) => () => void
+    onError: (callback: (payload: { requestId: string; error: string }) => void) => () => void
+    onDone: (callback: (payload: { requestId: string }) => void) => () => void
+    onApprovalRequest: (callback: (payload: { id: string; action: string; riskLevel: string }) => void) => () => void
   }
 }
 
