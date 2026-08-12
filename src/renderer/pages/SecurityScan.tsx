@@ -84,7 +84,15 @@ const SecurityScan: React.FC = () => {
   const [loading, setLoading] = useState(false)
   const [servers, setServers] = useState<Server[]>([])
   const [selectedServer, setSelectedServer] = useState<string | undefined>(undefined)
-  const [images, setImages] = useState<Array<{ id: string; name: string; size: number }>>([])
+  const [images, setImages] = useState<Array<{ id: string; name: string; size: string; created: string; key: string }>>([])
+
+  // 格式化镜像创建时间（后端返回 UTC ISO，按本机时区显示）
+  const formatImageTime = (created: string): string => {
+    const d = new Date(created)
+    if (isNaN(d.getTime())) return created
+    const pad = (n: number) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+  }
   const [selectedImage, setSelectedImage] = useState<string | undefined>(undefined)
   const [scanResults, setScanResults] = useState<ScanResult[]>([])
   const [currentScan, setCurrentScan] = useState<ScanResult | null>(null)
@@ -112,11 +120,17 @@ const SecurityScan: React.FC = () => {
 
     try {
       const data = await window.electronAPI.image.getAll(selectedServer)
-      setImages(data.map(img => ({
-        id: img.id,
-        name: img.repoTags?.[0] || img.id.substring(0, 12),
-        size: img.size
-      })))
+      setImages(data.map(img => {
+        // 同一镜像多个 tag 时 ID 相同，用 ID+名称 作为唯一 key
+        const name = img.tag === '<none>' ? img.id.substring(0, 12) : `${img.repository}:${img.tag}`
+        return {
+          id: img.id,
+          name,
+          size: img.size,
+          created: img.created,
+          key: `${img.id}-${name}`
+        }
+      }))
     } catch (error) {
       console.error('Failed to load images:', error)
       setImages([])
@@ -132,88 +146,70 @@ const SecurityScan: React.FC = () => {
     loadImages()
   }, [loadImages])
 
-  // 执行安全扫描
+  // 执行安全扫描（基于 Trivy 的真实镜像漏洞扫描）
   const handleScan = async () => {
     if (!selectedServer || !selectedImage) {
       message.warning(t('securityScan.selectServerAndImage'))
       return
     }
 
+    const selectedImg = images.find(i => i.key === selectedImage)
+    if (!selectedImg) return
+    const imageName = selectedImg.name
+
     setScanning(true)
     setScanProgress(0)
     setActiveTab('vulnerabilities')
 
-    // 模拟扫描进度
+    // 扫描进度显示（真实扫描时间由后端返回）
     const progressInterval = setInterval(() => {
       setScanProgress(prev => {
         if (prev >= 90) {
           clearInterval(progressInterval)
           return 90
         }
-        return prev + Math.random() * 15
+        return prev + Math.random() * 10
       })
-    }, 500)
+    }, 800)
 
     try {
-      // 模拟扫描结果
-      await new Promise(resolve => setTimeout(resolve, 3000))
+      let result = await window.electronAPI.security.scanImage(selectedServer, imageName)
 
-      const mockVulnerabilities: Vulnerability[] = [
-        {
-          id: 'vuln1',
-          severity: 'critical',
-          packageName: 'openssl',
-          installedVersion: '1.1.1k-1',
-          fixedVersion: '1.1.1n-1',
-          description: 'OpenSSL 存在缓冲区溢出漏洞，可能导致远程代码执行',
-          cveId: 'CVE-2022-0778',
-          cvssScore: 9.8
-        },
-        {
-          id: 'vuln2',
-          severity: 'high',
-          packageName: 'curl',
-          installedVersion: '7.74.0-1',
-          fixedVersion: '7.82.0-1',
-          description: 'curl 存在信息泄露漏洞',
-          cveId: 'CVE-2021-22925',
-          cvssScore: 7.5
-        },
-        {
-          id: 'vuln3',
-          severity: 'medium',
-          packageName: 'zlib',
-          installedVersion: '1.2.11-5',
-          description: 'zlib 存在拒绝服务漏洞',
-          cveId: 'CVE-2018-25032',
-          cvssScore: 5.5
-        },
-        {
-          id: 'vuln4',
-          severity: 'low',
-          packageName: 'libpng',
-          installedVersion: '1.6.37-3',
-          description: 'libpng 存在内存泄漏',
-          cvssScore: 3.3
+      // Trivy 未安装 → 自动安装后重试
+      if (!result.trivyInstalled) {
+        clearInterval(progressInterval)
+        message.info(t('securityScan.installingTrivy'))
+        setScanProgress(5)
+        const installResult = await window.electronAPI.security.installTrivy(selectedServer)
+        if (!installResult.success) {
+          message.error(`${t('securityScan.installTrivyFailed')}: ${installResult.message}`)
+          return
         }
-      ]
+        message.success(t('securityScan.installTrivySuccess'))
+        result = await window.electronAPI.security.scanImage(selectedServer, imageName)
+      }
+
+      if (!result.success) {
+        message.error(`${t('securityScan.scanFailed')}: ${result.message}`)
+        return
+      }
 
       const scanResult: ScanResult = {
         id: `scan-${Date.now()}`,
-        imageId: selectedImage,
-        imageName: images.find(i => i.id === selectedImage)?.name || selectedImage,
+        imageId: selectedImg.id,
+        imageName,
         serverId: selectedServer,
         serverName: servers.find(s => s.id === selectedServer)?.name || 'Unknown',
-        scanTime: new Date().toISOString(),
+        scanTime: result.scanTime,
         status: 'completed',
-        vulnerabilities: mockVulnerabilities,
+        vulnerabilities: result.vulnerabilities,
         summary: {
-          critical: mockVulnerabilities.filter(v => v.severity === 'critical').length,
-          high: mockVulnerabilities.filter(v => v.severity === 'high').length,
-          medium: mockVulnerabilities.filter(v => v.severity === 'medium').length,
-          low: mockVulnerabilities.filter(v => v.severity === 'low').length,
-          negligible: 0,
-          total: mockVulnerabilities.length
+          critical: result.summary.critical,
+          high: result.summary.high,
+          medium: result.summary.medium,
+          low: result.summary.low,
+          negligible: result.summary.negligible,
+          total: result.summary.total
         }
       }
 
@@ -592,11 +588,12 @@ const SecurityScan: React.FC = () => {
                 onChange={setSelectedImage}
                 disabled={!selectedServer}
                 options={images.map(img => ({
-                  value: img.id,
+                  value: img.key,
                   label: (
-                    <Space>
+                    <Space size={4} style={{ justifyContent: 'space-between', width: '100%' }}>
                       <span>{img.name}</span>
-                      <Text type="secondary">({(img.size / 1024 / 1024).toFixed(1)} MB)</Text>
+                      <Text type="secondary" style={{ fontSize: 12 }}>{img.size}</Text>
+                      <Text type="secondary" style={{ fontSize: 12 }}>{formatImageTime(img.created)}</Text>
                     </Space>
                   )
                 }))}

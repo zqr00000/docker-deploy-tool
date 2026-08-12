@@ -10,6 +10,14 @@ export interface SystemInfo {
   uptime: string
 }
 
+export interface DiskPartition {
+  device: string
+  mountPoint: string
+  total: string
+  used: string
+  percent: number
+}
+
 export interface HardwareInfo {
   cpuCores: number
   cpuModel: string
@@ -19,6 +27,7 @@ export interface HardwareInfo {
   diskTotal: string
   diskUsed: string
   diskPercent: number
+  diskPartitions: DiskPartition[]
 }
 
 export interface NetworkInfo {
@@ -92,53 +101,38 @@ class SystemCheckService {
     return { total, used }
   }
 
-  private parseDiskInfoSimple(dfOutput: string, lsblkOutput: string, dfHumanOutput?: string): { total: number; used: number } {
-    const dfLines = dfOutput.trim().split('\n').filter(line => line.trim() && !line.startsWith('Filesystem'))
-    if (dfLines.length > 0) {
-      const parts = dfLines[0].split(/\s+/)
-      if (parts.length >= 4) {
+  /**
+   * 解析 df -kP 输出，提取所有物理磁盘分区
+   * 输出格式: "Filesystem 1024-blocks Used Available Capacity Mounted on"
+   */
+  private parseDiskPartitions(dfOutput: string): Array<{ device: string; mountPoint: string; total: number; used: number }> {
+    const partitions: Array<{ device: string; mountPoint: string; total: number; used: number }> = []
+    const lines = dfOutput.split('\n')
+
+    for (const line of lines) {
+      const trimmed = line.trim()
+      if (!trimmed || trimmed.startsWith('Filesystem')) continue
+
+      const parts = trimmed.split(/\s+/)
+      if (parts.length >= 6) {
+        const device = parts[0]
         const size = parseInt(parts[1])
         const used = parseInt(parts[2])
-        if (!isNaN(size) && size > 0 && !isNaN(used) && used >= 0) {
-          return { total: size * 1024, used: used * 1024 }
+        const mountPoint = parts[5]
+
+        // 只统计真实物理磁盘分区，排除 tmpfs/overlay 等虚拟文件系统
+        if (device.startsWith('/dev/') && !isNaN(size) && size > 0 && !isNaN(used) && used >= 0) {
+          partitions.push({
+            device,
+            mountPoint,
+            total: size * 1024,
+            used: used * 1024
+          })
         }
       }
     }
-    
-    if (lsblkOutput) {
-      const lsblkSize = parseInt(lsblkOutput.trim())
-      if (!isNaN(lsblkSize) && lsblkSize > 0) {
-        return { total: lsblkSize, used: Math.round(lsblkSize * 0.3) }
-      }
-    }
-    
-    if (dfHumanOutput) {
-      const humanLines = dfHumanOutput.trim().split('\n').filter(line => line.trim() && !line.startsWith('Filesystem'))
-      if (humanLines.length > 0) {
-        const parts = humanLines[0].split(/\s+/)
-        if (parts.length >= 4) {
-          const sizeStr = parts[1]
-          let sizeBytes = 0
-          const sizeMatch = sizeStr.match(/([\d.]+)([TGMK])/)
-          if (sizeMatch) {
-            const value = parseFloat(sizeMatch[1])
-            const unit = sizeMatch[2]
-            switch (unit) {
-              case 'T': sizeBytes = value * 1024 * 1024 * 1024 * 1024; break
-              case 'G': sizeBytes = value * 1024 * 1024 * 1024; break
-              case 'M': sizeBytes = value * 1024 * 1024; break
-              case 'K': sizeBytes = value * 1024; break
-              default: sizeBytes = value
-            }
-            if (sizeBytes > 0) {
-              return { total: Math.round(sizeBytes), used: Math.round(sizeBytes * 0.3) }
-            }
-          }
-        }
-      }
-    }
-    
-    return { total: 0, used: 0 }
+
+    return partitions
   }
 
   private parseDiskInfo(output: string, altOutput?: string, lsblkOutput?: string): { total: number; used: number } {
@@ -262,13 +256,11 @@ class SystemCheckService {
 
   async getHardwareInfo(serverId: string): Promise<HardwareInfo | null> {
     try {
-      const [cpuResult, memResult, dfOutput, dfHumanOutput] = await Promise.all([
+      const [cpuResult, memResult, dfOutput] = await Promise.all([
         sshService.executeCommand(serverId, 'nproc && cat /proc/cpuinfo | grep "model name" | head -1'),
         sshService.executeCommand(serverId, 'cat /proc/meminfo'),
-        sshService.executeCommand(serverId, 'df -k / 2>/dev/null'),
-        sshService.executeCommand(serverId, 'df -h / 2>/dev/null')
+        sshService.executeCommand(serverId, 'df -kP 2>/dev/null')
       ])
-      const lsblkOutput = await sshService.executeCommand(serverId, 'lsblk -b -d -n -o SIZE /dev/vda 2>/dev/null || lsblk -b -d -n -o SIZE /dev/sda 2>/dev/null || lsblk -b -d -n -o SIZE /dev/nvme0n1 2>/dev/null')
 
       const cores = parseInt(cpuResult.stdout.split('\n')[0]) || 1
       const cpuModel = cpuResult.stdout.split('\n')[1]?.replace('model name\t:', '').trim() || 'Unknown'
@@ -276,7 +268,13 @@ class SystemCheckService {
       const { total: memTotal, used: memUsed } = this.parseMemoryInfo(memResult.stdout)
       const memPercent = memTotal > 0 ? Math.round((memUsed / memTotal) * 100) : 0
 
-      const { total: diskTotal, used: diskUsed } = this.parseDiskInfoSimple(dfOutput.stdout, lsblkOutput.stdout, dfHumanOutput.stdout)
+      const partitions = this.parseDiskPartitions(dfOutput.stdout)
+
+      // 总览数据：优先根分区，否则取最大分区
+      const rootPartition = partitions.find(p => p.mountPoint === '/')
+      const mainPartition = rootPartition || partitions.reduce((max, p) => (p.total > max.total ? p : max), partitions[0])
+      const diskTotal = mainPartition?.total ?? 0
+      const diskUsed = mainPartition?.used ?? 0
       const diskPercent = diskTotal > 0 ? Math.round((diskUsed / diskTotal) * 100) : 0
 
       return {
@@ -287,7 +285,14 @@ class SystemCheckService {
         memoryPercent: memPercent,
         diskTotal: this.formatBytes(diskTotal),
         diskUsed: this.formatBytes(diskUsed),
-        diskPercent
+        diskPercent,
+        diskPartitions: partitions.map(p => ({
+          device: p.device,
+          mountPoint: p.mountPoint,
+          total: this.formatBytes(p.total),
+          used: this.formatBytes(p.used),
+          percent: p.total > 0 ? Math.round((p.used / p.total) * 100) : 0
+        }))
       }
     } catch (error) {
       log.error('getHardwareInfo error:', error)

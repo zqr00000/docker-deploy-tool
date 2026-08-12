@@ -215,6 +215,40 @@ const SystemEnvironmentStatus: React.FC<SystemEnvironmentStatusProps> = ({ serve
             <Text type="secondary">{t('environment.used')}: {info.diskUsed}</Text>
             <Text type="secondary">{t('environment.total')}: {info.diskTotal}</Text>
           </div>
+
+          {/* 分区明细 */}
+          {info.diskPartitions && info.diskPartitions.length > 0 && (
+            <div style={{ marginTop: 12 }}>
+              <Text strong style={{ fontSize: 12, color: '#8c8c8c' }}>
+                {t('environment.partitions')} ({info.diskPartitions.length})
+              </Text>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
+                {info.diskPartitions.map((partition, index) => (
+                  <div key={index}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
+                      <Space size={6}>
+                        <Text style={{ fontSize: 12 }}>{partition.mountPoint}</Text>
+                        <Text type="secondary" style={{ fontSize: 11 }}>{partition.device}</Text>
+                      </Space>
+                      <Text type="secondary" style={{ fontSize: 11 }}>
+                        {partition.used} / {partition.total} ({partition.percent}%)
+                      </Text>
+                    </div>
+                    <Progress
+                      percent={partition.percent}
+                      showInfo={false}
+                      size="small"
+                      strokeColor={{
+                        '0%': '#52c41a',
+                        '80%': '#faad14',
+                        '100%': '#ff4d4f'
+                      }}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </Space>
       </div>
     </Card>

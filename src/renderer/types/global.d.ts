@@ -1,4 +1,4 @@
-import type { Template, TemplateFormData, Server, ServerFormData, App, DeployOptions, DeployResult, ContainerInfo, ContainerStats, SystemInfo, HardwareInfo, NetworkInfo, PortInfo, SystemCheckResult, HardwareRequirements, ConfigImportResult, DialogResult, DockerImage, VolumeInfo, VolumeDetail, PruneResult, AuditLogRow, AuditLogFilter, AuditLogResult, TerminalSession, DockerNetworkInfo, DockerNetworkDetail, DockerNetworkCreateOptions, DockerNetworkPruneResult, ResourceMetricRow, ResourceMetricsQuery, MetricsSummary, ResourceMetricsResult, DeployHistoryRecord, RollbackResult, ServerGroup, BatchDeployOptions, BatchDeployResult, BatchOperationResult, ServerStatusInfo, AlertRule, AlertRuleFormData, AlertHistoryEntry, AlertStats, ScheduledTask, ScheduledTaskFormData, ContainerHealthStatus, AppHealthStatus, HealthCheckConfig, HealthCheckConfigFormData, HealthCheckHistoryRecord, HealthCheckReport } from '../preload/index'
+import type { Template, TemplateFormData, Server, ServerFormData, App, DeployOptions, DeployResult, ContainerInfo, ContainerStats, SystemInfo, HardwareInfo, NetworkInfo, PortInfo, SystemCheckResult, HardwareRequirements, ConfigImportResult, DialogResult, DockerImage, VolumeInfo, VolumeDetail, PruneResult, AuditLogRow, AuditLogFilter, AuditLogResult, TerminalSession, DockerNetworkInfo, DockerNetworkDetail, DockerNetworkCreateOptions, DockerNetworkPruneResult, ResourceMetricRow, ResourceMetricsQuery, MetricsSummary, ResourceMetricsResult, DeployHistoryRecord, RollbackResult, ServerGroup, BatchDeployOptions, BatchDeployResult, BatchOperationResult, ServerStatusInfo, AlertRule, AlertRuleFormData, AlertHistoryEntry, AlertStats, ScheduledTask, ScheduledTaskFormData, ContainerHealthStatus, AppHealthStatus, HealthCheckConfig, HealthCheckConfigFormData, HealthCheckHistoryRecord, HealthCheckReport, ScanVulnerability, ScanSummary, ScanImageResult } from '../preload/index'
 
 // Re-export types for use in renderer process
 export type {
@@ -53,7 +53,10 @@ export type {
   HealthCheckConfig,
   HealthCheckConfigFormData,
   HealthCheckHistoryRecord,
-  HealthCheckReport
+  HealthCheckReport,
+  ScanVulnerability,
+  ScanSummary,
+  ScanImageResult
 }
 
 export interface ElectronAPI {
@@ -119,8 +122,13 @@ export interface ElectronAPI {
     getAll: (serverId: string) => Promise<DockerImage[]>
     pull: (serverId: string, imageName: string) => Promise<{ success: boolean; message: string }>
     remove: (serverId: string, imageId: string) => Promise<{ success: boolean; message: string }>
+    removeBatch: (serverId: string, imageIds: string[]) => Promise<{ success: boolean; successCount: number; failCount: number; message: string }>
     prune: (serverId: string) => Promise<PruneResult>
     getInfo: (serverId: string, imageId: string) => Promise<string>
+  }
+  security: {
+    scanImage: (serverId: string, imageName: string) => Promise<ScanImageResult>
+    installTrivy: (serverId: string) => Promise<{ success: boolean; message: string }>
   }
   volume: {
     getAll: (serverId: string) => Promise<VolumeInfo[]>

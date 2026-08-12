@@ -11,6 +11,7 @@ import { appDeployService } from './app-deploy'
 import { installService } from './install-service'
 import { dockerVolumesService } from './docker-volumes'
 import { dockerImagesService } from './docker-images'
+import { securityScanService } from './security-scan'
 import { dockerNetworksService } from './docker-networks'
 import { auditLogService } from './audit-log'
 import { deployHistoryService } from './deploy-history'
@@ -935,6 +936,15 @@ function registerIpcHandlers(): void {
     }
   })
 
+  ipcMain.handle('image:removeBatch', async (_, serverId: string, imageIds: string[]) => {
+    try {
+      return await dockerImagesService.removeImages(serverId, imageIds)
+    } catch (error) {
+      log.error('image:removeBatch error:', error)
+      return { success: false, successCount: 0, failCount: imageIds.length, message: (error as Error).message }
+    }
+  })
+
   ipcMain.handle('image:prune', async (_, serverId: string) => {
     try {
       return await dockerImagesService.pruneImages(serverId)
@@ -950,6 +960,32 @@ function registerIpcHandlers(): void {
     } catch (error) {
       log.error('image:getInfo error:', error)
       return ''
+    }
+  })
+
+  // 镜像安全扫描 IPC 处理器
+  ipcMain.handle('security:scanImage', async (_, serverId: string, imageName: string) => {
+    try {
+      return await securityScanService.scanImage(serverId, imageName)
+    } catch (error) {
+      log.error('security:scanImage error:', error)
+      return {
+        success: false,
+        message: (error as Error).message,
+        trivyInstalled: false,
+        vulnerabilities: [],
+        summary: { critical: 0, high: 0, medium: 0, low: 0, negligible: 0, total: 0 },
+        scanTime: new Date().toISOString()
+      }
+    }
+  })
+
+  ipcMain.handle('security:installTrivy', async (_, serverId: string) => {
+    try {
+      return await securityScanService.installTrivy(serverId)
+    } catch (error) {
+      log.error('security:installTrivy error:', error)
+      return { success: false, message: (error as Error).message }
     }
   })
 

@@ -115,6 +115,14 @@ export interface SystemInfo {
   uptime: string
 }
 
+export interface DiskPartition {
+  device: string
+  mountPoint: string
+  total: string
+  used: string
+  percent: number
+}
+
 export interface HardwareInfo {
   cpuCores: number
   cpuModel: string
@@ -124,6 +132,7 @@ export interface HardwareInfo {
   diskTotal: string
   diskUsed: string
   diskPercent: number
+  diskPartitions: DiskPartition[]
 }
 
 export interface NetworkInfo {
@@ -230,6 +239,35 @@ export interface DockerImage {
   tag: string
   size: string
   created: string
+}
+
+export interface ScanVulnerability {
+  id: string
+  severity: 'critical' | 'high' | 'medium' | 'low' | 'negligible'
+  packageName: string
+  installedVersion: string
+  fixedVersion?: string
+  description: string
+  cveId?: string
+  cvssScore?: number
+}
+
+export interface ScanSummary {
+  critical: number
+  high: number
+  medium: number
+  low: number
+  negligible: number
+  total: number
+}
+
+export interface ScanImageResult {
+  success: boolean
+  message: string
+  trivyInstalled: boolean
+  vulnerabilities: ScanVulnerability[]
+  summary: ScanSummary
+  scanTime: string
 }
 
 export interface DockerNetworkInfo {
@@ -668,8 +706,13 @@ export interface ElectronAPI {
     getAll: (serverId: string) => Promise<DockerImage[]>
     pull: (serverId: string, imageName: string) => Promise<{ success: boolean; message: string }>
     remove: (serverId: string, imageId: string) => Promise<{ success: boolean; message: string }>
+    removeBatch: (serverId: string, imageIds: string[]) => Promise<{ success: boolean; successCount: number; failCount: number; message: string }>
     prune: (serverId: string) => Promise<PruneResult>
     getInfo: (serverId: string, imageId: string) => Promise<string>
+  }
+  security: {
+    scanImage: (serverId: string, imageName: string) => Promise<ScanImageResult>
+    installTrivy: (serverId: string) => Promise<{ success: boolean; message: string }>
   }
   volume: {
     getAll: (serverId: string) => Promise<VolumeInfo[]>
@@ -880,8 +923,13 @@ const electronAPI: ElectronAPI = {
     getAll: (serverId: string): Promise<DockerImage[]> => ipcRenderer.invoke('image:getAll', serverId),
     pull: (serverId: string, imageName: string): Promise<{ success: boolean; message: string }> => ipcRenderer.invoke('image:pull', serverId, imageName),
     remove: (serverId: string, imageId: string): Promise<{ success: boolean; message: string }> => ipcRenderer.invoke('image:remove', serverId, imageId),
+    removeBatch: (serverId: string, imageIds: string[]): Promise<{ success: boolean; successCount: number; failCount: number; message: string }> => ipcRenderer.invoke('image:removeBatch', serverId, imageIds),
     prune: (serverId: string): Promise<PruneResult> => ipcRenderer.invoke('image:prune', serverId),
     getInfo: (serverId: string, imageId: string): Promise<string> => ipcRenderer.invoke('image:getInfo', serverId, imageId)
+  },
+  security: {
+    scanImage: (serverId: string, imageName: string): Promise<ScanImageResult> => ipcRenderer.invoke('security:scanImage', serverId, imageName),
+    installTrivy: (serverId: string): Promise<{ success: boolean; message: string }> => ipcRenderer.invoke('security:installTrivy', serverId)
   },
   volume: {
     getAll: (serverId: string): Promise<VolumeInfo[]> => ipcRenderer.invoke('volume:getAll', serverId),

@@ -18,11 +18,40 @@ export interface PruneResult {
 
 class DockerImagesService {
   /**
+   * 将 Docker CreatedAt 解析为 UTC ISO 时间戳，前端再按本机时区显示
+   * 格式示例: "2026-08-12 19:13:03 +0800 CST" / "2026-08-12 15:30:00.123 +0000 UTC"
+   */
+  private parseCreatedAt(createdAt: string): string {
+    const trimmed = createdAt.trim()
+
+    // 仅对严格 ISO 格式（YYYY-MM-DDTHH:mm:ss(.sss)?(Z|±hh:mm)）直接解析
+    // 注意：不能用 new Date() 宽松解析 Docker 格式（"YYYY-MM-DD HH:mm:ss +0800 CST"），
+    // V8 会返回错误的绝对时间（比真实值多 14 小时）
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/i.test(trimmed)) {
+      const direct = new Date(trimmed)
+      if (!isNaN(direct.getTime())) {
+        return direct.toISOString()
+      }
+    }
+
+    // Docker 格式：兼容可选小数秒与时区偏移
+    // 有偏移按偏移解析；无偏移按服务器本地时区解析（通常与本机时区一致）
+    const match = trimmed.match(/(\d{4}-\d{2}-\d{2})[\sT](\d{2}:\d{2}:\d{2})(?:\.\d+)?(?:\s+([+-]\d{4}))?/)
+    if (!match) return trimmed
+
+    const [, date, time, offset] = match
+    const offsetWithColon = offset ? `${offset.slice(0, 3)}:${offset.slice(3)}` : ''
+    const parsed = new Date(`${date}T${time}${offsetWithColon}`)
+
+    return isNaN(parsed.getTime()) ? trimmed : parsed.toISOString()
+  }
+
+  /**
    * 获取远程服务器上的 Docker 镜像列表
    */
   async getImages(serverId: string): Promise<DockerImage[]> {
     try {
-      // 使用 docker images 命令获取镜像列表，输出格式为 JSON 便于解析
+      // 使用 docker images 命令获取镜像列表（不含悬空/中间层镜像），输出格式为 JSON 便于解析
       const result = await sshService.executeCommand(
         serverId,
         'docker images --format "{{.ID}}|{{.Repository}}|{{.Tag}}|{{.Size}}|{{.CreatedAt}}"',
@@ -47,7 +76,7 @@ class DockerImagesService {
             repository: parts[1].trim(),
             tag: parts[2].trim(),
             size: parts[3].trim(),
-            created: parts[4].trim()
+            created: this.parseCreatedAt(parts[4].trim())
           })
         }
       }
@@ -106,7 +135,7 @@ class DockerImagesService {
 
       const result = await sshService.executeCommand(
         serverId,
-        `docker rmi ${imageId}`,
+        `docker rmi -f ${imageId}`,
         0,
         1000,
         60000
@@ -122,6 +151,63 @@ class DockerImagesService {
     } catch (error) {
       log.error('removeImage error:', error)
       return { success: false, message: (error as Error).message }
+    }
+  }
+
+  /**
+   * 批量删除 Docker 镜像（单次 SSH 命令，避免逐条执行的延迟）
+   */
+  async removeImages(
+    serverId: string,
+    imageIds: string[]
+  ): Promise<{ success: boolean; successCount: number; failCount: number; message: string }> {
+    try {
+      const uniqueIds = [...new Set(imageIds.map(id => id.trim()).filter(id => id))]
+      if (uniqueIds.length === 0) {
+        return { success: false, successCount: 0, failCount: 0, message: '镜像ID不能为空' }
+      }
+
+      log.info(`Removing ${uniqueIds.length} images on server ${serverId}`)
+
+      const result = await sshService.executeCommand(
+        serverId,
+        `docker rmi -f ${uniqueIds.join(' ')} 2>&1`,
+        0,
+        1000,
+        120000
+      )
+
+      if (result.success) {
+        log.info(`Successfully removed ${uniqueIds.length} images`)
+        return {
+          success: true,
+          successCount: uniqueIds.length,
+          failCount: 0,
+          message: `成功删除 ${uniqueIds.length} 个镜像`
+        }
+      }
+
+      // 部分失败：docker rmi 对每个失败的镜像输出一条 "Error response from daemon" 错误
+      const stderr = result.stderr || ''
+      const errorLines = stderr.split('\n').filter(line => line.includes('Error response from daemon')).length
+      const failCount = Math.min(errorLines, uniqueIds.length)
+      const successCount = uniqueIds.length - failCount
+
+      log.warn(`Partial failure removing images: ${stderr}`)
+      return {
+        success: successCount > 0,
+        successCount,
+        failCount,
+        message: stderr || '删除镜像失败'
+      }
+    } catch (error) {
+      log.error('removeImages error:', error)
+      return {
+        success: false,
+        successCount: 0,
+        failCount: imageIds.length,
+        message: (error as Error).message
+      }
     }
   }
 

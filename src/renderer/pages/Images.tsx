@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Table,
   Card,
@@ -47,6 +47,18 @@ const Images: React.FC = () => {
   const [imageInfo, setImageInfo] = useState('')
   const [infoLoading, setInfoLoading] = useState(false)
   const [searchText, setSearchText] = useState('')
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
+  // 缓存选中的镜像对象（跨页/搜索过滤时仍可获取完整数据）
+  const selectedImagesRef = useRef<Map<string, DockerImage>>(new Map())
+  const [deleting, setDeleting] = useState(false)
+
+  // 格式化镜像创建时间：后端返回 UTC ISO，此处按本机时区显示
+  const formatCreated = (created: string): string => {
+    const d = new Date(created)
+    if (isNaN(d.getTime())) return created
+    const pad = (n: number) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+  }
 
   // 获取在线服务器列表
   const onlineServers = servers.filter(s => s.status === 'online')
@@ -73,6 +85,10 @@ const Images: React.FC = () => {
 
   // 当选择的服务器变化时加载镜像
   useEffect(() => {
+    // 切换服务器时清空选中
+    setSelectedRowKeys([])
+    selectedImagesRef.current.clear()
+
     if (selectedServerId) {
       loadImages()
     } else {
@@ -129,6 +145,48 @@ const Images: React.FC = () => {
       const err = error as Error
       message.error(err.message || t('image.deleteFailed'))
     }
+  }
+
+  // 批量删除镜像
+  const handleBatchDelete = () => {
+    if (!selectedServerId || selectedRowKeys.length === 0) return
+
+    const imagesToDelete = Array.from(selectedImagesRef.current.values())
+
+    Modal.confirm({
+      title: t('image.batchDeleteConfirm').replace('{count}', String(imagesToDelete.length)),
+      okText: t('common.yes'),
+      cancelText: t('common.no'),
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        setDeleting(true)
+        try {
+          const result = await window.electronAPI.image.removeBatch(
+            selectedServerId,
+            imagesToDelete.map(img => img.id)
+          )
+
+          if (result.failCount > 0) {
+            message.warning(
+              t('image.batchDeletePartial')
+                .replace('{success}', String(result.successCount))
+                .replace('{fail}', String(result.failCount))
+            )
+          } else {
+            message.success(t('image.batchDeleteSuccess').replace('{count}', String(result.successCount)))
+          }
+
+          setSelectedRowKeys([])
+          selectedImagesRef.current.clear()
+          loadImages()
+        } catch (error) {
+          const err = error as Error
+          message.error(err.message || t('image.deleteFailed'))
+        } finally {
+          setDeleting(false)
+        }
+      }
+    })
   }
 
   // 清理未使用镜像
@@ -227,7 +285,8 @@ const Images: React.FC = () => {
       title: t('image.created'),
       dataIndex: 'created',
       key: 'created',
-      sorter: (a: DockerImage, b: DockerImage) => a.created.localeCompare(b.created)
+      render: (created: string) => formatCreated(created),
+      sorter: (a: DockerImage, b: DockerImage) => new Date(a.created).getTime() - new Date(b.created).getTime()
     },
     {
       title: t('common.actions'),
@@ -244,6 +303,7 @@ const Images: React.FC = () => {
           </Tooltip>
           <Popconfirm
             title={t('image.confirmDelete')}
+            description={t('image.forceDeleteTip')}
             onConfirm={() => handleDelete(record)}
             okText={t('common.yes')}
             cancelText={t('common.no')}
@@ -323,6 +383,16 @@ const Images: React.FC = () => {
             >
               {t('image.prune')}
             </Button>
+            <Button
+              danger
+              icon={<DeleteOutlined />}
+              onClick={handleBatchDelete}
+              disabled={selectedRowKeys.length === 0}
+              loading={deleting}
+            >
+              {t('image.batchDelete')}
+              {selectedRowKeys.length > 0 && ` (${selectedRowKeys.length})`}
+            </Button>
             <Input
               placeholder={t('image.searchPlaceholder')}
               prefix={<SearchOutlined />}
@@ -340,12 +410,30 @@ const Images: React.FC = () => {
         <Table
           columns={columns}
           dataSource={filteredImages}
-          rowKey="id"
+          rowKey={(record: DockerImage) => `${record.id}-${record.repository}-${record.tag}`}
           loading={loading}
           locale={{ emptyText: t('common.noData') }}
+          rowSelection={{
+            selectedRowKeys,
+            onChange: (keys, rows) => {
+              // 移除取消选中的项
+              const keySet = new Set(keys.map(String))
+              selectedImagesRef.current.forEach((_, key) => {
+                if (!keySet.has(key)) selectedImagesRef.current.delete(key)
+              })
+              // 加入新选中的项（跨页也可用）
+              rows.forEach((row) => {
+                const img = row as DockerImage
+                selectedImagesRef.current.set(`${img.id}-${img.repository}-${img.tag}`, img)
+              })
+              setSelectedRowKeys(keys)
+            },
+            preserveSelectedRowKeys: true
+          }}
           pagination={{
-            pageSize: 10,
+            defaultPageSize: 10,
             showSizeChanger: true,
+            pageSizeOptions: ['10', '20', '50', '100'],
             showTotal: (total) => `${total} ${t('image.totalItems')}`
           }}
           size="middle"
