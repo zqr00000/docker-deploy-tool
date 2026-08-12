@@ -862,6 +862,9 @@
     "installingTrivy": "Trivy 未安装，正在自动安装（可能需要几分钟），请稍候...",
     "installTrivySuccess": "Trivy 安装成功",
     "installTrivyFailed": "Trivy 安装失败",
+    "proxy": "网络代理（客户端）",
+    "proxyPlaceholder": "如 http://192.168.1.100:7890，留空表示直连",
+    "proxyTip": "代理信息保存在客户端，执行需要外网的命令（安装 Trivy、下载漏洞数据库）时临时传入服务器使用，不写入服务器。代理地址需填服务器能访问到的地址，如客户端电脑的局域网 IP（代理客户端需开启\"允许局域网连接\"），格式：http://IP:端口",
     "vulnerabilities": "漏洞",
     "securityChecks": "安全检查",
     "scanHistory": "扫描历史",
@@ -877,6 +880,7 @@
     "cveId": "CVE ID",
     "cvssScore": "CVSS 分数",
     "description": "描述",
+    "remediation": "处理方法",
     "severityLevels": {
       "critical": "严重",
       "high": "高",

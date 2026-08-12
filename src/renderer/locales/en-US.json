@@ -847,6 +847,9 @@
     "installingTrivy": "Trivy is not installed. Installing automatically (may take a few minutes), please wait...",
     "installTrivySuccess": "Trivy installed successfully",
     "installTrivyFailed": "Trivy installation failed",
+    "proxy": "Network Proxy (Client)",
+    "proxyPlaceholder": "e.g., http://192.168.1.100:7890, leave empty for direct connection",
+    "proxyTip": "Proxy info is stored on the client and passed temporarily to the server when running commands that need external network (installing Trivy, downloading vulnerability DB). It is NOT written to the server. Use an address the server can reach, e.g., your client machine's LAN IP (enable \"Allow LAN\" in your proxy client). Format: http://IP:port",
     "vulnerabilities": "Vulnerabilities",
     "securityChecks": "Security Checks",
     "scanHistory": "Scan History",
@@ -862,6 +865,7 @@
     "cveId": "CVE ID",
     "cvssScore": "CVSS Score",
     "description": "Description",
+    "remediation": "Remediation",
     "severityLevels": {
       "critical": "Critical",
       "high": "High",

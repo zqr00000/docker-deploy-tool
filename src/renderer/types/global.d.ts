@@ -127,8 +127,8 @@ export interface ElectronAPI {
     getInfo: (serverId: string, imageId: string) => Promise<string>
   }
   security: {
-    scanImage: (serverId: string, imageName: string) => Promise<ScanImageResult>
-    installTrivy: (serverId: string) => Promise<{ success: boolean; message: string }>
+    scanImage: (serverId: string, imageName: string, proxy?: string) => Promise<ScanImageResult>
+    installTrivy: (serverId: string, proxy?: string) => Promise<{ success: boolean; message: string }>
   }
   volume: {
     getAll: (serverId: string) => Promise<VolumeInfo[]>

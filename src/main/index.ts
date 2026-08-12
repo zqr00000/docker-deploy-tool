@@ -964,9 +964,9 @@ function registerIpcHandlers(): void {
   })
 
   // 镜像安全扫描 IPC 处理器
-  ipcMain.handle('security:scanImage', async (_, serverId: string, imageName: string) => {
+  ipcMain.handle('security:scanImage', async (_, serverId: string, imageName: string, proxy?: string) => {
     try {
-      return await securityScanService.scanImage(serverId, imageName)
+      return await securityScanService.scanImage(serverId, imageName, proxy)
     } catch (error) {
       log.error('security:scanImage error:', error)
       return {
@@ -980,9 +980,9 @@ function registerIpcHandlers(): void {
     }
   })
 
-  ipcMain.handle('security:installTrivy', async (_, serverId: string) => {
+  ipcMain.handle('security:installTrivy', async (_, serverId: string, proxy?: string) => {
     try {
-      return await securityScanService.installTrivy(serverId)
+      return await securityScanService.installTrivy(serverId, proxy)
     } catch (error) {
       log.error('security:installTrivy error:', error)
       return { success: false, message: (error as Error).message }

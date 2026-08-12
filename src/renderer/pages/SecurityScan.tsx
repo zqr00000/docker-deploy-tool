@@ -20,7 +20,8 @@ import {
   Tooltip,
   Collapse,
   List,
-  Divider
+  Divider,
+  Input
 } from 'antd'
 import {
   ScanOutlined,
@@ -49,6 +50,7 @@ interface Vulnerability {
   description: string
   cveId?: string
   cvssScore?: number
+  remediation: string
 }
 
 interface ScanResult {
@@ -94,6 +96,8 @@ const SecurityScan: React.FC = () => {
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
   }
   const [selectedImage, setSelectedImage] = useState<string | undefined>(undefined)
+  // 网络代理配置（持久化），用于安装 trivy 和下载漏洞数据库
+  const [proxy, setProxy] = useState<string>(() => localStorage.getItem('securityScanProxy') || '')
   const [scanResults, setScanResults] = useState<ScanResult[]>([])
   const [currentScan, setCurrentScan] = useState<ScanResult | null>(null)
   const [scanning, setScanning] = useState(false)
@@ -172,21 +176,24 @@ const SecurityScan: React.FC = () => {
       })
     }, 800)
 
+    // 持久化代理配置
+    localStorage.setItem('securityScanProxy', proxy)
+
     try {
-      let result = await window.electronAPI.security.scanImage(selectedServer, imageName)
+      let result = await window.electronAPI.security.scanImage(selectedServer, imageName, proxy)
 
       // Trivy 未安装 → 自动安装后重试
       if (!result.trivyInstalled) {
         clearInterval(progressInterval)
         message.info(t('securityScan.installingTrivy'))
         setScanProgress(5)
-        const installResult = await window.electronAPI.security.installTrivy(selectedServer)
+        const installResult = await window.electronAPI.security.installTrivy(selectedServer, proxy)
         if (!installResult.success) {
           message.error(`${t('securityScan.installTrivyFailed')}: ${installResult.message}`)
           return
         }
         message.success(t('securityScan.installTrivySuccess'))
-        result = await window.electronAPI.security.scanImage(selectedServer, imageName)
+        result = await window.electronAPI.security.scanImage(selectedServer, imageName, proxy)
       }
 
       if (!result.success) {
@@ -292,6 +299,15 @@ const SecurityScan: React.FC = () => {
     return <InfoCircleOutlined style={{ color: '#1890ff' }} />
   }
 
+  // 严重程度排序权重
+  const severityWeight: Record<string, number> = {
+    critical: 5,
+    high: 4,
+    medium: 3,
+    low: 2,
+    negligible: 1
+  }
+
   // 漏洞列表表格列
   const vulnerabilityColumns = [
     {
@@ -299,6 +315,9 @@ const SecurityScan: React.FC = () => {
       dataIndex: 'severity',
       key: 'severity',
       width: 100,
+      sorter: (a: Vulnerability, b: Vulnerability) =>
+        (severityWeight[a.severity] || 0) - (severityWeight[b.severity] || 0),
+      defaultSortOrder: 'descend' as const,
       render: (severity: string) => (
         <Tag color={getSeverityColor(severity)}>
           {t(`securityScan.severityLevels.${severity}`)}
@@ -344,6 +363,17 @@ const SecurityScan: React.FC = () => {
       dataIndex: 'description',
       key: 'description',
       ellipsis: true
+    },
+    {
+      title: t('securityScan.remediation'),
+      dataIndex: 'remediation',
+      key: 'remediation',
+      width: 220,
+      render: (text: string) => (
+        <Text type={text.startsWith('升级') ? 'success' : 'warning'} style={{ fontSize: 12 }}>
+          {text}
+        </Text>
+      )
     }
   ]
 
@@ -612,6 +642,22 @@ const SecurityScan: React.FC = () => {
               </Button>
             </Col>
           </Row>
+
+          {/* 网络代理配置 */}
+          <div>
+            <Text strong>{t('securityScan.proxy')}:</Text>
+            <Space.Compact style={{ width: '100%', marginTop: 8 }}>
+              <Input
+                placeholder={t('securityScan.proxyPlaceholder')}
+                value={proxy}
+                onChange={(e) => setProxy(e.target.value)}
+                allowClear
+              />
+              <Tooltip title={t('securityScan.proxyTip')}>
+                <Button icon={<InfoCircleOutlined />} />
+              </Tooltip>
+            </Space.Compact>
+          </div>
 
           {scanning && (
             <div>

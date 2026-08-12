@@ -250,6 +250,7 @@ export interface ScanVulnerability {
   description: string
   cveId?: string
   cvssScore?: number
+  remediation: string
 }
 
 export interface ScanSummary {
@@ -711,8 +712,8 @@ export interface ElectronAPI {
     getInfo: (serverId: string, imageId: string) => Promise<string>
   }
   security: {
-    scanImage: (serverId: string, imageName: string) => Promise<ScanImageResult>
-    installTrivy: (serverId: string) => Promise<{ success: boolean; message: string }>
+    scanImage: (serverId: string, imageName: string, proxy?: string) => Promise<ScanImageResult>
+    installTrivy: (serverId: string, proxy?: string) => Promise<{ success: boolean; message: string }>
   }
   volume: {
     getAll: (serverId: string) => Promise<VolumeInfo[]>
@@ -928,8 +929,8 @@ const electronAPI: ElectronAPI = {
     getInfo: (serverId: string, imageId: string): Promise<string> => ipcRenderer.invoke('image:getInfo', serverId, imageId)
   },
   security: {
-    scanImage: (serverId: string, imageName: string): Promise<ScanImageResult> => ipcRenderer.invoke('security:scanImage', serverId, imageName),
-    installTrivy: (serverId: string): Promise<{ success: boolean; message: string }> => ipcRenderer.invoke('security:installTrivy', serverId)
+    scanImage: (serverId: string, imageName: string, proxy?: string): Promise<ScanImageResult> => ipcRenderer.invoke('security:scanImage', serverId, imageName, proxy),
+    installTrivy: (serverId: string, proxy?: string): Promise<{ success: boolean; message: string }> => ipcRenderer.invoke('security:installTrivy', serverId, proxy)
   },
   volume: {
     getAll: (serverId: string): Promise<VolumeInfo[]> => ipcRenderer.invoke('volume:getAll', serverId),

@@ -10,6 +10,7 @@ export interface ScanVulnerability {
   description: string
   cveId?: string
   cvssScore?: number
+  remediation: string
 }
 
 export interface ScanSummary {
@@ -48,6 +49,13 @@ class SecurityScanService {
     return { critical: 0, high: 0, medium: 0, low: 0, negligible: 0, total: 0 }
   }
 
+  /** 构造代理环境变量前缀（配置了代理时生效） */
+  private proxyEnv(proxy?: string): string {
+    if (!proxy || !proxy.trim()) return ''
+    const p = proxy.trim()
+    return `export HTTPS_PROXY='${p}' HTTP_PROXY='${p}' ALL_PROXY='${p}' NO_PROXY='localhost,127.0.0.1,::1'; `
+  }
+
   private mapSeverity(sev: string): ScanVulnerability['severity'] {
     switch ((sev || '').toUpperCase()) {
       case 'CRITICAL': return 'critical'
@@ -75,13 +83,14 @@ class SecurityScanService {
   }
 
   /** 在服务器上自动安装 trivy */
-  async installTrivy(serverId: string): Promise<{ success: boolean; message: string }> {
+  async installTrivy(serverId: string, proxy?: string): Promise<{ success: boolean; message: string }> {
     try {
       log.info(`Installing trivy on server ${serverId}`)
+      const env = this.proxyEnv(proxy)
       // 优先官方 GitHub 源，下载失败时自动降级到代理加速源
       const r = await sshService.executeCommand(
         serverId,
-        `(curl -sfL --fail ${TRIVY_INSTALL_URL} -o /tmp/trivy-install.sh && sh /tmp/trivy-install.sh -b /usr/local/bin) || (curl -sfL --fail ${TRIVY_INSTALL_URL_MIRROR} -o /tmp/trivy-install.sh && sh /tmp/trivy-install.sh -b /usr/local/bin) 2>&1 && trivy --version && rm -f /tmp/trivy-install.sh`,
+        `${env}(curl -sfL --fail ${TRIVY_INSTALL_URL} -o /tmp/trivy-install.sh && sh /tmp/trivy-install.sh -b /usr/local/bin) || (curl -sfL --fail ${TRIVY_INSTALL_URL_MIRROR} -o /tmp/trivy-install.sh && sh /tmp/trivy-install.sh -b /usr/local/bin) 2>&1 && trivy --version && rm -f /tmp/trivy-install.sh`,
         0,
         1000,
         300000
@@ -119,15 +128,23 @@ class SecurityScanService {
         const cvssRedhat = v?.CVSS?.redhat?.V3Score
         const cvss = typeof cvssNvd === 'number' ? cvssNvd : typeof cvssRedhat === 'number' ? cvssRedhat : undefined
 
+        // 处理方法：有修复版本则升级，否则提示关注公告
+        const fixed = v.FixedVersion
+        const pkgName = v.PkgName || 'unknown'
+        const remediation = fixed
+          ? `升级 ${pkgName} 至 ${fixed}`
+          : '暂无修复版本，请关注官方安全公告'
+
         vulnerabilities.push({
-          id: `${v.VulnerabilityID || 'unknown'}-${v.PkgName || 'pkg'}-${vulnerabilities.length}`,
+          id: `${v.VulnerabilityID || 'unknown'}-${pkgName}-${vulnerabilities.length}`,
           severity: this.mapSeverity(v.Severity),
-          packageName: v.PkgName || 'unknown',
+          packageName: pkgName,
           installedVersion: v.InstalledVersion || 'unknown',
-          fixedVersion: v.FixedVersion || undefined,
+          fixedVersion: fixed || undefined,
           description: v.Description || v.Title || v.VulnerabilityID || '暂无描述',
           cveId: v.VulnerabilityID || undefined,
-          cvssScore: typeof cvss === 'number' ? Math.round(cvss * 10) / 10 : undefined
+          cvssScore: typeof cvss === 'number' ? Math.round(cvss * 10) / 10 : undefined,
+          remediation
         })
       }
     }
@@ -136,7 +153,7 @@ class SecurityScanService {
   }
 
   /** 扫描镜像漏洞 */
-  async scanImage(serverId: string, imageName: string): Promise<ScanImageResult> {
+  async scanImage(serverId: string, imageName: string, proxy?: string): Promise<ScanImageResult> {
     const empty = this.emptySummary()
     const now = new Date().toISOString()
 
@@ -158,12 +175,13 @@ class SecurityScanService {
       }
 
       log.info(`Scanning image ${imageName} on server ${serverId}`)
+      const env = this.proxyEnv(proxy)
       // --db-repository 可多次指定，trivy 按顺序尝试，官方源失败自动降级到国内镜像源
       const dbArgs = TRIVY_DB_REPOSITORIES.map(r => `--db-repository ${r}`).join(' ')
       const javaDbArgs = TRIVY_JAVA_DB_REPOSITORIES.map(r => `--java-db-repository ${r}`).join(' ')
       const result = await sshService.executeCommand(
         serverId,
-        `trivy image ${dbArgs} ${javaDbArgs} --format json --no-progress --quiet ${imageName} 2>&1`,
+        `${env}trivy image ${dbArgs} ${javaDbArgs} --format json --no-progress --quiet ${imageName} 2>&1`,
         0,
         1000,
         600000 // 首次扫描需下载漏洞数据库，最长 10 分钟
