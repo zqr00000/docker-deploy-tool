@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, safeStorage } from 'electron'
 import { join } from 'path'
 import { writeFile, readFile } from 'fs/promises'
 import https from 'https'
@@ -2297,6 +2297,25 @@ function registerIpcHandlers(): void {
 
   // ==================== 运维 Agent (Mastra) IPC ====================
 
+  // API Key 安全存储（Electron safeStorage）
+  ipcMain.handle('secure:encrypt', (_e, text: string) => {
+    try {
+      if (!safeStorage.isEncryptionAvailable()) return { success: false }
+      return { success: true, data: safeStorage.encryptString(text).toString('base64') }
+    } catch (error) {
+      return { success: false, error: (error as Error).message }
+    }
+  })
+
+  ipcMain.handle('secure:decrypt', (_e, cipher: string) => {
+    try {
+      if (!safeStorage.isEncryptionAvailable()) return { success: false }
+      return { success: true, data: safeStorage.decryptString(Buffer.from(cipher, 'base64')) }
+    } catch (error) {
+      return { success: false, error: (error as Error).message }
+    }
+  })
+
   // 设置 Agent 模型配置（配置变化时重建 Agent）
   ipcMain.handle('opsAgent:setConfig', (_, config: any) => {
     try {
@@ -2344,8 +2363,8 @@ function registerIpcHandlers(): void {
         signal: controller.signal,
         callbacks: {
           onDelta: (delta) => sendEvent('opsAgent:chunk', { requestId, delta }),
-          onToolCall: (toolName, args) => sendEvent('opsAgent:toolCall', { requestId, toolName, args }),
-          onToolResult: (toolName, success, output) => sendEvent('opsAgent:toolResult', { requestId, toolName, success, output }),
+          onToolCall: (toolName, args, toolCallId) => sendEvent('opsAgent:toolCall', { requestId, toolName, args, toolCallId }),
+          onToolResult: (toolName, success, output, toolCallId) => sendEvent('opsAgent:toolResult', { requestId, toolName, success, output, toolCallId }),
           onError: (error) => sendEvent('opsAgent:error', { requestId, error }),
           onDone: () => sendEvent('opsAgent:done', { requestId })
         }
@@ -2355,6 +2374,8 @@ function registerIpcHandlers(): void {
       return { success: true, requestId }
     } catch (error) {
       log.error('opsAgent:chat error:', error)
+      // 异常路径也清理 AbortController，避免 Map 泄漏
+      opsAgentStreams.delete(requestId)
       sendEvent('opsAgent:error', { requestId, error: (error as Error).message })
       return { success: false, error: (error as Error).message }
     }

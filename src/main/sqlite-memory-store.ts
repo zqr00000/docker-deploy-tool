@@ -151,7 +151,7 @@ export async function createSqliteMemoryStorage(db: Database.Database): Promise<
     // ==================== Messages ====================
 
     async listMessages(args: any): Promise<any> {
-      const { threadId, resourceId, page = 0, perPage = 100 } = args || {}
+      const { threadId, resourceId, page = 0, perPage = 100, orderBy } = args || {}
       const threadIds = Array.isArray(threadId) ? threadId : [threadId]
       const placeholders = threadIds.map(() => '?').join(',')
       const params: any[] = [...threadIds]
@@ -161,13 +161,20 @@ export async function createSqliteMemoryStorage(db: Database.Database): Promise<
         params.push(resourceId)
       }
       const total = (this.db.prepare(`SELECT COUNT(*) as c FROM mastra_messages${where}`).get(...params) as any).c
-      const rows = this.db.prepare(`SELECT * FROM mastra_messages${where} ORDER BY created_at ASC LIMIT ? OFFSET ?`)
-        .all(...params, perPage, page * perPage) as any[]
+      // 支持 orderBy（createdAt/updatedAt 升序或降序）
+      const field = orderBy?.field === 'updatedAt' ? 'updated_at' : 'created_at'
+      const dir = (orderBy?.direction || 'ASC').toUpperCase() === 'DESC' ? 'DESC' : 'ASC'
+      const orderClause = ` ORDER BY ${field} ${dir}`
+      // perPage === false 表示返回全部（不限制）；否则分页
+      const rows = perPage === false
+        ? this.db.prepare(`SELECT * FROM mastra_messages${where}${orderClause}`).all(...params) as any[]
+        : this.db.prepare(`SELECT * FROM mastra_messages${where}${orderClause} LIMIT ? OFFSET ?`)
+            .all(...params, perPage, page * perPage) as any[]
       return {
         messages: rows.map(r => this.rowToMessage(r)),
         total,
         page,
-        perPage
+        perPage: perPage === false ? false : perPage
       }
     }
 
@@ -197,13 +204,17 @@ export async function createSqliteMemoryStorage(db: Database.Database): Promise<
     }
 
     async updateMessages({ messages }: { messages: any[] }): Promise<any> {
+      if (messages.length === 0) return []
+      // 批量查询已有消息，避免逐条 N+1
+      const existing = await this.listMessagesById({ messageIds: messages.map(m => m.id) })
+      const existingMap = new Map(existing.messages.map(m => [m.id, m]))
       const stmt = this.db.prepare(`
         UPDATE mastra_messages SET content = ?, role = ?, type = ?, metadata = ?, updated_at = ? WHERE id = ?
       `)
       const updated: DbMessage[] = []
       for (const msg of messages) {
-        const existing = await this.listMessagesById({ messageIds: [msg.id] })
-        const merged = { ...(existing.messages[0] || {}), ...msg }
+        const prev = existingMap.get(msg.id)
+        const merged = { ...(prev || {}), ...msg }
         stmt.run(
           JSON.stringify(msg.content ?? merged.content ?? {}),
           msg.role ?? merged.role ?? null,

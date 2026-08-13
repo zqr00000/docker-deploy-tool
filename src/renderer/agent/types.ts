@@ -15,6 +15,18 @@ export type DiagnosticStatus = 'healthy' | 'warning' | 'critical'
 
 export type AIProvider = 'openai' | 'anthropic' | 'azure' | 'gemini' | 'ollama' | 'custom'
 
+// 提供商档案（参考 Netcatty 多提供商管理：providers + activeProviderId）
+export interface ProviderProfile {
+  id: string
+  name: string
+  provider: AIProvider
+  apiKey: string
+  model: string
+  baseUrl: string
+  azureEndpoint?: string
+  azureDeployment?: string
+}
+
 export interface ModelConfig {
   provider: AIProvider
   apiKey: string
@@ -34,6 +46,20 @@ export interface ModelConfig {
   geminiBaseUrl?: string
   // Ollama 特有配置
   ollamaBaseUrl?: string
+  // Agent 行为配置
+  commandTimeout?: number
+  maxIterations?: number
+  // 命令黑名单（命中直接拒绝执行，无需审批）
+  commandBlocklist?: string[]
+  // 快捷消息（空状态快捷命令，可编辑）
+  quickMessages?: string[]
+  // 审批模式：manual=高危需人工审批（默认）；auto=自动批准高危操作
+  approvalMode?: 'manual' | 'auto'
+  // 启用 Web 搜索工具（AI 可联网查询报错/命令用法）
+  enableWebSearch?: boolean
+  // 多提供商档案：当前激活档案 id + 档案列表（扁平字段为激活档案的镜像）
+  activeProfileId?: string
+  providerProfiles?: ProviderProfile[]
 }
 
 // 提供商预设配置
@@ -65,10 +91,18 @@ export interface ChatMessage {
   commands?: ExecutedCommand[]
   toolCalls?: ToolCallRecord[]
   metadata?: MessageMetadata
+  // 按真实执行顺序交错存储文本与工具调用（渲染优先）
+  segments?: MessageSegment[]
 }
+
+// 消息分段：文本或工具调用，渲染时按数组顺序展示
+export type MessageSegment =
+  | { type: 'text'; text: string }
+  | { type: 'tool'; toolCall: ToolCallRecord }
 
 // Function Calling 工具调用记录（用于展示）
 export interface ToolCallRecord {
+  toolCallId?: string
   name: string
   params: any
   result: string
@@ -429,7 +463,30 @@ export const DEFAULT_MODEL_CONFIG: ModelConfig = {
 请根据用户需求提供专业的服务器运维建议。`,
   enableSandbox: true,
   enableHistory: true,
-  maxHistoryItems: 100
+  maxHistoryItems: 100,
+  // Agent 行为配置（参考 Netcatty AI 设置）
+  commandTimeout: 30000,
+  maxIterations: 15,
+  commandBlocklist: ['rm -rf /', 'mkfs.', 'dd if=/dev/zero', ':(){:|:&};:'],
+  quickMessages: [
+    '请对当前服务器做一次综合健康检查',
+    '列出当前服务器上运行的所有 Docker 容器',
+    '查看服务器 CPU、内存、磁盘使用率',
+    '查看当前服务器的错误日志'
+  ],
+  approvalMode: 'manual',
+  enableWebSearch: false,
+  activeProfileId: 'profile-default',
+  providerProfiles: [
+    {
+      id: 'profile-default',
+      name: '默认配置',
+      provider: 'openai',
+      apiKey: '',
+      model: '',
+      baseUrl: 'https://api.openai.com/v1'
+    }
+  ]
 }
 
 export const RISK_PATTERNS = {

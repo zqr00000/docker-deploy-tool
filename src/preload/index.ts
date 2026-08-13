@@ -783,6 +783,10 @@ export interface ElectronAPI {
   ai: {
     getModels: (provider: string, apiKey: string, baseUrl?: string) => Promise<{ success: boolean; data?: any[]; error?: string }>
   }
+  secure: {
+    encrypt: (text: string) => Promise<{ success: boolean; data?: string; error?: string }>
+    decrypt: (cipher: string) => Promise<{ success: boolean; data?: string; error?: string }>
+  }
   opsAgent: {
     setConfig: (config: any) => Promise<{ success: boolean; error?: string }>
     getConfig: () => Promise<{ success: boolean; data?: any; error?: string }>
@@ -1056,6 +1060,10 @@ const electronAPI: ElectronAPI = {
   ai: {
     getModels: (provider: string, apiKey: string, baseUrl?: string): Promise<{ success: boolean; data?: any[]; error?: string }> => ipcRenderer.invoke('ai:getModels', provider, apiKey, baseUrl)
   },
+  secure: {
+    encrypt: (text: string): Promise<{ success: boolean; data?: string; error?: string }> => ipcRenderer.invoke('secure:encrypt', text),
+    decrypt: (cipher: string): Promise<{ success: boolean; data?: string; error?: string }> => ipcRenderer.invoke('secure:decrypt', cipher)
+  },
   opsAgent: {
     setConfig: (config: any): Promise<{ success: boolean; error?: string }> => ipcRenderer.invoke('opsAgent:setConfig', config),
     getConfig: (): Promise<{ success: boolean; data?: any; error?: string }> => ipcRenderer.invoke('opsAgent:getConfig'),
@@ -1067,13 +1075,13 @@ const electronAPI: ElectronAPI = {
       ipcRenderer.on('opsAgent:chunk', listener)
       return () => { ipcRenderer.removeListener('opsAgent:chunk', listener) }
     },
-    onToolCall: (callback: (payload: { requestId: string; toolName: string; args: any }) => void): (() => void) => {
-      const listener = (_e: any, payload: { requestId: string; toolName: string; args: any }) => callback(payload)
+    onToolCall: (callback: (payload: { requestId: string; toolName: string; args: any; toolCallId?: string }) => void): (() => void) => {
+      const listener = (_e: any, payload: { requestId: string; toolName: string; args: any; toolCallId?: string }) => callback(payload)
       ipcRenderer.on('opsAgent:toolCall', listener)
       return () => { ipcRenderer.removeListener('opsAgent:toolCall', listener) }
     },
-    onToolResult: (callback: (payload: { requestId: string; toolName: string; success: boolean; output: any }) => void): (() => void) => {
-      const listener = (_e: any, payload: { requestId: string; toolName: string; success: boolean; output: any }) => callback(payload)
+    onToolResult: (callback: (payload: { requestId: string; toolName: string; success: boolean; output: any; toolCallId?: string }) => void): (() => void) => {
+      const listener = (_e: any, payload: { requestId: string; toolName: string; success: boolean; output: any; toolCallId?: string }) => callback(payload)
       ipcRenderer.on('opsAgent:toolResult', listener)
       return () => { ipcRenderer.removeListener('opsAgent:toolResult', listener) }
     },

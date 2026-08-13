@@ -63,20 +63,23 @@ export class PersistenceManager {
     }
   }
 
-  // 获取所有会话
+  // 获取所有会话（一次遍历 localStorage，避免索引逐条读取的 N+1）
   async getAllSessions(): Promise<ChatSession[]> {
     try {
-      const index = this.getSessionIndex()
       const sessions: ChatSession[] = []
-
-      for (const item of index) {
-        const session = await this.loadSession(item.id)
-        if (session) {
-          sessions.push(session)
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i)
+        if (key?.startsWith('session-') && key !== 'session-index') {
+          const data = localStorage.getItem(key)
+          if (data) {
+            try {
+              const session = JSON.parse(data)
+              if (session && session.id) sessions.push(session)
+            } catch { /* 忽略损坏的会话数据 */ }
+          }
         }
       }
-
-      return sessions.sort((a, b) => 
+      return sessions.sort((a, b) =>
         new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
       )
     } catch (error) {

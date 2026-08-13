@@ -695,6 +695,20 @@ body {
   box-shadow: 0 6px 20px rgba(0, 148, 120, 0.28);
 }
 
+/* AI 消息头像（ChatGPT 式左侧头像列） */
+.ai-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #00d4aa 0%, #58a6ff 100%);
+  box-shadow: 0 0 12px rgba(0, 212, 170, 0.35), inset 0 0 0 1px rgba(255, 255, 255, 0.15);
+}
+
 /* 工具卡片 hover 提亮 */
 .tool-card {
   transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
@@ -761,6 +775,124 @@ body {
   background: #00d4aa;
   border-radius: 1px;
   animation: blink 1s step-start infinite;
+}
+
+/* ====== 模型配置面板 - 视觉增强 ====== */
+
+/* 配置卡片 */
+.config-card {
+  background: rgba(13, 17, 23, 0.55);
+  border: 1px solid #21262d;
+  border-radius: 12px;
+  padding: 14px 16px;
+  transition: border-color 0.2s ease;
+}
+.config-card:hover {
+  border-color: rgba(48, 54, 61, 1);
+}
+
+/* 配置卡片标题 */
+.config-card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #e6edf3;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed rgba(48, 54, 61, 0.6);
+}
+
+/* 字段标签 */
+.field-label {
+  display: block;
+  color: #8b949e;
+  font-size: 10px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+/* 提供商选择卡片 */
+.provider-chip {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  border: 1px solid #21262d;
+  background: rgba(13, 17, 23, 0.6);
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+.provider-chip:hover {
+  border-color: rgba(0, 212, 170, 0.4);
+  background: rgba(0, 212, 170, 0.05);
+  transform: translateY(-1px);
+}
+.provider-chip.active {
+  border-color: rgba(0, 212, 170, 0.55);
+  background: rgba(0, 212, 170, 0.09);
+  box-shadow: 0 0 14px rgba(0, 212, 170, 0.12), inset 0 0 0 1px rgba(0, 212, 170, 0.2);
+}
+
+/* 提供商品牌圆点 */
+.provider-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 0 6px currentColor;
+}
+
+/* ====== 工作台左侧边栏 ====== */
+
+/* 边栏列表项 */
+.agent-sidebar-item {
+  transition: background 0.15s ease;
+}
+.agent-sidebar-item:hover {
+  background: rgba(48, 54, 61, 0.35);
+}
+.agent-sidebar-item.active {
+  background: rgba(0, 212, 170, 0.08);
+  box-shadow: inset 2px 0 0 rgba(0, 212, 170, 0.7);
+}
+
+/* 列表项操作按钮（默认隐藏，hover 显示） */
+.agent-sidebar-actions {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  flex-shrink: 0;
+}
+.agent-sidebar-item:hover .agent-sidebar-actions {
+  opacity: 1;
+}
+
+/* 边栏滚动条 */
+.agent-sidebar ::-webkit-scrollbar {
+  width: 4px;
+}
+.agent-sidebar ::-webkit-scrollbar-thumb {
+  background: #21262d;
+}
+
+/* ====== 配置抽屉分组导航（参考 Netcatty SettingsPage 垂直 Tabs） ====== */
+.agent-config-nav {
+  color: #8b949e;
+  transition: background 0.15s ease, color 0.15s ease;
+  user-select: none;
+}
+.agent-config-nav:hover {
+  background: rgba(48, 54, 61, 0.4);
+  color: #e6edf3;
+}
+.agent-config-nav.active {
+  background: rgba(0, 212, 170, 0.1);
+  color: #00d4aa;
+  box-shadow: inset 2px 0 0 rgba(0, 212, 170, 0.7);
 }
 
 /* ====== Scrollbar Styling ====== */

@@ -269,6 +269,10 @@ export interface ElectronAPI {
   ai: {
     getModels: (provider: string, apiKey: string, baseUrl?: string) => Promise<{ success: boolean; data?: any[]; error?: string }>
   }
+  secure: {
+    encrypt: (text: string) => Promise<{ success: boolean; data?: string; error?: string }>
+    decrypt: (cipher: string) => Promise<{ success: boolean; data?: string; error?: string }>
+  }
   opsAgent: {
     setConfig: (config: any) => Promise<{ success: boolean; error?: string }>
     getConfig: () => Promise<{ success: boolean; data?: any; error?: string }>
@@ -276,8 +280,8 @@ export interface ElectronAPI {
     cancel: (requestId: string) => Promise<{ success: boolean; error?: string }>
     approval: (id: string, approved: boolean) => Promise<{ success: boolean }>
     onChunk: (callback: (payload: { requestId: string; delta: string }) => void) => () => void
-    onToolCall: (callback: (payload: { requestId: string; toolName: string; args: any }) => void) => () => void
-    onToolResult: (callback: (payload: { requestId: string; toolName: string; success: boolean; output: any }) => void) => () => void
+    onToolCall: (callback: (payload: { requestId: string; toolName: string; args: any; toolCallId?: string }) => void) => () => void
+    onToolResult: (callback: (payload: { requestId: string; toolName: string; success: boolean; output: any; toolCallId?: string }) => void) => () => void
     onError: (callback: (payload: { requestId: string; error: string }) => void) => () => void
     onDone: (callback: (payload: { requestId: string }) => void) => () => void
     onApprovalRequest: (callback: (payload: { id: string; action: string; riskLevel: string }) => void) => () => void
