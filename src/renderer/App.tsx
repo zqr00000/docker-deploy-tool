@@ -1,4 +1,4 @@
-import React, { useEffect, Suspense, lazy } from 'react'
+﻿import React, { useEffect, Suspense, lazy } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { ConfigProvider, App as AntApp, theme, Spin } from 'antd'
 import { useTranslation } from 'react-i18next'
@@ -8,33 +8,34 @@ import { ServerProvider } from './context/ServerContext'
 import i18n from './i18n'
 
 // 路由级别的懒加载 - 减少初始加载的 JavaScript 大小
-const ServerList = lazy(() => import('./pages/ServerList'))
-const ServerDetail = lazy(() => import('./pages/ServerDetail'))
-const ServerGroups = lazy(() => import('./pages/ServerGroups'))
-const Templates = lazy(() => import('./pages/Templates'))
-const Apps = lazy(() => import('./pages/Apps'))
-const AppDetail = lazy(() => import('./pages/AppDetail'))
-const Deploy = lazy(() => import('./pages/Deploy'))
-const BatchDeploy = lazy(() => import('./pages/BatchDeploy'))
-const Images = lazy(() => import('./pages/Images'))
-const Volumes = lazy(() => import('./pages/Volumes'))
-const Networks = lazy(() => import('./pages/Networks'))
+const ServerList = lazy(() => import('./pages/server/ServerList'))
+const ServerDetail = lazy(() => import('./pages/server/ServerDetail'))
+const ServerGroups = lazy(() => import('./pages/server/ServerGroups'))
+const Templates = lazy(() => import('./pages/deploy/Templates'))
+const Apps = lazy(() => import('./pages/deploy/Apps'))
+const AppDetail = lazy(() => import('./pages/deploy/AppDetail'))
+const Deploy = lazy(() => import('./pages/deploy/Deploy'))
+const BatchDeploy = lazy(() => import('./pages/deploy/BatchDeploy'))
+const Images = lazy(() => import('./pages/docker/Images'))
+const Volumes = lazy(() => import('./pages/docker/Volumes'))
+const Networks = lazy(() => import('./pages/docker/Networks'))
 
-const Settings = lazy(() => import('./pages/Settings'))
-const AuditLog = lazy(() => import('./pages/AuditLog'))
-const Alerts = lazy(() => import('./pages/Alerts'))
-const DeployHistory = lazy(() => import('./pages/DeployHistory'))
-const ScheduledTasks = lazy(() => import('./pages/ScheduledTasks'))
-const HealthCheck = lazy(() => import('./pages/HealthCheck'))
-const ComposeEditor = lazy(() => import('./pages/ComposeEditor'))
-const ResourceReports = lazy(() => import('./pages/ResourceReports'))
-const Dashboard = lazy(() => import('./pages/Dashboard'))
-const BatchOperations = lazy(() => import('./pages/BatchOperations'))
-const ContainerPerformance = lazy(() => import('./pages/ContainerPerformance'))
-const BackupRestore = lazy(() => import('./pages/BackupRestore'))
-const SecurityScan = lazy(() => import('./pages/SecurityScan'))
-const CicdIntegration = lazy(() => import('./pages/CicdIntegration'))
-const AgentTerminal = lazy(() => import('./pages/AgentTerminal'))
+const Settings = lazy(() => import('./pages/system/Settings'))
+const AuditLog = lazy(() => import('./pages/system/AuditLog'))
+const Alerts = lazy(() => import('./pages/monitor/Alerts'))
+const DeployHistory = lazy(() => import('./pages/deploy/DeployHistory'))
+const ScheduledTasks = lazy(() => import('./pages/ops/ScheduledTasks'))
+const HealthCheck = lazy(() => import('./pages/ops/HealthCheck'))
+const ComposeEditor = lazy(() => import('./pages/deploy/ComposeEditor'))
+const ResourceReports = lazy(() => import('./pages/monitor/ResourceReports'))
+const Dashboard = lazy(() => import('./pages/overview/Dashboard'))
+const BatchOperations = lazy(() => import('./pages/deploy/BatchOperations'))
+const ContainerPerformance = lazy(() => import('./pages/docker/ContainerPerformance'))
+const BackupRestore = lazy(() => import('./pages/ops/BackupRestore'))
+const SecurityScan = lazy(() => import('./pages/ops/SecurityScan'))
+const CicdIntegration = lazy(() => import('./pages/deploy/CicdIntegration'))
+const AgentTerminal = lazy(() => import('./pages/agent/AgentTerminal'))
+const ShellScripts = lazy(() => import('./pages/ops/ShellScripts'))
 
 type ThemeMode = 'system' | 'dark' | 'light'
 
@@ -144,6 +145,7 @@ const App: React.FC = () => {
                     <Route path="/health-check" element={<HealthCheck />} />
                     <Route path="/resource-reports" element={<ResourceReports />} />
                     <Route path="/compose-editor" element={<ComposeEditor />} />
+                    <Route path="/shell-scripts" element={<ShellScripts />} />
                     <Route path="/settings" element={<Settings />} />
                   </Routes>
                 </Suspense>

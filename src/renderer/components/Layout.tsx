@@ -26,8 +26,10 @@ import {
   QuestionCircleOutlined,
   SafetyCertificateOutlined,
   CodeOutlined,
-  RobotOutlined
+  RobotOutlined,
+  CloudUploadOutlined
 } from '@ant-design/icons'
+import type { MenuProps } from 'antd'
 import LanguageSwitcher from './LanguageSwitcher'
 import Logo from './Logo'
 import GlobalSearch from './GlobalSearch'
@@ -41,28 +43,79 @@ interface LayoutProps {
 }
 
 // 菜单项配置 - 提取到组件外部避免每次渲染创建新对象
-const MENU_ITEM_CONFIG = [
+// 支持 children 形成父子级菜单（子目录）
+interface MenuItemConfig {
+  key: string
+  iconKey?: string
+  labelKey: string
+  children?: MenuItemConfig[]
+}
+
+const MENU_ITEM_CONFIG: MenuItemConfig[] = [
   { key: 'dashboard', iconKey: 'DashboardOutlined', labelKey: 'menu.dashboard' },
-  { key: 'servers', iconKey: 'CloudServerOutlined', labelKey: 'menu.servers' },
-  { key: 'templates', iconKey: 'FileTextOutlined', labelKey: 'menu.templates' },
-  { key: 'apps', iconKey: 'AppstoreOutlined', labelKey: 'menu.apps' },
-  { key: 'batch-operations', iconKey: 'AppstoreOutlined', labelKey: 'menu.batchOperations' },
-  { key: 'container-performance', iconKey: 'DashboardOutlined', labelKey: 'menu.containerPerformance' },
-  { key: 'backup-restore', iconKey: 'DatabaseOutlined', labelKey: 'menu.backupRestore' },
-  { key: 'security-scan', iconKey: 'SafetyCertificateOutlined', labelKey: 'menu.securityScan' },
-  { key: 'cicd', iconKey: 'CloudUploadOutlined', labelKey: 'menu.cicd' },
-  { key: 'agent-terminal', iconKey: 'RobotOutlined', labelKey: 'menu.agentTerminal' },
-  { key: 'images', iconKey: 'HddOutlined', labelKey: 'menu.images' },
-  { key: 'volumes', iconKey: 'DatabaseOutlined', labelKey: 'menu.volumes' },
-  { key: 'networks', iconKey: 'ApiOutlined', labelKey: 'menu.networks' },
-  { key: 'compose-editor', iconKey: 'BuildOutlined', labelKey: 'menu.composeEditor' },
-  { key: 'deploy-history', iconKey: 'HistoryOutlined', labelKey: 'menu.deployHistory' },
-  { key: 'audit-logs', iconKey: 'AuditOutlined', labelKey: 'menu.auditLogs' },
-  { key: 'alerts', iconKey: 'BellOutlined', labelKey: 'menu.alerts' },
-  { key: 'health-check', iconKey: 'HeartOutlined', labelKey: 'menu.healthCheck' },
-  { key: 'scheduled-tasks', iconKey: 'ScheduleOutlined', labelKey: 'menu.scheduledTasks' },
-  { key: 'resource-reports', iconKey: 'LineChartOutlined', labelKey: 'menu.resourceReports' },
-  { key: 'settings', iconKey: 'SettingOutlined', labelKey: 'menu.settings' }
+  {
+    key: 'group-server',
+    iconKey: 'CloudServerOutlined',
+    labelKey: 'menuGroups.server',
+    children: [
+      { key: 'servers', iconKey: 'CloudServerOutlined', labelKey: 'menu.servers' }
+    ]
+  },
+  {
+    key: 'group-deploy',
+    iconKey: 'AppstoreOutlined',
+    labelKey: 'menuGroups.deploy',
+    children: [
+      { key: 'templates', iconKey: 'FileTextOutlined', labelKey: 'menu.templates' },
+      { key: 'apps', iconKey: 'AppstoreOutlined', labelKey: 'menu.apps' },
+      { key: 'batch-operations', iconKey: 'AppstoreOutlined', labelKey: 'menu.batchOperations' },
+      { key: 'deploy-history', iconKey: 'HistoryOutlined', labelKey: 'menu.deployHistory' },
+      { key: 'cicd', iconKey: 'CloudUploadOutlined', labelKey: 'menu.cicd' },
+      { key: 'compose-editor', iconKey: 'BuildOutlined', labelKey: 'menu.composeEditor' }
+    ]
+  },
+  {
+    key: 'group-container',
+    iconKey: 'HddOutlined',
+    labelKey: 'menuGroups.container',
+    children: [
+      { key: 'images', iconKey: 'HddOutlined', labelKey: 'menu.images' },
+      { key: 'volumes', iconKey: 'DatabaseOutlined', labelKey: 'menu.volumes' },
+      { key: 'networks', iconKey: 'ApiOutlined', labelKey: 'menu.networks' },
+      { key: 'container-performance', iconKey: 'DashboardOutlined', labelKey: 'menu.containerPerformance' }
+    ]
+  },
+  {
+    key: 'group-ops',
+    iconKey: 'CodeOutlined',
+    labelKey: 'menuGroups.ops',
+    children: [
+      { key: 'shell-scripts', iconKey: 'CodeOutlined', labelKey: 'menu.shellScripts' },
+      { key: 'scheduled-tasks', iconKey: 'ScheduleOutlined', labelKey: 'menu.scheduledTasks' },
+      { key: 'health-check', iconKey: 'HeartOutlined', labelKey: 'menu.healthCheck' },
+      { key: 'security-scan', iconKey: 'SafetyCertificateOutlined', labelKey: 'menu.securityScan' },
+      { key: 'backup-restore', iconKey: 'DatabaseOutlined', labelKey: 'menu.backupRestore' },
+      { key: 'agent-terminal', iconKey: 'RobotOutlined', labelKey: 'menu.agentTerminal' }
+    ]
+  },
+  {
+    key: 'group-monitor',
+    iconKey: 'BellOutlined',
+    labelKey: 'menuGroups.monitor',
+    children: [
+      { key: 'alerts', iconKey: 'BellOutlined', labelKey: 'menu.alerts' },
+      { key: 'resource-reports', iconKey: 'LineChartOutlined', labelKey: 'menu.resourceReports' }
+    ]
+  },
+  {
+    key: 'group-system',
+    iconKey: 'SettingOutlined',
+    labelKey: 'menuGroups.system',
+    children: [
+      { key: 'audit-logs', iconKey: 'AuditOutlined', labelKey: 'menu.auditLogs' },
+      { key: 'settings', iconKey: 'SettingOutlined', labelKey: 'menu.settings' }
+    ]
+  }
 ]
 
 // 图标映射 - 静态对象，避免重复创建
@@ -84,7 +137,8 @@ const ICON_MAP: Record<string, React.ReactNode> = {
   LineChartOutlined: <LineChartOutlined />,
   SettingOutlined: <SettingOutlined />,
   SafetyCertificateOutlined: <SafetyCertificateOutlined />,
-  RobotOutlined: <RobotOutlined />
+  RobotOutlined: <RobotOutlined />,
+  CloudUploadOutlined: <CloudUploadOutlined />
 }
 
 const LayoutComponent: React.FC<LayoutProps> = memo(({ children }) => {
@@ -101,6 +155,22 @@ const LayoutComponent: React.FC<LayoutProps> = memo(({ children }) => {
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false)
   const [searchVisible, setSearchVisible] = useState(false)
   const [onboardingVisible, setOnboardingVisible] = useState(false)
+  const [openKeys, setOpenKeys] = useState<string[]>([])
+
+  // 根据路径找到其所属的父级菜单 key（用于自动展开）
+  const getParentKeyForPath = useCallback((path: string): string | undefined => {
+    const find = (items: MenuItemConfig[]): string | undefined => {
+      for (const item of items) {
+        if (item.children) {
+          if (item.children.some(c => c.key === path)) return item.key
+          const nested = find(item.children)
+          if (nested) return nested
+        }
+      }
+      return undefined
+    }
+    return find(MENU_ITEM_CONFIG)
+  }, [])
 
   // 响应式断点计算
   const isXs = !!screens.xs
@@ -153,16 +223,25 @@ const LayoutComponent: React.FC<LayoutProps> = memo(({ children }) => {
     const path = location.pathname.replace('/', '')
     if (path) {
       setSelectedKey(path)
+      // 自动展开当前页面所属的父级菜单
+      const parent = getParentKeyForPath(path)
+      if (parent) {
+        setOpenKeys(prev => (prev.includes(parent) ? prev : [...prev, parent]))
+      }
     }
-  }, [location.pathname])
+  }, [location.pathname, getParentKeyForPath])
 
-  // 使用 useMemo 缓存菜单项，避免每次渲染重新创建
+  // 使用 useMemo 缓存菜单项，避免每次渲染重新创建（递归构建父子层级）
   const menuItems = useMemo(() => {
-    return MENU_ITEM_CONFIG.map(item => ({
-      key: item.key,
-      icon: ICON_MAP[item.iconKey],
-      label: t(item.labelKey)
-    }))
+    const buildItems = (items: MenuItemConfig[]): MenuProps['items'] => {
+      return items.map(item => ({
+        key: item.key,
+        icon: item.iconKey ? ICON_MAP[item.iconKey] : undefined,
+        label: t(item.labelKey),
+        children: item.children ? buildItems(item.children) : undefined
+      }))
+    }
+    return buildItems(MENU_ITEM_CONFIG)
   }, [t])
 
   // 使用 useCallback 缓存事件处理函数
@@ -254,6 +333,8 @@ const LayoutComponent: React.FC<LayoutProps> = memo(({ children }) => {
           <Menu
             mode="inline"
             selectedKeys={[selectedKey]}
+            openKeys={openKeys}
+            onOpenChange={setOpenKeys}
             items={menuItems}
             onClick={handleMenuClick}
             style={{ borderRight: 0, height: '100%' }}
@@ -328,6 +409,8 @@ const LayoutComponent: React.FC<LayoutProps> = memo(({ children }) => {
           <Menu
             mode="inline"
             selectedKeys={[selectedKey]}
+            openKeys={openKeys}
+            onOpenChange={setOpenKeys}
             items={menuItems}
             onClick={handleMenuClick}
             style={{

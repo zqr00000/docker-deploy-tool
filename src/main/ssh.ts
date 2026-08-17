@@ -574,6 +574,80 @@ class SSHService {
   }
 
   /**
+   * 通过 SFTP 流式上传大文件（适用于镜像包等大文件传输，避免整包读入内存）
+   */
+  async uploadFileStream(
+    serverId: string,
+    localPath: string,
+    remotePath: string
+  ): Promise<{ success: boolean; message: string }> {
+    const entry = this.connections.get(serverId)
+    if (!entry || !entry.authenticated) {
+      return { success: false, message: 'Not connected to server' }
+    }
+
+    if (!existsSync(localPath)) {
+      return { success: false, message: `Local file not found: ${localPath}` }
+    }
+
+    return new Promise((resolve) => {
+      entry.client.sftp((err, sftp) => {
+        if (err) {
+          log.error(`SFTP connection error: ${err.message}`)
+          resolve({ success: false, message: err.message })
+          return
+        }
+
+        sftp.fastPut(localPath, remotePath, (putErr) => {
+          sftp.end()
+          if (putErr) {
+            log.error(`SFTP fastPut error: ${putErr.message}`)
+            resolve({ success: false, message: putErr.message })
+          } else {
+            log.info(`File stream uploaded to ${remotePath}`)
+            resolve({ success: true, message: 'File uploaded successfully' })
+          }
+        })
+      })
+    })
+  }
+
+  /**
+   * 通过 SFTP 流式下载远端文件到本地（适用于镜像包等大文件传输）
+   */
+  async downloadFile(
+    serverId: string,
+    remotePath: string,
+    localPath: string
+  ): Promise<{ success: boolean; message: string }> {
+    const entry = this.connections.get(serverId)
+    if (!entry || !entry.authenticated) {
+      return { success: false, message: 'Not connected to server' }
+    }
+
+    return new Promise((resolve) => {
+      entry.client.sftp((err, sftp) => {
+        if (err) {
+          log.error(`SFTP connection error: ${err.message}`)
+          resolve({ success: false, message: err.message })
+          return
+        }
+
+        sftp.fastGet(remotePath, localPath, (getErr) => {
+          sftp.end()
+          if (getErr) {
+            log.error(`SFTP fastGet error: ${getErr.message}`)
+            resolve({ success: false, message: getErr.message })
+          } else {
+            log.info(`File downloaded from ${remotePath} to ${localPath}`)
+            resolve({ success: true, message: 'File downloaded successfully' })
+          }
+        })
+      })
+    })
+  }
+
+  /**
    * 获取容器日志流
    */
   async getContainerLogs(

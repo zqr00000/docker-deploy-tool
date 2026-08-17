@@ -1,4 +1,4 @@
-import type { Template, TemplateFormData, Server, ServerFormData, App, DeployOptions, DeployResult, ContainerInfo, ContainerStats, SystemInfo, HardwareInfo, NetworkInfo, PortInfo, SystemCheckResult, HardwareRequirements, ConfigImportResult, DialogResult, DockerImage, VolumeInfo, VolumeDetail, PruneResult, AuditLogRow, AuditLogFilter, AuditLogResult, TerminalSession, DockerNetworkInfo, DockerNetworkDetail, DockerNetworkCreateOptions, DockerNetworkPruneResult, ResourceMetricRow, ResourceMetricsQuery, MetricsSummary, ResourceMetricsResult, DeployHistoryRecord, RollbackResult, ServerGroup, BatchDeployOptions, BatchDeployResult, BatchOperationResult, ServerStatusInfo, AlertRule, AlertRuleFormData, AlertHistoryEntry, AlertStats, ScheduledTask, ScheduledTaskFormData, ContainerHealthStatus, AppHealthStatus, HealthCheckConfig, HealthCheckConfigFormData, HealthCheckHistoryRecord, HealthCheckReport, ScanVulnerability, ScanSummary, ScanImageResult } from '../preload/index'
+import type { Template, TemplateFormData, Server, ServerFormData, App, DeployOptions, DeployResult, ContainerInfo, ContainerStats, SystemInfo, HardwareInfo, NetworkInfo, PortInfo, SystemCheckResult, HardwareRequirements, ConfigImportResult, DialogResult, DockerImage, VolumeInfo, VolumeDetail, PruneResult, AuditLogRow, AuditLogFilter, AuditLogResult, TerminalSession, DockerNetworkInfo, DockerNetworkDetail, DockerNetworkCreateOptions, DockerNetworkPruneResult, ResourceMetricRow, ResourceMetricsQuery, MetricsSummary, ResourceMetricsResult, DeployHistoryRecord, RollbackResult, ServerGroup, BatchDeployOptions, BatchDeployResult, BatchOperationResult, ServerStatusInfo, AlertRule, AlertRuleFormData, AlertHistoryEntry, AlertStats, ScheduledTask, ScheduledTaskFormData, ContainerHealthStatus, AppHealthStatus, HealthCheckConfig, HealthCheckConfigFormData, HealthCheckHistoryRecord, HealthCheckReport, ScanVulnerability, ScanSummary, ScanImageResult, ShellScript, ShellScriptInput, ShellScriptVersion, ShellScriptExecutionLog, ShellScriptRunOptions, ShellScriptRunResult, ShellScriptServerResult } from '../preload/index'
 
 // Re-export types for use in renderer process
 export type {
@@ -56,12 +56,20 @@ export type {
   HealthCheckReport,
   ScanVulnerability,
   ScanSummary,
-  ScanImageResult
+  ScanImageResult,
+  ShellScript,
+  ShellScriptInput,
+  ShellScriptVersion,
+  ShellScriptExecutionLog,
+  ShellScriptRunOptions,
+  ShellScriptRunResult,
+  ShellScriptServerResult
 }
 
 export interface ElectronAPI {
   getAppVersion: () => Promise<string>
   getAppName: () => Promise<string>
+  showItemInFolder: (filePath: string) => Promise<{ success: boolean; message?: string }>
   platform: string
   arch: string
   server: {
@@ -125,6 +133,10 @@ export interface ElectronAPI {
     removeBatch: (serverId: string, imageIds: string[]) => Promise<{ success: boolean; successCount: number; failCount: number; message: string }>
     prune: (serverId: string) => Promise<PruneResult>
     getInfo: (serverId: string, imageId: string) => Promise<string>
+    export: (serverId: string, imageName: string, localFilePath: string) => Promise<{ success: boolean; message: string }>
+    import: (serverId: string, localFilePath: string) => Promise<{ success: boolean; message: string }>
+    showSaveDialog: (defaultName?: string) => Promise<DialogResult>
+    showOpenDialog: () => Promise<DialogResult>
   }
   security: {
     scanImage: (serverId: string, imageName: string, proxy?: string) => Promise<ScanImageResult>
@@ -230,6 +242,20 @@ export interface ElectronAPI {
     toggle: (id: string, enabled: boolean) => Promise<{ success: boolean; message?: string }>
     runNow: (id: string) => Promise<{ success: boolean; message: string }>
     getActiveCount: () => Promise<number>
+  }
+  shellScript: {
+    getAll: () => Promise<ShellScript[]>
+    getById: (id: string) => Promise<ShellScript | undefined>
+    create: (input: ShellScriptInput) => Promise<ShellScript | undefined>
+    update: (id: string, input: Partial<ShellScriptInput>, changeNote?: string) => Promise<ShellScript | undefined>
+    delete: (id: string) => Promise<void>
+    getVersions: (scriptId: string) => Promise<ShellScriptVersion[]>
+    getVersionById: (id: string) => Promise<ShellScriptVersion | undefined>
+    rollback: (scriptId: string, versionId: string, changeNote?: string) => Promise<ShellScript | undefined>
+    run: (scriptId: string, options: ShellScriptRunOptions) => Promise<ShellScriptRunResult>
+    getExecutionLogs: (scriptId?: string, limit?: number) => Promise<ShellScriptExecutionLog[]>
+    deleteExecutionLog: (logId: string) => Promise<{ success: boolean; message?: string }>
+    clearExecutionLogs: (scriptId?: string) => Promise<{ success: boolean; message?: string }>
   }
   healthCheck: {
     getContainerHealth: (serverId: string, containerId: string) => Promise<ContainerHealthStatus | null>

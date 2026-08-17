@@ -452,6 +452,79 @@ export interface RollbackResult {
   appId?: string
 }
 
+export interface ShellScript {
+  id: string
+  name: string
+  description: string | null
+  category: string
+  content: string
+  version: number
+  timeout: number
+  isBuiltIn: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ShellScriptInput {
+  name: string
+  description?: string
+  category?: string
+  content: string
+  timeout?: number
+}
+
+export interface ShellScriptVersion {
+  id: string
+  scriptId: string
+  version: number
+  content: string
+  changeNote: string | null
+  createdAt: string
+}
+
+export interface ShellScriptExecutionLog {
+  id: string
+  scriptId: string
+  scriptName: string
+  version: number
+  serverId: string
+  serverName: string
+  status: string
+  exitCode: number | null
+  stdout: string | null
+  stderr: string | null
+  params: string | null
+  startedAt: string
+  finishedAt: string | null
+  duration: number | null
+}
+
+export interface ShellScriptRunOptions {
+  serverIds: string[]
+  params?: Record<string, string>
+  args?: string[]
+  timeout?: number
+}
+
+export interface ShellScriptServerResult {
+  serverId: string
+  serverName: string
+  success: boolean
+  status: string
+  exitCode: number
+  stdout: string
+  stderr: string
+  duration: number
+}
+
+export interface ShellScriptRunResult {
+  success: boolean
+  total: number
+  successCount: number
+  failureCount: number
+  results: ShellScriptServerResult[]
+}
+
 export type AlertRuleType = 'container_exit' | 'container_restart_loop' | 'high_cpu' | 'high_memory' | 'high_disk'
 export type AlertSeverity = 'info' | 'warning' | 'critical'
 export type AlertStatus = 'active' | 'resolved'
@@ -647,6 +720,7 @@ export interface ResourceMetricsResult {
 export interface ElectronAPI {
   getAppVersion: () => Promise<string>
   getAppName: () => Promise<string>
+  showItemInFolder: (filePath: string) => Promise<{ success: boolean; message?: string }>
   platform: string
   arch: string
   server: {
@@ -710,6 +784,10 @@ export interface ElectronAPI {
     removeBatch: (serverId: string, imageIds: string[]) => Promise<{ success: boolean; successCount: number; failCount: number; message: string }>
     prune: (serverId: string) => Promise<PruneResult>
     getInfo: (serverId: string, imageId: string) => Promise<string>
+    export: (serverId: string, imageName: string, localFilePath: string) => Promise<{ success: boolean; message: string }>
+    import: (serverId: string, localFilePath: string) => Promise<{ success: boolean; message: string }>
+    showSaveDialog: (defaultName?: string) => Promise<DialogResult>
+    showOpenDialog: () => Promise<DialogResult>
   }
   security: {
     scanImage: (serverId: string, imageName: string, proxy?: string) => Promise<ScanImageResult>
@@ -871,11 +949,26 @@ export interface ElectronAPI {
     runNow: (id: string) => Promise<{ success: boolean; message: string }>
     getActiveCount: () => Promise<number>
   }
+  shellScript: {
+    getAll: () => Promise<ShellScript[]>
+    getById: (id: string) => Promise<ShellScript | undefined>
+    create: (input: ShellScriptInput) => Promise<ShellScript | undefined>
+    update: (id: string, input: Partial<ShellScriptInput>, changeNote?: string) => Promise<ShellScript | undefined>
+    delete: (id: string) => Promise<void>
+    getVersions: (scriptId: string) => Promise<ShellScriptVersion[]>
+    getVersionById: (id: string) => Promise<ShellScriptVersion | undefined>
+    rollback: (scriptId: string, versionId: string, changeNote?: string) => Promise<ShellScript | undefined>
+    run: (scriptId: string, options: ShellScriptRunOptions) => Promise<ShellScriptRunResult>
+    getExecutionLogs: (scriptId?: string, limit?: number) => Promise<ShellScriptExecutionLog[]>
+    deleteExecutionLog: (logId: string) => Promise<{ success: boolean; message?: string }>
+    clearExecutionLogs: (scriptId?: string) => Promise<{ success: boolean; message?: string }>
+  }
 }
 
 const electronAPI: ElectronAPI = {
   getAppVersion: (): Promise<string> => ipcRenderer.invoke('app:version'),
   getAppName: (): Promise<string> => ipcRenderer.invoke('app:name'),
+  showItemInFolder: (filePath: string): Promise<{ success: boolean; message?: string }> => ipcRenderer.invoke('app:showItemInFolder', filePath),
 
   platform: process.platform,
   arch: process.arch,
@@ -942,7 +1035,11 @@ const electronAPI: ElectronAPI = {
     remove: (serverId: string, imageId: string): Promise<{ success: boolean; message: string }> => ipcRenderer.invoke('image:remove', serverId, imageId),
     removeBatch: (serverId: string, imageIds: string[]): Promise<{ success: boolean; successCount: number; failCount: number; message: string }> => ipcRenderer.invoke('image:removeBatch', serverId, imageIds),
     prune: (serverId: string): Promise<PruneResult> => ipcRenderer.invoke('image:prune', serverId),
-    getInfo: (serverId: string, imageId: string): Promise<string> => ipcRenderer.invoke('image:getInfo', serverId, imageId)
+    getInfo: (serverId: string, imageId: string): Promise<string> => ipcRenderer.invoke('image:getInfo', serverId, imageId),
+    export: (serverId: string, imageName: string, localFilePath: string): Promise<{ success: boolean; message: string }> => ipcRenderer.invoke('image:export', serverId, imageName, localFilePath),
+    import: (serverId: string, localFilePath: string): Promise<{ success: boolean; message: string }> => ipcRenderer.invoke('image:import', serverId, localFilePath),
+    showSaveDialog: (defaultName?: string): Promise<DialogResult> => ipcRenderer.invoke('image:showSaveDialog', defaultName),
+    showOpenDialog: (): Promise<DialogResult> => ipcRenderer.invoke('image:showOpenDialog')
   },
   security: {
     scanImage: (serverId: string, imageName: string, proxy?: string): Promise<ScanImageResult> => ipcRenderer.invoke('security:scanImage', serverId, imageName, proxy),
@@ -1145,6 +1242,20 @@ const electronAPI: ElectronAPI = {
     getActiveCollectionCount: (): Promise<number> => ipcRenderer.invoke('resourceReport:getActiveCollectionCount'),
     getLatestMetrics: (serverId: string): Promise<ResourceMetricRow | null> => ipcRenderer.invoke('resourceReport:getLatestMetrics', serverId),
     getLatestMetricsByContainer: (containerId: string): Promise<ResourceMetricRow | null> => ipcRenderer.invoke('resourceReport:getLatestMetricsByContainer', containerId)
+  },
+  shellScript: {
+    getAll: (): Promise<ShellScript[]> => ipcRenderer.invoke('shellScript:getAll'),
+    getById: (id: string): Promise<ShellScript | undefined> => ipcRenderer.invoke('shellScript:getById', id),
+    create: (input: ShellScriptInput): Promise<ShellScript | undefined> => ipcRenderer.invoke('shellScript:create', input),
+    update: (id: string, input: Partial<ShellScriptInput>, changeNote?: string): Promise<ShellScript | undefined> => ipcRenderer.invoke('shellScript:update', id, input, changeNote),
+    delete: (id: string): Promise<void> => ipcRenderer.invoke('shellScript:delete', id),
+    getVersions: (scriptId: string): Promise<ShellScriptVersion[]> => ipcRenderer.invoke('shellScript:getVersions', scriptId),
+    getVersionById: (id: string): Promise<ShellScriptVersion | undefined> => ipcRenderer.invoke('shellScript:getVersionById', id),
+    rollback: (scriptId: string, versionId: string, changeNote?: string): Promise<ShellScript | undefined> => ipcRenderer.invoke('shellScript:rollback', scriptId, versionId, changeNote),
+    run: (scriptId: string, options: ShellScriptRunOptions): Promise<ShellScriptRunResult> => ipcRenderer.invoke('shellScript:run', scriptId, options),
+    getExecutionLogs: (scriptId?: string, limit?: number): Promise<ShellScriptExecutionLog[]> => ipcRenderer.invoke('shellScript:getExecutionLogs', scriptId, limit),
+    deleteExecutionLog: (logId: string): Promise<{ success: boolean; message?: string }> => ipcRenderer.invoke('shellScript:deleteExecutionLog', logId),
+    clearExecutionLogs: (scriptId?: string): Promise<{ success: boolean; message?: string }> => ipcRenderer.invoke('shellScript:clearExecutionLogs', scriptId)
   }
 }
 

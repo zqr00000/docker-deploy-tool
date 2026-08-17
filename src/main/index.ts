@@ -1,26 +1,27 @@
-import { app, BrowserWindow, ipcMain, dialog, safeStorage } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, safeStorage, shell } from 'electron'
 import { join } from 'path'
 import { writeFile, readFile } from 'fs/promises'
 import https from 'https'
 import { URL } from 'url'
 import log from 'electron-log'
-import { initDatabase, closeDatabase, serverQueries, templateQueries, appQueries, initDefaultTemplates, configQueries, scheduledTaskQueries, serverGroupQueries } from './database'
+import { initDatabase, closeDatabase, serverQueries, templateQueries, appQueries, initDefaultTemplates, initDefaultShellScripts, configQueries, scheduledTaskQueries, serverGroupQueries } from './database'
 import { sshService, generateId } from './ssh'
-import { systemCheckService } from './system-check'
-import { appDeployService } from './app-deploy'
-import { installService } from './install-service'
-import { dockerVolumesService } from './docker-volumes'
-import { dockerImagesService } from './docker-images'
-import { securityScanService } from './security-scan'
-import { dockerNetworksService } from './docker-networks'
-import { auditLogService } from './audit-log'
-import { deployHistoryService } from './deploy-history'
-import { batchOperationsService } from './batch-operations'
-import { containerTerminalService } from './container-terminal'
-import { alertService } from './alert-service'
-import { schedulerService } from './scheduler'
-import { healthCheckService } from './health-check'
-import { resourceReportsService } from './resource-reports'
+import { systemCheckService } from './services/system-check'
+import { appDeployService } from './services/app-deploy'
+import { installService } from './services/install-service'
+import { dockerVolumesService } from './services/docker-volumes'
+import { dockerImagesService } from './services/docker-images'
+import { securityScanService } from './services/security-scan'
+import { dockerNetworksService } from './services/docker-networks'
+import { auditLogService } from './services/audit-log'
+import { deployHistoryService } from './services/deploy-history'
+import { batchOperationsService } from './services/batch-operations'
+import { containerTerminalService } from './services/container-terminal'
+import { alertService } from './services/alert-service'
+import { schedulerService } from './services/scheduler'
+import { healthCheckService } from './services/health-check'
+import { resourceReportsService } from './services/resource-reports'
+import { shellScriptService } from './services/shell-scripts'
 
 log.transports.file.level = 'info'
 log.transports.console.level = 'debug'
@@ -94,6 +95,7 @@ app.whenReady().then(() => {
 
   initDatabase()
   initDefaultTemplates()
+  initDefaultShellScripts()
   registerIpcHandlers()
   schedulerService.initialize()
 
@@ -123,7 +125,7 @@ app.on('quit', () => {
 })
 
 // ==================== 运维 Agent (Mastra) ====================
-import { setAgentModelConfig, setApprovalSender, chatWithAgent, resolveApproval, getAgentConfig } from './ops-agent'
+import { setAgentModelConfig, setApprovalSender, chatWithAgent, resolveApproval, getAgentConfig } from './services/ops-agent'
 
 // 流式对话请求（用于取消）
 const opsAgentStreams = new Map<string, AbortController>()
@@ -135,6 +137,18 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('app:name', () => {
     return app.getName()
+  })
+
+  // 在文件资源管理器中定位并高亮文件
+  ipcMain.handle('app:showItemInFolder', (_, filePath: string) => {
+    try {
+      if (!filePath) return { success: false, message: '文件路径为空' }
+      shell.showItemInFolder(filePath)
+      return { success: true }
+    } catch (error) {
+      log.error('app:showItemInFolder error:', error)
+      return { success: false, message: (error as Error).message }
+    }
   })
 
   ipcMain.handle('server:getAll', () => {
@@ -967,6 +981,46 @@ function registerIpcHandlers(): void {
       log.error('image:getInfo error:', error)
       return ''
     }
+  })
+
+  ipcMain.handle('image:export', async (_, serverId: string, imageName: string, localFilePath: string) => {
+    try {
+      return await dockerImagesService.exportImage(serverId, imageName, localFilePath)
+    } catch (error) {
+      log.error('image:export error:', error)
+      return { success: false, message: (error as Error).message }
+    }
+  })
+
+  ipcMain.handle('image:import', async (_, serverId: string, localFilePath: string) => {
+    try {
+      return await dockerImagesService.importImage(serverId, localFilePath)
+    } catch (error) {
+      log.error('image:import error:', error)
+      return { success: false, message: (error as Error).message }
+    }
+  })
+
+  ipcMain.handle('image:showSaveDialog', async (_, defaultName?: string) => {
+    return await dialog.showSaveDialog({
+      title: '导出镜像',
+      defaultPath: defaultName || `docker-image-${new Date().toISOString().slice(0, 10)}.tar`,
+      filters: [
+        { name: 'Docker 镜像包', extensions: ['tar'] },
+        { name: '所有文件', extensions: ['*'] }
+      ]
+    })
+  })
+
+  ipcMain.handle('image:showOpenDialog', async () => {
+    return await dialog.showOpenDialog({
+      title: '导入镜像',
+      filters: [
+        { name: 'Docker 镜像包', extensions: ['tar', 'tar.gz'] },
+        { name: '所有文件', extensions: ['*'] }
+      ],
+      properties: ['openFile']
+    })
   })
 
   // 镜像安全扫描 IPC 处理器
@@ -2390,6 +2444,198 @@ function registerIpcHandlers(): void {
       return { success: true }
     }
     return { success: false, error: '未找到对应请求' }
+  })
+
+  // ==================== Shell 脚本库 IPC 处理器 ====================
+
+  ipcMain.handle('shellScript:getAll', () => {
+    try {
+      return shellScriptService.getAll()
+    } catch (error) {
+      log.error('shellScript:getAll error:', error)
+      return []
+    }
+  })
+
+  ipcMain.handle('shellScript:getById', (_, id: string) => {
+    try {
+      return shellScriptService.getById(id)
+    } catch (error) {
+      log.error('shellScript:getById error:', error)
+      return undefined
+    }
+  })
+
+  ipcMain.handle('shellScript:create', (_, input) => {
+    try {
+      const script = shellScriptService.create(input)
+      auditLogService.log({
+        action: 'shell_script_create',
+        targetType: 'shell_script',
+        targetId: script?.id,
+        targetName: input.name,
+        status: 'success',
+        details: `Category: ${input.category || 'common'}`
+      })
+      return script
+    } catch (error) {
+      log.error('shellScript:create error:', error)
+      auditLogService.log({
+        action: 'shell_script_create',
+        targetType: 'shell_script',
+        targetName: input.name,
+        status: 'failure',
+        details: (error as Error).message
+      })
+      throw error
+    }
+  })
+
+  ipcMain.handle('shellScript:update', (_, id: string, input, changeNote?: string) => {
+    try {
+      const script = shellScriptService.update(id, input, changeNote)
+      auditLogService.log({
+        action: 'shell_script_update',
+        targetType: 'shell_script',
+        targetId: id,
+        targetName: script?.name,
+        status: 'success',
+        details: `Updated fields: ${Object.keys(input).join(', ')}, now v${script?.version}`
+      })
+      return script
+    } catch (error) {
+      log.error('shellScript:update error:', error)
+      auditLogService.log({
+        action: 'shell_script_update',
+        targetType: 'shell_script',
+        targetId: id,
+        status: 'failure',
+        details: (error as Error).message
+      })
+      throw error
+    }
+  })
+
+  ipcMain.handle('shellScript:delete', (_, id: string) => {
+    try {
+      const existing = shellScriptService.getById(id)
+      shellScriptService.delete(id)
+      auditLogService.log({
+        action: 'shell_script_delete',
+        targetType: 'shell_script',
+        targetId: id,
+        targetName: existing?.name,
+        status: 'success'
+      })
+    } catch (error) {
+      log.error('shellScript:delete error:', error)
+      auditLogService.log({
+        action: 'shell_script_delete',
+        targetType: 'shell_script',
+        targetId: id,
+        status: 'failure',
+        details: (error as Error).message
+      })
+      throw error
+    }
+  })
+
+  ipcMain.handle('shellScript:getVersions', (_, scriptId: string) => {
+    try {
+      return shellScriptService.getVersions(scriptId)
+    } catch (error) {
+      log.error('shellScript:getVersions error:', error)
+      return []
+    }
+  })
+
+  ipcMain.handle('shellScript:getVersionById', (_, id: string) => {
+    try {
+      return shellScriptService.getVersionById(id)
+    } catch (error) {
+      log.error('shellScript:getVersionById error:', error)
+      return undefined
+    }
+  })
+
+  ipcMain.handle('shellScript:rollback', (_, scriptId: string, versionId: string, changeNote?: string) => {
+    try {
+      const script = shellScriptService.rollback(scriptId, versionId, changeNote)
+      auditLogService.log({
+        action: 'shell_script_rollback',
+        targetType: 'shell_script',
+        targetId: scriptId,
+        targetName: script?.name,
+        status: 'success',
+        details: `Rolled back to v${script?.version}`
+      })
+      return script
+    } catch (error) {
+      log.error('shellScript:rollback error:', error)
+      auditLogService.log({
+        action: 'shell_script_rollback',
+        targetType: 'shell_script',
+        targetId: scriptId,
+        status: 'failure',
+        details: (error as Error).message
+      })
+      throw error
+    }
+  })
+
+  ipcMain.handle('shellScript:run', async (_, scriptId: string, options) => {
+    try {
+      const script = shellScriptService.getById(scriptId)
+      const result = await shellScriptService.run(scriptId, options)
+      auditLogService.log({
+        action: 'shell_script_run',
+        targetType: 'shell_script',
+        targetId: scriptId,
+        targetName: script?.name,
+        status: result.success ? 'success' : 'failure',
+        details: `Servers: ${result.successCount}/${result.total} succeeded, v${script?.version}`
+      })
+      return result
+    } catch (error) {
+      log.error('shellScript:run error:', error)
+      auditLogService.log({
+        action: 'shell_script_run',
+        targetType: 'shell_script',
+        targetId: scriptId,
+        status: 'failure',
+        details: (error as Error).message
+      })
+      throw error
+    }
+  })
+
+  ipcMain.handle('shellScript:getExecutionLogs', (_, scriptId?: string, limit?: number) => {
+    try {
+      return shellScriptService.getExecutionLogs(scriptId, limit)
+    } catch (error) {
+      log.error('shellScript:getExecutionLogs error:', error)
+      return []
+    }
+  })
+
+  ipcMain.handle('shellScript:deleteExecutionLog', (_, logId: string) => {
+    try {
+      shellScriptService.deleteExecutionLog(logId)
+      return { success: true }
+    } catch (error) {
+      log.error('shellScript:deleteExecutionLog error:', error)
+      return { success: false, message: (error as Error).message }
+    }
+  })
+
+  ipcMain.handle('shellScript:clearExecutionLogs', (_, scriptId?: string) => {
+    try {
+      shellScriptService.clearExecutionLogs(scriptId)
+      return { success: true }
+    } catch (error) {
+      log.error('shellScript:clearExecutionLogs error:', error)
+      return { success: false, message: (error as Error).message }
+    }
   })
 
   // 启动告警监控

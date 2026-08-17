@@ -213,6 +213,48 @@ function createTables(): void {
       FOREIGN KEY (appId) REFERENCES apps(id) ON DELETE CASCADE
     );
 
+    -- Shell 脚本库
+    CREATE TABLE IF NOT EXISTS shell_scripts (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      category TEXT NOT NULL DEFAULT 'common',
+      content TEXT NOT NULL,
+      version INTEGER NOT NULL DEFAULT 1,
+      timeout INTEGER NOT NULL DEFAULT 60,
+      isBuiltIn INTEGER NOT NULL DEFAULT 0,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS shell_script_versions (
+      id TEXT PRIMARY KEY,
+      scriptId TEXT NOT NULL,
+      version INTEGER NOT NULL,
+      content TEXT NOT NULL,
+      changeNote TEXT,
+      createdAt TEXT NOT NULL,
+      FOREIGN KEY (scriptId) REFERENCES shell_scripts(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS shell_script_execution_logs (
+      id TEXT PRIMARY KEY,
+      scriptId TEXT NOT NULL,
+      scriptName TEXT NOT NULL,
+      version INTEGER NOT NULL,
+      serverId TEXT NOT NULL,
+      serverName TEXT NOT NULL,
+      status TEXT NOT NULL,
+      exitCode INTEGER,
+      stdout TEXT,
+      stderr TEXT,
+      params TEXT,
+      startedAt TEXT NOT NULL,
+      finishedAt TEXT,
+      duration INTEGER,
+      FOREIGN KEY (scriptId) REFERENCES shell_scripts(id) ON DELETE CASCADE
+    );
+
     CREATE INDEX IF NOT EXISTS idx_resource_metrics_server_time ON resource_metrics(serverId, timestamp);
     CREATE INDEX IF NOT EXISTS idx_resource_metrics_app_time ON resource_metrics(appId, timestamp);
 
@@ -273,6 +315,14 @@ function createTables(): void {
 
     -- 覆盖索引：减少回表查询
     CREATE INDEX IF NOT EXISTS idx_resource_metrics_cover ON resource_metrics(serverId, appId, timestamp, cpuPercent, memoryUsage);
+
+    -- shell 脚本库索引
+    CREATE INDEX IF NOT EXISTS idx_shell_scripts_category ON shell_scripts(category);
+    CREATE INDEX IF NOT EXISTS idx_shell_scripts_isBuiltIn ON shell_scripts(isBuiltIn);
+    CREATE INDEX IF NOT EXISTS idx_shell_script_versions_scriptId ON shell_script_versions(scriptId, version);
+    CREATE INDEX IF NOT EXISTS idx_shell_script_exec_logs_scriptId ON shell_script_execution_logs(scriptId, startedAt);
+    CREATE INDEX IF NOT EXISTS idx_shell_script_exec_logs_serverId ON shell_script_execution_logs(serverId, startedAt);
+    CREATE INDEX IF NOT EXISTS idx_shell_script_exec_logs_status ON shell_script_execution_logs(status);
   `)
 
   migrateAppsTable()
@@ -1736,4 +1786,478 @@ export const serverGroupQueries = {
       ORDER BY sg.createdAt DESC
     `).all(serverId) as ServerGroupRow[]
   }
+}
+
+export interface ShellScriptRow {
+  id: string
+  name: string
+  description: string | null
+  category: string
+  content: string
+  version: number
+  timeout: number
+  isBuiltIn: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ShellScriptVersionRow {
+  id: string
+  scriptId: string
+  version: number
+  content: string
+  changeNote: string | null
+  createdAt: string
+}
+
+export interface ShellScriptExecutionLogRow {
+  id: string
+  scriptId: string
+  scriptName: string
+  version: number
+  serverId: string
+  serverName: string
+  status: string
+  exitCode: number | null
+  stdout: string | null
+  stderr: string | null
+  params: string | null
+  startedAt: string
+  finishedAt: string | null
+  duration: number | null
+}
+
+export const shellScriptQueries = {
+  getAll: (): ShellScriptRow[] => {
+    const db = getDatabase()
+    return db.prepare('SELECT * FROM shell_scripts ORDER BY createdAt DESC').all() as ShellScriptRow[]
+  },
+
+  getById: (id: string): ShellScriptRow | undefined => {
+    const db = getDatabase()
+    return db.prepare('SELECT * FROM shell_scripts WHERE id = ?').get(id) as ShellScriptRow | undefined
+  },
+
+  insert: (script: Omit<ShellScriptRow, 'createdAt' | 'updatedAt'>): void => {
+    const db = getDatabase()
+    const now = new Date().toISOString()
+    db.prepare(`
+      INSERT INTO shell_scripts (id, name, description, category, content, version, timeout, isBuiltIn, createdAt, updatedAt)
+      VALUES (@id, @name, @description, @category, @content, @version, @timeout, @isBuiltIn, @createdAt, @updatedAt)
+    `).run({ ...script, description: script.description || null, createdAt: now, updatedAt: now })
+  },
+
+  update: (id: string, updates: Partial<ShellScriptRow>): void => {
+    const db = getDatabase()
+    const now = new Date().toISOString()
+    const fields = Object.keys(updates)
+      .filter(key => key !== 'id' && key !== 'createdAt')
+      .map(key => `${key} = @${key}`)
+      .join(', ')
+
+    if (fields) {
+      db.prepare(`UPDATE shell_scripts SET ${fields}, updatedAt = @updatedAt WHERE id = @id`)
+        .run({ ...updates, id, updatedAt: now })
+    }
+  },
+
+  delete: (id: string): void => {
+    const db = getDatabase()
+    db.prepare('DELETE FROM shell_scripts WHERE id = ?').run(id)
+  }
+}
+
+export const shellScriptVersionQueries = {
+  getByScriptId: (scriptId: string): ShellScriptVersionRow[] => {
+    const db = getDatabase()
+    return db.prepare('SELECT * FROM shell_script_versions WHERE scriptId = ? ORDER BY version DESC').all(scriptId) as ShellScriptVersionRow[]
+  },
+
+  getById: (id: string): ShellScriptVersionRow | undefined => {
+    const db = getDatabase()
+    return db.prepare('SELECT * FROM shell_script_versions WHERE id = ?').get(id) as ShellScriptVersionRow | undefined
+  },
+
+  insert: (record: Omit<ShellScriptVersionRow, 'id' | 'createdAt'>): void => {
+    const db = getDatabase()
+    const id = randomUUID()
+    const now = new Date().toISOString()
+    db.prepare(`
+      INSERT INTO shell_script_versions (id, scriptId, version, content, changeNote, createdAt)
+      VALUES (@id, @scriptId, @version, @content, @changeNote, @createdAt)
+    `).run({ ...record, id, changeNote: record.changeNote || null, createdAt: now })
+  },
+
+  deleteByScriptId: (scriptId: string): void => {
+    const db = getDatabase()
+    db.prepare('DELETE FROM shell_script_versions WHERE scriptId = ?').run(scriptId)
+  }
+}
+
+export const shellScriptExecutionLogQueries = {
+  getAll: (limit?: number): ShellScriptExecutionLogRow[] => {
+    const db = getDatabase()
+    const sql = `SELECT * FROM shell_script_execution_logs ORDER BY startedAt DESC ${limit ? 'LIMIT ?' : ''}`
+    return limit ? db.prepare(sql).all(limit) as ShellScriptExecutionLogRow[] : db.prepare(sql).all() as ShellScriptExecutionLogRow[]
+  },
+
+  getByScriptId: (scriptId: string, limit?: number): ShellScriptExecutionLogRow[] => {
+    const db = getDatabase()
+    const sql = `SELECT * FROM shell_script_execution_logs WHERE scriptId = ? ORDER BY startedAt DESC ${limit ? 'LIMIT ?' : ''}`
+    return limit ? db.prepare(sql).all(scriptId, limit) as ShellScriptExecutionLogRow[] : db.prepare(sql).all(scriptId) as ShellScriptExecutionLogRow[]
+  },
+
+  getById: (id: string): ShellScriptExecutionLogRow | undefined => {
+    const db = getDatabase()
+    return db.prepare('SELECT * FROM shell_script_execution_logs WHERE id = ?').get(id) as ShellScriptExecutionLogRow | undefined
+  },
+
+  insert: (record: Omit<ShellScriptExecutionLogRow, 'id'>): void => {
+    const db = getDatabase()
+    const id = randomUUID()
+    db.prepare(`
+      INSERT INTO shell_script_execution_logs (id, scriptId, scriptName, version, serverId, serverName, status, exitCode, stdout, stderr, params, startedAt, finishedAt, duration)
+      VALUES (@id, @scriptId, @scriptName, @version, @serverId, @serverName, @status, @exitCode, @stdout, @stderr, @params, @startedAt, @finishedAt, @duration)
+    `).run({ ...record, id })
+  },
+
+  delete: (id: string): void => {
+    const db = getDatabase()
+    db.prepare('DELETE FROM shell_script_execution_logs WHERE id = ?').run(id)
+  },
+
+  deleteByScriptId: (scriptId: string): void => {
+    const db = getDatabase()
+    db.prepare('DELETE FROM shell_script_execution_logs WHERE scriptId = ?').run(scriptId)
+  },
+
+  clear: (): void => {
+    const db = getDatabase()
+    db.prepare('DELETE FROM shell_script_execution_logs').run()
+  },
+
+  clearByScriptId: (scriptId: string): void => {
+    const db = getDatabase()
+    db.prepare('DELETE FROM shell_script_execution_logs WHERE scriptId = ?').run(scriptId)
+  },
+
+  deleteBefore: (date: string): number => {
+    const db = getDatabase()
+    const result = db.prepare('DELETE FROM shell_script_execution_logs WHERE startedAt < ?').run(date)
+    return result.changes
+  }
+}
+
+// ==================== 内置 Shell 脚本 ====================
+
+interface DefaultShellScript {
+  id: string
+  name: string
+  description: string
+  category: string
+  content: string
+  timeout: number
+}
+
+const DEFAULT_SHELL_SCRIPTS: DefaultShellScript[] = [
+  {
+    id: 'system-info',
+    name: '系统信息收集',
+    description: '收集服务器操作系统、内核、CPU、内存、磁盘等基础信息',
+    category: 'system',
+    timeout: 60,
+    content: `#!/usr/bin/env bash
+# =============================================
+# 系统信息收集脚本
+# 说明：收集服务器基础信息，支持以下环境变量自定义：
+#   SHOW_DISK=true|false  是否显示磁盘信息（默认 true）
+# =============================================
+set -euo pipefail
+
+echo "===== 系统信息 ====="
+echo "主机名: $(hostname 2>/dev/null || hostnamectl hostname 2>/dev/null || echo 'unknown')"
+echo "操作系统: $(cat /etc/os-release 2>/dev/null | grep '^PRETTY_NAME=' | cut -d= -f2 | tr -d '"' || echo 'unknown')"
+echo "内核版本: $(uname -r 2>/dev/null || echo 'unknown')"
+echo "架构: $(uname -m 2>/dev/null || echo 'unknown')"
+echo "运行时间: $(uptime -p 2>/dev/null || uptime)"
+
+echo ""
+echo "===== 硬件信息 ====="
+echo "CPU 核心数: $(nproc 2>/dev/null || echo 'unknown')"
+MEM_TOTAL=$(free -h 2>/dev/null | awk '/^Mem:/{print $2}' || echo 'unknown')
+echo "内存总量: \${MEM_TOTAL}"
+echo "内存使用: $(free -h 2>/dev/null | awk '/^Mem:/{print $3}' || echo 'unknown')"
+
+echo ""
+echo "===== 磁盘信息 ====="
+if [ "\${SHOW_DISK:-true}" = "true" ]; then
+  df -h 2>/dev/null | grep -vE '^(tmpfs|devtmpfs|overlay)' || df -h
+else
+  echo "已根据配置跳过磁盘信息"
+fi
+
+echo ""
+echo "===== 负载信息 ====="
+cat /proc/loadavg 2>/dev/null || echo 'unknown'
+
+echo ""
+echo "===== 执行完成 ====="`
+  },
+  {
+    id: 'disk-usage',
+    name: '磁盘使用率检查',
+    description: '检查各挂载点磁盘使用率，支持自定义告警阈值，超过阈值返回非零退出码',
+    category: 'system',
+    timeout: 30,
+    content: `#!/usr/bin/env bash
+# =============================================
+# 磁盘使用率检查脚本
+# 配置方式（环境变量）：
+#   DISK_THRESHOLD=85   使用率告警阈值（默认 85）
+#   DISK_PATH=/         需要检查的挂载点（默认所有本地磁盘）
+# =============================================
+set -euo pipefail
+
+THRESHOLD="\${DISK_THRESHOLD:-85}"
+TARGET_PATH="\${DISK_PATH:-/}"
+
+echo "磁盘使用率告警阈值: \${THRESHOLD}%"
+echo "检查挂载点: \${TARGET_PATH}"
+echo ""
+
+OVER_THRESHOLD=0
+while IFS= read -r line; do
+  USE_PERCENT=$(echo "$line" | awk '{print $5}' | tr -d '%')
+  MOUNT_POINT=$(echo "$line" | awk '{print $6}')
+  # 跳过伪文件系统
+  case "$MOUNT_POINT" in
+    /proc|/sys|/dev|/run|/boot/efi|/snap/*) continue ;;
+  esac
+  if [ -n "$USE_PERCENT" ] && [ "$USE_PERCENT" -gt "$THRESHOLD" ] 2>/dev/null; then
+    echo "[警告] 挂载点 \${MOUNT_POINT} 使用率 \${USE_PERCENT}% 超过阈值 \${THRESHOLD}%"
+    OVER_THRESHOLD=1
+  else
+    echo "[正常] \${MOUNT_POINT}: \${USE_PERCENT}%"
+  fi
+done < <(df -h -P "\${TARGET_PATH}" 2>/dev/null || df -h -P)
+
+echo ""
+if [ "$OVER_THRESHOLD" -eq 1 ]; then
+  echo "检测到磁盘使用率超限"
+  exit 1
+fi
+echo "所有磁盘使用率正常"
+exit 0`
+  },
+  {
+    id: 'docker-cleanup',
+    name: 'Docker 垃圾清理',
+    description: '清理 Docker 悬空镜像、停止的容器和未使用的网络',
+    category: 'docker',
+    timeout: 120,
+    content: `#!/usr/bin/env bash
+# =============================================
+# Docker 垃圾清理脚本
+# 配置方式（环境变量）：
+#   DOCKER_CLEAN_VOLUMES=false  是否同时清理未使用的数据卷（默认 false，避免误删）
+# =============================================
+set -euo pipefail
+
+if ! command -v docker >/dev/null 2>&1; then
+  echo "错误: 未检测到 docker 命令"
+  exit 1
+fi
+
+echo "===== 清理悬空镜像 ====="
+docker image prune -f || echo "镜像清理完成（无悬空镜像）"
+
+echo ""
+echo "===== 清理停止的容器 ====="
+STOPPED_COUNT=$(docker ps -aq | wc -l)
+if [ "$STOPPED_COUNT" -gt 0 ]; then
+  docker rm $(docker ps -aq) 2>/dev/null || true
+  echo "已清理 \${STOPPED_COUNT} 个停止的容器"
+else
+  echo "无停止的容器"
+fi
+
+echo ""
+echo "===== 清理未使用的网络 ====="
+docker network prune -f || echo "网络清理完成（无未使用网络）"
+
+echo ""
+if [ "\${DOCKER_CLEAN_VOLUMES:-false}" = "true" ]; then
+  echo "===== 清理未使用的数据卷 ====="
+  docker volume prune -f || echo "卷清理完成（无未使用卷）"
+else
+  echo "数据卷未清理（如需清理请设置 DOCKER_CLEAN_VOLUMES=true）"
+fi
+
+echo ""
+echo "===== 清理完成 ====="
+docker system df`
+  },
+  {
+    id: 'docker-stats',
+    name: 'Docker 容器状态报告',
+    description: '输出所有运行中容器的资源使用状态，可用于批量巡检多台服务器',
+    category: 'docker',
+    timeout: 60,
+    content: `#!/usr/bin/env bash
+# =============================================
+# Docker 容器状态报告脚本
+# 配置方式（环境变量）：
+#   STATS_SORT=name|cpu|mem   排序方式（默认 name）
+# =============================================
+set -euo pipefail
+
+if ! command -v docker >/dev/null 2>&1; then
+  echo "错误: 未检测到 docker 命令"
+  exit 1
+fi
+
+echo "===== Docker 环境 ====="
+echo "Docker 版本: $(docker --version 2>/dev/null || echo 'unknown')"
+echo "容器总数: $(docker ps -a -q | wc -l)"
+echo "运行中: $(docker ps -q | wc -l)"
+
+echo ""
+echo "===== 运行中容器状态 ====="
+SORT_KEY="\${STATS_SORT:-name}"
+docker stats --no-stream --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}\t{{.NetIO}}" 2>/dev/null | {
+  case "$SORT_KEY" in
+    cpu) sort -k3 -t$'\\t' -r || cat ;;
+    mem) sort -k4 -t$'\\t' -r || cat ;;
+    *) cat ;;
+  esac
+}
+
+echo ""
+echo "===== 报告完成 ====="`
+  },
+  {
+    id: 'network-check',
+    name: '网络连通性检查',
+    description: '检查外网连通性、DNS 解析和到指定地址的延迟',
+    category: 'network',
+    timeout: 60,
+    content: `#!/usr/bin/env bash
+# =============================================
+# 网络连通性检查脚本
+# 配置方式（环境变量）：
+#   PING_HOST=www.baidu.com   Ping 测试目标（默认 114.114.114.114）
+#   PING_COUNT=4              Ping 次数（默认 4）
+#   DNS_HOST=www.baidu.com    DNS 解析测试域名
+# =============================================
+set -euo pipefail
+
+PING_HOST="\${PING_HOST:-114.114.114.114}"
+PING_COUNT="\${PING_COUNT:-4}"
+DNS_HOST="\${DNS_HOST:-www.baidu.com}"
+
+echo "===== 外网连通性测试 ====="
+if ping -c "\${PING_COUNT}" -W 3 "\${PING_HOST}" >/dev/null 2>&1; then
+  echo "[通过] 可以 ping 通 \${PING_HOST}"
+else
+  echo "[失败] 无法 ping 通 \${PING_HOST}"
+fi
+
+echo ""
+echo "===== DNS 解析测试 ====="
+if command -v nslookup >/dev/null 2>&1; then
+  nslookup "\${DNS_HOST}" 2>/dev/null | grep -A2 'Name:' || echo "[失败] DNS 解析 \${DNS_HOST} 失败"
+elif command -v dig >/dev/null 2>&1; then
+  dig +short "\${DNS_HOST}" 2>/dev/null | head -5 || echo "[失败] DNS 解析 \${DNS_HOST} 失败"
+else
+  echo "[跳过] 未安装 nslookup/dig 工具"
+fi
+
+echo ""
+echo "===== HTTP 访问测试 ====="
+if command -v curl >/dev/null 2>&1; then
+  HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 5 --max-time 10 "https://\${DNS_HOST}" 2>/dev/null || echo '000')
+  echo "[\${HTTP_CODE}] HTTPS 访问 https://\${DNS_HOST}"
+elif command -v wget >/dev/null 2>&1; then
+  echo "[跳过] 未安装 curl，使用 wget"
+  wget -q --spider --timeout=5 "https://\${DNS_HOST}" 2>/dev/null && echo "[通过] 可以访问 https://\${DNS_HOST}" || echo "[失败] 无法访问 https://\${DNS_HOST}"
+fi
+
+echo ""
+echo "===== 检查完成 ====="`
+  },
+  {
+    id: 'process-monitor',
+    name: '进程监控检查',
+    description: '检查指定进程是否存在，可用于守护进程巡检',
+    category: 'monitoring',
+    timeout: 30,
+    content: `#!/usr/bin/env bash
+# =============================================
+# 进程监控检查脚本
+# 配置方式（环境变量）：
+#   PROCESS_NAME=nginx   需要检查的进程名（必填）
+#   PROCESS_COUNT=1      要求的最小进程数（默认 1）
+# =============================================
+set -euo pipefail
+
+PROCESS_NAME="\${PROCESS_NAME:-}"
+MIN_COUNT="\${PROCESS_COUNT:-1}"
+
+if [ -z "$PROCESS_NAME" ]; then
+  echo "错误: 未设置 PROCESS_NAME 环境变量，无法执行检查"
+  exit 2
+fi
+
+echo "检查进程: \${PROCESS_NAME}（要求至少 \${MIN_COUNT} 个）"
+echo ""
+
+# 兼容 pgrep 缺失的极简环境
+if command -v pgrep >/dev/null 2>&1; then
+  PROCESS_LIST=$(pgrep -f "\${PROCESS_NAME}" || true)
+else
+  PROCESS_LIST=$(ps -ef | grep -v grep | grep "\${PROCESS_NAME}" | awk '{print $2}' || true)
+fi
+
+COUNT=$(echo "$PROCESS_LIST" | grep -c . || true)
+COUNT=\${COUNT:-0}
+
+if [ "$COUNT" -ge "$MIN_COUNT" ]; then
+  echo "[正常] 检测到 \${COUNT} 个进程实例"
+  echo "$PROCESS_LIST"
+  exit 0
+fi
+
+echo "[警告] 仅检测到 \${COUNT} 个进程实例，低于要求的最小值 \${MIN_COUNT}"
+exit 1`
+  }
+]
+
+export function initDefaultShellScripts(): void {
+  if (!db) return
+
+  const database = db
+  const now = new Date().toISOString()
+
+  const insertStmt = database.prepare(`
+    INSERT INTO shell_scripts (id, name, description, category, content, version, timeout, isBuiltIn, createdAt, updatedAt)
+    VALUES (@id, @name, @description, @category, @content, @version, @timeout, @isBuiltIn, @createdAt, @updatedAt)
+  `)
+
+  const insertMany = database.transaction(() => {
+    for (const script of DEFAULT_SHELL_SCRIPTS) {
+      // 仅当内置脚本不存在时插入，避免覆盖用户自定义内容及级联清空版本/日志记录
+      const existing = database.prepare('SELECT id FROM shell_scripts WHERE id = ?').get(script.id)
+      if (existing) continue
+      insertStmt.run({
+        ...script,
+        version: 1,
+        isBuiltIn: 1,
+        createdAt: now,
+        updatedAt: now
+      })
+    }
+  })
+
+  insertMany()
+  log.info(`Initialized ${DEFAULT_SHELL_SCRIPTS.length} default shell scripts in database`)
 }
