@@ -185,10 +185,11 @@ class SchedulerService {
       await new Promise(resolve => setTimeout(resolve, 2000))
     }
 
-    // 拉取最新镜像
+    // 拉取最新镜像（自动检测 Compose 版本）
+    const composeCmd = (await appDeployService.detectComposeEnvironment(task.serverId)).command
     const pullResult = await sshService.executeCommand(
       task.serverId,
-      `cd ${appInfo.projectPath} && docker-compose pull`
+      `cd ${appInfo.projectPath} && ${composeCmd} pull`
     )
     if (!pullResult.success) {
       log.warn(`Pull warning: ${pullResult.stderr}`)

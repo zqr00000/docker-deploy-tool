@@ -1,4 +1,4 @@
-﻿import log from 'electron-log'
+import log from 'electron-log'
 import { sshService } from '../ssh'
 import { appQueries, serverQueries } from '../database'
 import { randomUUID } from 'crypto'
@@ -45,7 +45,115 @@ export interface ContainerStats {
   pids: number
 }
 
+export interface ComposeEnvInfo {
+  /** v2 = docker compose 插件；v1 = docker-compose 独立版；unknown = 未检测到 */
+  type: 'v1' | 'v2' | 'unknown'
+  /** 实际使用的 compose 命令前缀 */
+  command: string
+  dockerVersion: string
+  composeVersion: string
+}
+
+/**
+ * 根据 Compose 版本规范化 compose 内容：
+ * - Compose V1：需要 version 键（无则补上）
+ * - Compose V2：version 键已废弃且部分版本直接报错，必须移除
+ * - unknown：保持原样，不做任何修改
+ */
+export function normalizeComposeContent(content: string, type: ComposeEnvInfo['type']): string {
+  if (!content) return content
+  const versionLineRegex = /^version:\s*["']?\d+(?:\.\d+)*["']?\s*$/m
+  const hasVersion = versionLineRegex.test(content)
+
+  if (type === 'v2' && hasVersion) {
+    return content.replace(versionLineRegex, '').replace(/^\n/, '')
+  }
+  if (type === 'v1' && !hasVersion) {
+    return `version: "3.8"\n${content}`
+  }
+  return content
+}
+
 class AppDeployService {
+  // Compose 环境检测缓存（每台服务器 10 分钟），避免每次操作重复探测
+  private composeEnvCache = new Map<string, { info: ComposeEnvInfo; expiresAt: number }>()
+  private readonly composeEnvCacheTtl = 10 * 60 * 1000
+
+  /**
+   * 自动检测服务器上的 Docker 与 Compose 版本，决定使用 docker compose（V2）还是 docker-compose（V1）
+   */
+  async detectComposeEnvironment(serverId: string): Promise<ComposeEnvInfo> {
+    const cached = this.composeEnvCache.get(serverId)
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.info
+    }
+
+    // Docker 版本
+    const dockerRes = await sshService.executeCommand(serverId, 'docker --version 2>/dev/null', 0, 500, 10000)
+    const dockerVersion = dockerRes.success ? dockerRes.stdout.trim() : ''
+
+    // 优先检测 Compose V2 插件
+    const v2Res = await sshService.executeCommand(
+      serverId,
+      'docker compose version 2>/dev/null || docker compose --version 2>/dev/null',
+      0,
+      500,
+      10000
+    )
+    if (v2Res.success && v2Res.stdout.trim()) {
+      const info: ComposeEnvInfo = {
+        type: 'v2',
+        command: 'docker compose',
+        dockerVersion,
+        composeVersion: this.parseComposeVersion(v2Res.stdout)
+      }
+      this.composeEnvCache.set(serverId, { info, expiresAt: Date.now() + this.composeEnvCacheTtl })
+      log.info(`Server ${serverId}: Docker Compose V2 detected (${info.composeVersion || 'unknown version'})`)
+      return info
+    }
+
+    // 再检测 Compose V1 独立版
+    const v1Res = await sshService.executeCommand(
+      serverId,
+      'docker-compose version 2>/dev/null || docker-compose --version 2>/dev/null',
+      0,
+      500,
+      10000
+    )
+    if (v1Res.success && v1Res.stdout.trim()) {
+      const info: ComposeEnvInfo = {
+        type: 'v1',
+        command: 'docker-compose',
+        dockerVersion,
+        composeVersion: this.parseComposeVersion(v1Res.stdout)
+      }
+      this.composeEnvCache.set(serverId, { info, expiresAt: Date.now() + this.composeEnvCacheTtl })
+      log.info(`Server ${serverId}: Docker Compose V1 detected (${info.composeVersion || 'unknown version'})`)
+      return info
+    }
+
+    // 都未检测到：保守回退到 docker-compose，内容不做修改
+    const fallback: ComposeEnvInfo = {
+      type: 'unknown',
+      command: 'docker-compose',
+      dockerVersion,
+      composeVersion: ''
+    }
+    this.composeEnvCache.set(serverId, { info: fallback, expiresAt: Date.now() + this.composeEnvCacheTtl })
+    log.warn(`Server ${serverId}: compose command not detected, falling back to docker-compose`)
+    return fallback
+  }
+
+  private parseComposeVersion(output: string): string {
+    const match = output.trim().match(/(\d+\.\d+\.\d+)/)
+    return match ? match[1] : output.trim()
+  }
+
+  private async getComposeCommand(serverId: string): Promise<string> {
+    const env = await this.detectComposeEnvironment(serverId)
+    return env.command
+  }
+
   async deployApp(options: DeployOptions): Promise<DeployResult> {
     const { serverId, appName, dockerCompose, projectPath, templateId, envVariables } = options
 
@@ -85,7 +193,10 @@ class AppDeployService {
       }
 
       log.info(`Uploading docker-compose.yml to ${projectPath}`)
-      const uploadResult = await sshService.uploadContent(serverId, dockerCompose, `${projectPath}/docker-compose.yml`)
+      // 自动检测 Compose 版本并按版本规范化内容（V1 保留/补充 version 键，V2 移除）
+      const composeEnv = await this.detectComposeEnvironment(serverId)
+      const normalizedCompose = normalizeComposeContent(dockerCompose, composeEnv.type)
+      const uploadResult = await sshService.uploadContent(serverId, normalizedCompose, `${projectPath}/docker-compose.yml`)
       if (!uploadResult.success) {
         this.updateAppStatus(appId, 'error', '[]')
         return { success: false, appId, message: `Failed to upload docker-compose.yml: ${uploadResult.message}` }
@@ -106,13 +217,13 @@ class AppDeployService {
       }
 
       log.info(`Pulling Docker images for ${appName}`)
-      const pullResult = await sshService.executeCommand(serverId, `cd ${projectPath} && docker-compose --env-file .env pull 2>/dev/null || docker-compose pull`)
+      const pullResult = await sshService.executeCommand(serverId, `cd ${projectPath} && ${composeEnv.command} --env-file .env pull 2>/dev/null || ${composeEnv.command} pull`)
       if (!pullResult.success) {
         log.warn(`Docker pull warning: ${pullResult.stderr}`)
       }
 
       log.info(`Starting containers for ${appName}`)
-      const deployResult = await sshService.executeCommand(serverId, `cd ${projectPath} && docker-compose --env-file .env up -d 2>/dev/null || docker-compose up -d`)
+      const deployResult = await sshService.executeCommand(serverId, `cd ${projectPath} && ${composeEnv.command} --env-file .env up -d 2>/dev/null || ${composeEnv.command} up -d`)
       if (!deployResult.success) {
         this.updateAppStatus(appId, 'error', '[]')
         return { success: false, appId, message: `Failed to start containers: ${deployResult.stderr}` }
@@ -162,9 +273,10 @@ class AppDeployService {
   }
 
   private async getContainerIds(serverId: string, projectPath: string, appName: string): Promise<string[]> {
+    const composeCmd = await this.getComposeCommand(serverId)
     const psResult = await sshService.executeCommand(
       serverId,
-      `cd ${projectPath} && docker-compose ps -aq`
+      `cd ${projectPath} && ${composeCmd} ps -aq`
     )
 
     if (!psResult.success || !psResult.stdout.trim()) {
@@ -199,7 +311,8 @@ class AppDeployService {
     try {
       appQueries.update(appId, { status: 'deploying' })
 
-      const result = await sshService.executeCommand(app.serverId, `cd ${app.projectPath} && docker-compose start`)
+      const composeCmd = await this.getComposeCommand(app.serverId)
+      const result = await sshService.executeCommand(app.serverId, `cd ${app.projectPath} && ${composeCmd} start`)
       if (!result.success) {
         appQueries.update(appId, { status: 'error' })
         return { success: false, message: `Failed to start: ${result.stderr}` }
@@ -231,7 +344,8 @@ class AppDeployService {
     try {
       appQueries.update(appId, { status: 'deploying' })
 
-      const result = await sshService.executeCommand(app.serverId, `cd ${app.projectPath} && docker-compose stop`)
+      const composeCmd = await this.getComposeCommand(app.serverId)
+      const result = await sshService.executeCommand(app.serverId, `cd ${app.projectPath} && ${composeCmd} stop`)
       if (!result.success) {
         appQueries.update(appId, { status: 'error' })
         return { success: false, message: `Failed to stop: ${result.stderr}` }
@@ -269,7 +383,8 @@ class AppDeployService {
     }
 
     try {
-      const downResult = await sshService.executeCommand(app.serverId, `cd ${app.projectPath} && docker-compose down -v --remove-orphans`)
+      const composeCmd = await this.getComposeCommand(app.serverId)
+      const downResult = await sshService.executeCommand(app.serverId, `cd ${app.projectPath} && ${composeCmd} down -v --remove-orphans`)
       if (!downResult.success) {
         log.warn(`docker-compose down warning: ${downResult.stderr}`)
       }
@@ -302,20 +417,23 @@ class AppDeployService {
     try {
       appQueries.update(appId, { status: 'deploying' })
 
+      const composeEnv = await this.detectComposeEnvironment(app.serverId)
       if (dockerCompose) {
-        const uploadResult = await sshService.uploadContent(app.serverId, dockerCompose, `${app.projectPath}/docker-compose.yml`)
+        // 按 Compose 版本规范化内容后上传
+        const normalizedCompose = normalizeComposeContent(dockerCompose, composeEnv.type)
+        const uploadResult = await sshService.uploadContent(app.serverId, normalizedCompose, `${app.projectPath}/docker-compose.yml`)
         if (!uploadResult.success) {
           appQueries.update(appId, { status: 'error' })
           return { success: false, message: `Failed to update config: ${uploadResult.message}` }
         }
       }
 
-      const pullResult = await sshService.executeCommand(app.serverId, `cd ${app.projectPath} && docker-compose pull`)
+      const pullResult = await sshService.executeCommand(app.serverId, `cd ${app.projectPath} && ${composeEnv.command} pull`)
       if (!pullResult.success) {
         log.warn(`Pull warning: ${pullResult.stderr}`)
       }
 
-      const upResult = await sshService.executeCommand(app.serverId, `cd ${app.projectPath} && docker-compose up -d`)
+      const upResult = await sshService.executeCommand(app.serverId, `cd ${app.projectPath} && ${composeEnv.command} up -d`)
       if (!upResult.success) {
         appQueries.update(appId, { status: 'error' })
         return { success: false, message: `Failed to update: ${upResult.stderr}` }
@@ -339,9 +457,10 @@ class AppDeployService {
       return []
     }
 
+    const composeCmd = await this.getComposeCommand(serverId)
     const psResult = await sshService.executeCommand(
       serverId,
-      `cd ${projectPath} && docker-compose ps -a --format json 2>/dev/null || docker-compose ps -a`
+      `cd ${projectPath} && ${composeCmd} ps -a --format json 2>/dev/null || ${composeCmd} ps -a`
     )
 
     if (!psResult.success || !psResult.stdout.trim()) {
@@ -389,9 +508,10 @@ class AppDeployService {
       return 'Server not connected'
     }
 
+    const composeCmd = await this.getComposeCommand(serverId)
     const result = await sshService.executeCommand(
       serverId,
-      `cd ${projectPath} && docker-compose logs --tail=${lines}`
+      `cd ${projectPath} && ${composeCmd} logs --tail=${lines}`
     )
 
     if (result.success) {

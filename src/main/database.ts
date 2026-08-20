@@ -1,4 +1,4 @@
-import Database from 'better-sqlite3'
+﻿import Database from 'better-sqlite3'
 import { app } from 'electron'
 import { join } from 'path'
 import { existsSync, mkdirSync } from 'fs'
@@ -391,7 +391,7 @@ const DEFAULT_TEMPLATES = [
     name: 'Nginx Web Server',
     description: '高性能 HTTP 和反向代理服务器',
     category: 'web',
-    dockerCompose: 'version: "3.8"\nservices:\n  nginx:\n    image: nginx:${NGINX_VERSION:-latest}\n    ports:\n      - "${HTTP_PORT:-80}:80"\n      - "${HTTPS_PORT:-443}:443"\n    volumes:\n      - ./conf:/etc/nginx/conf.d\n      - ./html:/usr/share/nginx/html\n      - ./logs:/var/log/nginx\n    restart: unless-stopped',
+    dockerCompose: 'services:\n  nginx:\n    image: nginx:${NGINX_VERSION:-latest}\n    ports:\n      - "${HTTP_PORT:-80}:80"\n      - "${HTTPS_PORT:-443}:443"\n    volumes:\n      - ./conf:/etc/nginx/conf.d\n      - ./html:/usr/share/nginx/html\n      - ./logs:/var/log/nginx\n    restart: unless-stopped',
     envSchema: [
       { name: 'NGINX_VERSION', defaultValue: 'latest', description: 'Nginx 版本', required: false },
       { name: 'HTTP_PORT', defaultValue: '80', description: 'HTTP 端口', required: false },
@@ -403,7 +403,7 @@ const DEFAULT_TEMPLATES = [
     name: 'MySQL 数据库',
     description: 'MySQL 8.0 数据库服务器，适合中小型应用数据存储',
     category: 'database',
-    dockerCompose: 'version: "3.8"\nservices:\n  mysql:\n    image: mysql:${MYSQL_VERSION:-8.0}\n    ports:\n      - "${MYSQL_PORT:-3306}:3306"\n    environment:\n      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}\n      MYSQL_DATABASE: ${MYSQL_DATABASE:-app}\n      MYSQL_USER: ${MYSQL_USER:-app_user}\n      MYSQL_PASSWORD: ${MYSQL_PASSWORD}\n    volumes:\n      - mysql_data:/var/lib/mysql\n    restart: unless-stopped\n\nvolumes:\n  mysql_data:',
+    dockerCompose: 'services:\n  mysql:\n    image: mysql:${MYSQL_VERSION:-8.0}\n    ports:\n      - "${MYSQL_PORT:-3306}:3306"\n    environment:\n      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}\n      MYSQL_DATABASE: ${MYSQL_DATABASE:-app}\n      MYSQL_USER: ${MYSQL_USER:-app_user}\n      MYSQL_PASSWORD: ${MYSQL_PASSWORD}\n    volumes:\n      - mysql_data:/var/lib/mysql\n    restart: unless-stopped\n\nvolumes:\n  mysql_data:',
     envSchema: [
       { name: 'MYSQL_VERSION', defaultValue: '8.0', description: 'MySQL 版本', required: false },
       { name: 'MYSQL_PORT', defaultValue: '3306', description: 'MySQL 端口', required: false },
@@ -418,7 +418,7 @@ const DEFAULT_TEMPLATES = [
     name: 'PostgreSQL 数据库',
     description: 'PostgreSQL 数据库服务器，支持 JSON、地理空间数据等高级特性',
     category: 'database',
-    dockerCompose: 'version: "3.8"\nservices:\n  postgres:\n    image: postgres:${POSTGRES_VERSION:-15}\n    ports:\n      - "${POSTGRES_PORT:-5432}:5432"\n    environment:\n      POSTGRES_USER: ${POSTGRES_USER:-postgres}\n      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}\n      POSTGRES_DB: ${POSTGRES_DB:-app}\n    volumes:\n      - postgres_data:/var/lib/postgresql/data\n    restart: unless-stopped\n\nvolumes:\n  postgres_data:',
+    dockerCompose: 'services:\n  postgres:\n    image: postgres:${POSTGRES_VERSION:-15}\n    ports:\n      - "${POSTGRES_PORT:-5432}:5432"\n    environment:\n      POSTGRES_USER: ${POSTGRES_USER:-postgres}\n      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}\n      POSTGRES_DB: ${POSTGRES_DB:-app}\n    volumes:\n      - postgres_data:/var/lib/postgresql/data\n    restart: unless-stopped\n\nvolumes:\n  postgres_data:',
     envSchema: [
       { name: 'POSTGRES_VERSION', defaultValue: '15', description: 'PostgreSQL 版本', required: false },
       { name: 'POSTGRES_PORT', defaultValue: '5432', description: 'PostgreSQL 端口', required: false },
@@ -432,7 +432,7 @@ const DEFAULT_TEMPLATES = [
     name: 'Redis 缓存',
     description: '高性能键值存储系统，常用于缓存、会话存储等场景',
     category: 'cache',
-    dockerCompose: 'version: "3.8"\nservices:\n  redis:\n    image: redis:${REDIS_VERSION:-7}\n    ports:\n      - "${REDIS_PORT:-6379}:6379"\n    volumes:\n      - redis_data:/data\n    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}\n    restart: unless-stopped\n\nvolumes:\n  redis_data:',
+    dockerCompose: 'services:\n  redis:\n    image: redis:${REDIS_VERSION:-7}\n    ports:\n      - "${REDIS_PORT:-6379}:6379"\n    volumes:\n      - redis_data:/data\n    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}\n    restart: unless-stopped\n\nvolumes:\n  redis_data:',
     envSchema: [
       { name: 'REDIS_VERSION', defaultValue: '7', description: 'Redis 版本', required: false },
       { name: 'REDIS_PORT', defaultValue: '6379', description: 'Redis 端口', required: false },
@@ -444,7 +444,7 @@ const DEFAULT_TEMPLATES = [
     name: 'WordPress CMS',
     description: '最流行的开源内容管理系统，包含 MySQL 数据库',
     category: 'cms',
-    dockerCompose: 'version: "3.8"\nservices:\n  wordpress:\n    image: wordpress:${WORDPRESS_VERSION:-latest}\n    ports:\n      - "${WORDPRESS_PORT:-80}:80"\n    environment:\n      WORDPRESS_DB_HOST: db\n      WORDPRESS_DB_USER: ${DB_USER:-wordpress}\n      WORDPRESS_DB_PASSWORD: ${DB_PASSWORD}\n      WORDPRESS_DB_NAME: ${DB_NAME:-wordpress}\n    volumes:\n      - wordpress_data:/var/www/html\n    depends_on:\n      - db\n    restart: unless-stopped\n\n  db:\n    image: mysql:${MYSQL_VERSION:-5.7}\n    environment:\n      MYSQL_DATABASE: ${DB_NAME:-wordpress}\n      MYSQL_USER: ${DB_USER:-wordpress}\n      MYSQL_PASSWORD: ${DB_PASSWORD}\n      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}\n    volumes:\n      - db_data:/var/lib/mysql\n    restart: unless-stopped\n\nvolumes:\n  wordpress_data:\n  db_data:',
+    dockerCompose: 'services:\n  wordpress:\n    image: wordpress:${WORDPRESS_VERSION:-latest}\n    ports:\n      - "${WORDPRESS_PORT:-80}:80"\n    environment:\n      WORDPRESS_DB_HOST: db\n      WORDPRESS_DB_USER: ${DB_USER:-wordpress}\n      WORDPRESS_DB_PASSWORD: ${DB_PASSWORD}\n      WORDPRESS_DB_NAME: ${DB_NAME:-wordpress}\n    volumes:\n      - wordpress_data:/var/www/html\n    depends_on:\n      - db\n    restart: unless-stopped\n\n  db:\n    image: mysql:${MYSQL_VERSION:-5.7}\n    environment:\n      MYSQL_DATABASE: ${DB_NAME:-wordpress}\n      MYSQL_USER: ${DB_USER:-wordpress}\n      MYSQL_PASSWORD: ${DB_PASSWORD}\n      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}\n    volumes:\n      - db_data:/var/lib/mysql\n    restart: unless-stopped\n\nvolumes:\n  wordpress_data:\n  db_data:',
     envSchema: [
       { name: 'WORDPRESS_VERSION', defaultValue: 'latest', description: 'WordPress 版本', required: false },
       { name: 'WORDPRESS_PORT', defaultValue: '80', description: 'WordPress 端口', required: false },
@@ -460,7 +460,7 @@ const DEFAULT_TEMPLATES = [
     name: 'Nginx + PHP-FPM',
     description: '经典的 Web 开发环境，支持 PHP 应用部署',
     category: 'web',
-    dockerCompose: 'version: "3.8"\nservices:\n  web:\n    image: nginx:${NGINX_VERSION:-latest}\n    ports:\n      - "${HTTP_PORT:-80}:80"\n    volumes:\n      - ./nginx.conf:/etc/nginx/nginx.conf\n      - ./www:/var/www/html\n    depends_on:\n      - php\n    restart: unless-stopped\n\n  php:\n    image: php:${PHP_VERSION:-8.2}-fpm\n    volumes:\n      - ./www:/var/www/html\n    environment:\n      PHP_MEMORY_LIMIT: ${PHP_MEMORY_LIMIT:-256M}\n    restart: unless-stopped',
+    dockerCompose: 'services:\n  web:\n    image: nginx:${NGINX_VERSION:-latest}\n    ports:\n      - "${HTTP_PORT:-80}:80"\n    volumes:\n      - ./nginx.conf:/etc/nginx/nginx.conf\n      - ./www:/var/www/html\n    depends_on:\n      - php\n    restart: unless-stopped\n\n  php:\n    image: php:${PHP_VERSION:-8.2}-fpm\n    volumes:\n      - ./www:/var/www/html\n    environment:\n      PHP_MEMORY_LIMIT: ${PHP_MEMORY_LIMIT:-256M}\n    restart: unless-stopped',
     envSchema: [
       { name: 'NGINX_VERSION', defaultValue: 'latest', description: 'Nginx 版本', required: false },
       { name: 'PHP_VERSION', defaultValue: '8.2', description: 'PHP 版本', required: false },
@@ -473,7 +473,7 @@ const DEFAULT_TEMPLATES = [
     name: 'MongoDB 数据库',
     description: 'MongoDB NoSQL 数据库，支持副本集模式，适合文档存储和大数据应用',
     category: 'database',
-    dockerCompose: 'version: "3.8"\nservices:\n  mongodb:\n    image: mongo:${MONGO_VERSION:-7}\n    ports:\n      - "${MONGO_PORT:-27017}:27017"\n    environment:\n      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:-admin}\n      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}\n    volumes:\n      - mongo_data:/data/db\n      - mongo_config:/data/configdb\n    restart: unless-stopped\n\nvolumes:\n  mongo_data:\n  mongo_config:',
+    dockerCompose: 'services:\n  mongodb:\n    image: mongo:${MONGO_VERSION:-7}\n    ports:\n      - "${MONGO_PORT:-27017}:27017"\n    environment:\n      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:-admin}\n      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}\n    volumes:\n      - mongo_data:/data/db\n      - mongo_config:/data/configdb\n    restart: unless-stopped\n\nvolumes:\n  mongo_data:\n  mongo_config:',
     envSchema: [
       { name: 'MONGO_VERSION', defaultValue: '7', description: 'MongoDB 版本', required: false },
       { name: 'MONGO_PORT', defaultValue: '27017', description: 'MongoDB 端口', required: false },
@@ -486,7 +486,7 @@ const DEFAULT_TEMPLATES = [
     name: 'RabbitMQ 消息队列',
     description: 'RabbitMQ 消息代理，支持 AMQP 协议，包含管理控制台',
     category: 'message-queue',
-    dockerCompose: 'version: "3.8"\nservices:\n  rabbitmq:\n    image: rabbitmq:${RABBITMQ_VERSION:-3.13}-management\n    ports:\n      - "${AMQP_PORT:-5672}:5672"\n      - "${MANAGEMENT_PORT:-15672}:15672"\n    environment:\n      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-admin}\n      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}\n    volumes:\n      - rabbitmq_data:/var/lib/rabbitmq\n    restart: unless-stopped\n\nvolumes:\n  rabbitmq_data:',
+    dockerCompose: 'services:\n  rabbitmq:\n    image: rabbitmq:${RABBITMQ_VERSION:-3.13}-management\n    ports:\n      - "${AMQP_PORT:-5672}:5672"\n      - "${MANAGEMENT_PORT:-15672}:15672"\n    environment:\n      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-admin}\n      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}\n    volumes:\n      - rabbitmq_data:/var/lib/rabbitmq\n    restart: unless-stopped\n\nvolumes:\n  rabbitmq_data:',
     envSchema: [
       { name: 'RABBITMQ_VERSION', defaultValue: '3.13', description: 'RabbitMQ 版本', required: false },
       { name: 'AMQP_PORT', defaultValue: '5672', description: 'AMQP 端口', required: false },
@@ -500,7 +500,7 @@ const DEFAULT_TEMPLATES = [
     name: 'Elasticsearch 搜索引擎',
     description: 'Elasticsearch 分布式搜索和分析引擎，适合全文搜索和日志分析',
     category: 'search',
-    dockerCompose: 'version: "3.8"\nservices:\n  elasticsearch:\n    image: elasticsearch:${ES_VERSION:-8.11.0}\n    ports:\n      - "${ES_HTTP_PORT:-9200}:9200"\n      - "${ES_TRANSPORT_PORT:-9300}:9300"\n    environment:\n      discovery.type: single-node\n      xpack.security.enabled: "false"\n      ES_JAVA_OPTS: "-Xms512m -Xmx512m"\n    volumes:\n      - es_data:/usr/share/elasticsearch/data\n    restart: unless-stopped\n\nvolumes:\n  es_data:',
+    dockerCompose: 'services:\n  elasticsearch:\n    image: elasticsearch:${ES_VERSION:-8.11.0}\n    ports:\n      - "${ES_HTTP_PORT:-9200}:9200"\n      - "${ES_TRANSPORT_PORT:-9300}:9300"\n    environment:\n      discovery.type: single-node\n      xpack.security.enabled: "false"\n      ES_JAVA_OPTS: "-Xms512m -Xmx512m"\n    volumes:\n      - es_data:/usr/share/elasticsearch/data\n    restart: unless-stopped\n\nvolumes:\n  es_data:',
     envSchema: [
       { name: 'ES_VERSION', defaultValue: '8.11.0', description: 'Elasticsearch 版本', required: false },
       { name: 'ES_HTTP_PORT', defaultValue: '9200', description: 'HTTP API 端口', required: false },
@@ -512,7 +512,7 @@ const DEFAULT_TEMPLATES = [
     name: 'Grafana 监控面板',
     description: 'Grafana 开源可视化和分析平台，支持多种数据源',
     category: 'monitoring',
-    dockerCompose: 'version: "3.8"\nservices:\n  grafana:\n    image: grafana/grafana:${GRAFANA_VERSION:-10.2.0}\n    ports:\n      - "${GRAFANA_PORT:-3000}:3000"\n    environment:\n      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}\n      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}\n    volumes:\n      - grafana_data:/var/lib/grafana\n    restart: unless-stopped\n\nvolumes:\n  grafana_data:',
+    dockerCompose: 'services:\n  grafana:\n    image: grafana/grafana:${GRAFANA_VERSION:-10.2.0}\n    ports:\n      - "${GRAFANA_PORT:-3000}:3000"\n    environment:\n      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}\n      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}\n    volumes:\n      - grafana_data:/var/lib/grafana\n    restart: unless-stopped\n\nvolumes:\n  grafana_data:',
     envSchema: [
       { name: 'GRAFANA_VERSION', defaultValue: '10.2.0', description: 'Grafana 版本', required: false },
       { name: 'GRAFANA_PORT', defaultValue: '3000', description: 'Grafana 端口', required: false },
@@ -525,7 +525,7 @@ const DEFAULT_TEMPLATES = [
     name: 'Prometheus 监控系统',
     description: 'Prometheus 监控和告警系统，支持时序数据收集',
     category: 'monitoring',
-    dockerCompose: 'version: "3.8"\nservices:\n  prometheus:\n    image: prom/prometheus:${PROMETHEUS_VERSION:-v2.48.0}\n    ports:\n      - "${PROMETHEUS_PORT:-9090}:9090"\n    volumes:\n      - ./prometheus.yml:/etc/prometheus/prometheus.yml\n      - prometheus_data:/prometheus\n    command:\n      - --config.file=/etc/prometheus/prometheus.yml\n      - --storage.tsdb.retention.time=15d\n    restart: unless-stopped\n\nvolumes:\n  prometheus_data:',
+    dockerCompose: 'services:\n  prometheus:\n    image: prom/prometheus:${PROMETHEUS_VERSION:-v2.48.0}\n    ports:\n      - "${PROMETHEUS_PORT:-9090}:9090"\n    volumes:\n      - ./prometheus.yml:/etc/prometheus/prometheus.yml\n      - prometheus_data:/prometheus\n    command:\n      - --config.file=/etc/prometheus/prometheus.yml\n      - --storage.tsdb.retention.time=15d\n    restart: unless-stopped\n\nvolumes:\n  prometheus_data:',
     envSchema: [
       { name: 'PROMETHEUS_VERSION', defaultValue: 'v2.48.0', description: 'Prometheus 版本', required: false },
       { name: 'PROMETHEUS_PORT', defaultValue: '9090', description: 'Prometheus 端口', required: false }
@@ -536,7 +536,7 @@ const DEFAULT_TEMPLATES = [
     name: 'Jenkins CI/CD',
     description: 'Jenkins 自动化服务器，用于持续集成和持续交付',
     category: 'ci-cd',
-    dockerCompose: 'version: "3.8"\nservices:\n  jenkins:\n    image: jenkins/jenkins:${JENKINS_VERSION:-lts}\n    ports:\n      - "${JENKINS_PORT:-8080}:8080"\n      - "${JENKINS_AGENT_PORT:-50000}:50000"\n    environment:\n      JAVA_OPTS: "-Djenkins.install.runSetupWizard=false"\n    volumes:\n      - jenkins_data:/var/jenkins_home\n    restart: unless-stopped\n\nvolumes:\n  jenkins_data:',
+    dockerCompose: 'services:\n  jenkins:\n    image: jenkins/jenkins:${JENKINS_VERSION:-lts}\n    ports:\n      - "${JENKINS_PORT:-8080}:8080"\n      - "${JENKINS_AGENT_PORT:-50000}:50000"\n    environment:\n      JAVA_OPTS: "-Djenkins.install.runSetupWizard=false"\n    volumes:\n      - jenkins_data:/var/jenkins_home\n    restart: unless-stopped\n\nvolumes:\n  jenkins_data:',
     envSchema: [
       { name: 'JENKINS_VERSION', defaultValue: 'lts', description: 'Jenkins 版本', required: false },
       { name: 'JENKINS_PORT', defaultValue: '8080', description: 'Web 端口', required: false },
@@ -548,7 +548,7 @@ const DEFAULT_TEMPLATES = [
     name: 'GitLab 代码仓库',
     description: 'GitLab 完整的 DevOps 平台，包含代码托管、CI/CD、容器仓库',
     category: 'devops',
-    dockerCompose: 'version: "3.8"\nservices:\n  gitlab:\n    image: gitlab/gitlab-ce:${GITLAB_VERSION:-latest}\n    hostname: gitlab.local\n    ports:\n      - "${GITLAB_HTTP_PORT:-80}:80"\n      - "${GITLAB_HTTPS_PORT:-443}:443"\n      - "${GITLAB_SSH_PORT:-22}:22"\n    environment:\n      GITLAB_OMNIBUS_CONFIG: |\n        external_url \'http://localhost\'\n        gitlab_rails[\'gitlab_shell_ssh_port\'] = ${GITLAB_SSH_PORT:-22}\n    volumes:\n      - gitlab_config:/etc/gitlab\n      - gitlab_logs:/var/log/gitlab\n      - gitlab_data:/var/opt/gitlab\n    restart: unless-stopped\n\nvolumes:\n  gitlab_config:\n  gitlab_logs:\n  gitlab_data:',
+    dockerCompose: 'services:\n  gitlab:\n    image: gitlab/gitlab-ce:${GITLAB_VERSION:-latest}\n    hostname: gitlab.local\n    ports:\n      - "${GITLAB_HTTP_PORT:-80}:80"\n      - "${GITLAB_HTTPS_PORT:-443}:443"\n      - "${GITLAB_SSH_PORT:-22}:22"\n    environment:\n      GITLAB_OMNIBUS_CONFIG: |\n        external_url \'http://localhost\'\n        gitlab_rails[\'gitlab_shell_ssh_port\'] = ${GITLAB_SSH_PORT:-22}\n    volumes:\n      - gitlab_config:/etc/gitlab\n      - gitlab_logs:/var/log/gitlab\n      - gitlab_data:/var/opt/gitlab\n    restart: unless-stopped\n\nvolumes:\n  gitlab_config:\n  gitlab_logs:\n  gitlab_data:',
     envSchema: [
       { name: 'GITLAB_VERSION', defaultValue: 'latest', description: 'GitLab 版本', required: false },
       { name: 'GITLAB_HTTP_PORT', defaultValue: '80', description: 'HTTP 端口', required: false },
@@ -561,7 +561,7 @@ const DEFAULT_TEMPLATES = [
     name: 'Portainer 容器管理',
     description: 'Portainer 轻量级 Docker 管理界面，支持容器、镜像、网络管理',
     category: 'devops',
-    dockerCompose: 'version: "3.8"\nservices:\n  portainer:\n    image: portainer/portainer-ce:${PORTAINER_VERSION:-2.19.0}\n    ports:\n      - "${PORTAINER_PORT:-9000}:9000"\n    volumes:\n      - /var/run/docker.sock:/var/run/docker.sock\n      - portainer_data:/data\n    restart: unless-stopped\n\nvolumes:\n  portainer_data:',
+    dockerCompose: 'services:\n  portainer:\n    image: portainer/portainer-ce:${PORTAINER_VERSION:-2.19.0}\n    ports:\n      - "${PORTAINER_PORT:-9000}:9000"\n    volumes:\n      - /var/run/docker.sock:/var/run/docker.sock\n      - portainer_data:/data\n    restart: unless-stopped\n\nvolumes:\n  portainer_data:',
     envSchema: [
       { name: 'PORTAINER_VERSION', defaultValue: '2.19.0', description: 'Portainer 版本', required: false },
       { name: 'PORTAINER_PORT', defaultValue: '9000', description: 'Web 端口', required: false }
@@ -572,7 +572,7 @@ const DEFAULT_TEMPLATES = [
     name: 'MinIO 对象存储',
     description: 'MinIO 高性能对象存储，兼容 S3 API，适合文件存储和备份',
     category: 'storage',
-    dockerCompose: 'version: "3.8"\nservices:\n  minio:\n    image: minio/minio:${MINIO_VERSION:-latest}\n    ports:\n      - "${MINIO_API_PORT:-9000}:9000"\n      - "${MINIO_CONSOLE_PORT:-9001}:9001"\n    environment:\n      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}\n      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}\n    volumes:\n      - minio_data:/data\n    command: server /data --console-address ":9001"\n    restart: unless-stopped\n\nvolumes:\n  minio_data:',
+    dockerCompose: 'services:\n  minio:\n    image: minio/minio:${MINIO_VERSION:-latest}\n    ports:\n      - "${MINIO_API_PORT:-9000}:9000"\n      - "${MINIO_CONSOLE_PORT:-9001}:9001"\n    environment:\n      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}\n      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}\n    volumes:\n      - minio_data:/data\n    command: server /data --console-address ":9001"\n    restart: unless-stopped\n\nvolumes:\n  minio_data:',
     envSchema: [
       { name: 'MINIO_VERSION', defaultValue: 'latest', description: 'MinIO 版本', required: false },
       { name: 'MINIO_API_PORT', defaultValue: '9000', description: 'API 端口', required: false },
@@ -586,7 +586,7 @@ const DEFAULT_TEMPLATES = [
     name: 'Nginx Proxy Manager',
     description: 'Nginx 反向代理管理器，提供友好的 Web 界面管理反向代理和 SSL 证书',
     category: 'proxy',
-    dockerCompose: 'version: "3.8"\nservices:\n  npm:\n    image: jc21/nginx-proxy-manager:${NPM_VERSION:-latest}\n    ports:\n      - "${NPM_HTTP_PORT:-80}:80"\n      - "${NPM_HTTPS_PORT:-443}:443"\n      - "${NPM_ADMIN_PORT:-81}:81"\n    volumes:\n      - npm_data:/data\n      - npm_letsencrypt:/etc/letsencrypt\n    restart: unless-stopped\n\nvolumes:\n  npm_data:\n  npm_letsencrypt:',
+    dockerCompose: 'services:\n  npm:\n    image: jc21/nginx-proxy-manager:${NPM_VERSION:-latest}\n    ports:\n      - "${NPM_HTTP_PORT:-80}:80"\n      - "${NPM_HTTPS_PORT:-443}:443"\n      - "${NPM_ADMIN_PORT:-81}:81"\n    volumes:\n      - npm_data:/data\n      - npm_letsencrypt:/etc/letsencrypt\n    restart: unless-stopped\n\nvolumes:\n  npm_data:\n  npm_letsencrypt:',
     envSchema: [
       { name: 'NPM_VERSION', defaultValue: 'latest', description: 'NPM 版本', required: false },
       { name: 'NPM_HTTP_PORT', defaultValue: '80', description: 'HTTP 端口', required: false },
@@ -599,7 +599,7 @@ const DEFAULT_TEMPLATES = [
     name: 'LAMP 应用栈',
     description: '经典 LAMP 栈：Linux + Apache + MySQL + PHP，适合传统 Web 应用部署',
     category: 'stack',
-    dockerCompose: 'version: "3.8"\nservices:\n  apache:\n    image: php:${PHP_VERSION:-8.2}-apache\n    ports:\n      - "${APACHE_PORT:-80}:80"\n    volumes:\n      - ./www:/var/www/html\n    depends_on:\n      - mysql\n    restart: unless-stopped\n\n  mysql:\n    image: mysql:${MYSQL_VERSION:-8.0}\n    ports:\n      - "${MYSQL_PORT:-3306}:3306"\n    environment:\n      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}\n      MYSQL_DATABASE: ${MYSQL_DATABASE:-app}\n      MYSQL_USER: ${MYSQL_USER:-app_user}\n      MYSQL_PASSWORD: ${MYSQL_PASSWORD}\n    volumes:\n      - mysql_data:/var/lib/mysql\n    restart: unless-stopped\n\nvolumes:\n  mysql_data:',
+    dockerCompose: 'services:\n  apache:\n    image: php:${PHP_VERSION:-8.2}-apache\n    ports:\n      - "${APACHE_PORT:-80}:80"\n    volumes:\n      - ./www:/var/www/html\n    depends_on:\n      - mysql\n    restart: unless-stopped\n\n  mysql:\n    image: mysql:${MYSQL_VERSION:-8.0}\n    ports:\n      - "${MYSQL_PORT:-3306}:3306"\n    environment:\n      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}\n      MYSQL_DATABASE: ${MYSQL_DATABASE:-app}\n      MYSQL_USER: ${MYSQL_USER:-app_user}\n      MYSQL_PASSWORD: ${MYSQL_PASSWORD}\n    volumes:\n      - mysql_data:/var/lib/mysql\n    restart: unless-stopped\n\nvolumes:\n  mysql_data:',
     envSchema: [
       { name: 'PHP_VERSION', defaultValue: '8.2', description: 'PHP 版本', required: false },
       { name: 'MYSQL_VERSION', defaultValue: '8.0', description: 'MySQL 版本', required: false },
@@ -616,7 +616,7 @@ const DEFAULT_TEMPLATES = [
     name: 'ELK 日志分析栈',
     description: 'ELK 栈：Elasticsearch + Logstash + Kibana，用于日志收集、存储和可视化分析',
     category: 'stack',
-    dockerCompose: 'version: "3.8"\nservices:\n  elasticsearch:\n    image: elasticsearch:${ES_VERSION:-8.11.0}\n    ports:\n      - "${ES_HTTP_PORT:-9200}:9200"\n    environment:\n      discovery.type: single-node\n      xpack.security.enabled: "false"\n      ES_JAVA_OPTS: "-Xms512m -Xmx512m"\n    volumes:\n      - es_data:/usr/share/elasticsearch/data\n    restart: unless-stopped\n\n  logstash:\n    image: logstash:${ES_VERSION:-8.11.0}\n    ports:\n      - "${LOGSTASH_PORT:-5044}:5044"\n    environment:\n      LS_JAVA_OPTS: "-Xms256m -Xmx256m"\n    volumes:\n      - ./logstash.conf:/usr/share/logstash/pipeline/logstash.conf\n    depends_on:\n      - elasticsearch\n    restart: unless-stopped\n\n  kibana:\n    image: kibana:${ES_VERSION:-8.11.0}\n    ports:\n      - "${KIBANA_PORT:-5601}:5601"\n    environment:\n      ELASTICSEARCH_HOSTS: \'["http://elasticsearch:9200"]\'\n    depends_on:\n      - elasticsearch\n    restart: unless-stopped\n\nvolumes:\n  es_data:',
+    dockerCompose: 'services:\n  elasticsearch:\n    image: elasticsearch:${ES_VERSION:-8.11.0}\n    ports:\n      - "${ES_HTTP_PORT:-9200}:9200"\n    environment:\n      discovery.type: single-node\n      xpack.security.enabled: "false"\n      ES_JAVA_OPTS: "-Xms512m -Xmx512m"\n    volumes:\n      - es_data:/usr/share/elasticsearch/data\n    restart: unless-stopped\n\n  logstash:\n    image: logstash:${ES_VERSION:-8.11.0}\n    ports:\n      - "${LOGSTASH_PORT:-5044}:5044"\n    environment:\n      LS_JAVA_OPTS: "-Xms256m -Xmx256m"\n    volumes:\n      - ./logstash.conf:/usr/share/logstash/pipeline/logstash.conf\n    depends_on:\n      - elasticsearch\n    restart: unless-stopped\n\n  kibana:\n    image: kibana:${ES_VERSION:-8.11.0}\n    ports:\n      - "${KIBANA_PORT:-5601}:5601"\n    environment:\n      ELASTICSEARCH_HOSTS: \'["http://elasticsearch:9200"]\'\n    depends_on:\n      - elasticsearch\n    restart: unless-stopped\n\nvolumes:\n  es_data:',
     envSchema: [
       { name: 'ES_VERSION', defaultValue: '8.11.0', description: 'ELK 版本', required: false },
       { name: 'ES_HTTP_PORT', defaultValue: '9200', description: 'Elasticsearch 端口', required: false },
@@ -629,7 +629,7 @@ const DEFAULT_TEMPLATES = [
     name: 'Prometheus + Grafana 监控栈',
     description: '完整的监控解决方案：Prometheus 指标收集 + Grafana 可视化面板',
     category: 'stack',
-    dockerCompose: 'version: "3.8"\nservices:\n  prometheus:\n    image: prom/prometheus:${PROMETHEUS_VERSION:-v2.48.0}\n    ports:\n      - "${PROMETHEUS_PORT:-9090}:9090"\n    volumes:\n      - ./prometheus.yml:/etc/prometheus/prometheus.yml\n      - prometheus_data:/prometheus\n    command:\n      - --config.file=/etc/prometheus/prometheus.yml\n      - --storage.tsdb.retention.time=15d\n    restart: unless-stopped\n\n  grafana:\n    image: grafana/grafana:${GRAFANA_VERSION:-10.2.0}\n    ports:\n      - "${GRAFANA_PORT:-3000}:3000"\n    environment:\n      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}\n      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}\n    volumes:\n      - grafana_data:/var/lib/grafana\n    depends_on:\n      - prometheus\n    restart: unless-stopped\n\nvolumes:\n  prometheus_data:\n  grafana_data:',
+    dockerCompose: 'services:\n  prometheus:\n    image: prom/prometheus:${PROMETHEUS_VERSION:-v2.48.0}\n    ports:\n      - "${PROMETHEUS_PORT:-9090}:9090"\n    volumes:\n      - ./prometheus.yml:/etc/prometheus/prometheus.yml\n      - prometheus_data:/prometheus\n    command:\n      - --config.file=/etc/prometheus/prometheus.yml\n      - --storage.tsdb.retention.time=15d\n    restart: unless-stopped\n\n  grafana:\n    image: grafana/grafana:${GRAFANA_VERSION:-10.2.0}\n    ports:\n      - "${GRAFANA_PORT:-3000}:3000"\n    environment:\n      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}\n      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}\n    volumes:\n      - grafana_data:/var/lib/grafana\n    depends_on:\n      - prometheus\n    restart: unless-stopped\n\nvolumes:\n  prometheus_data:\n  grafana_data:',
     envSchema: [
       { name: 'PROMETHEUS_VERSION', defaultValue: 'v2.48.0', description: 'Prometheus 版本', required: false },
       { name: 'GRAFANA_VERSION', defaultValue: '10.2.0', description: 'Grafana 版本', required: false },

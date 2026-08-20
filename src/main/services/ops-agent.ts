@@ -363,23 +363,26 @@ async function createOpsTools(): Promise<Record<string, any>> {
       }),
       execute: async ({ serverId, action, projectPath, service }) => {
         const svc = service ? ` ${service}` : ''
+        // 兼容 Compose V1（docker-compose）与 V2（docker compose 插件）
+        const c = (cmd: string) =>
+          `cd ${projectPath} && (docker compose -f docker-compose.yml ${cmd} 2>/dev/null || docker-compose -f docker-compose.yml ${cmd})`
         if (action === 'up') {
           const ok = await requestApproval(`启动 Compose 项目: ${projectPath}${svc}`, 'medium')
           if (!ok) return { success: false, output: '用户拒绝了此操作', exitCode: -1 }
-          return exec(serverId, `cd ${projectPath} && docker compose -f docker-compose.yml up -d${svc}`, 60000)
+          return exec(serverId, c(`up -d${svc}`), 60000)
         }
         if (action === 'down') {
           const ok = await requestApproval(`停止 Compose 项目: ${projectPath}`, 'medium')
           if (!ok) return { success: false, output: '用户拒绝了此操作', exitCode: -1 }
-          return exec(serverId, `cd ${projectPath} && docker compose -f docker-compose.yml down`, 60000)
+          return exec(serverId, c('down'), 60000)
         }
         if (action === 'restart') {
           const ok = await requestApproval(`重启 Compose 服务: ${projectPath}${svc}`, 'medium')
           if (!ok) return { success: false, output: '用户拒绝了此操作', exitCode: -1 }
-          return exec(serverId, `cd ${projectPath} && docker compose -f docker-compose.yml restart${svc}`, 60000)
+          return exec(serverId, c(`restart${svc}`), 60000)
         }
-        if (action === 'logs') return exec(serverId, `cd ${projectPath} && docker compose -f docker-compose.yml logs --tail 100${svc}`, 20000)
-        return exec(serverId, `cd ${projectPath} && docker compose -f docker-compose.yml ps`, 15000)
+        if (action === 'logs') return exec(serverId, c(`logs --tail 100${svc}`), 20000)
+        return exec(serverId, c('ps'), 15000)
       }
     }),
 

@@ -164,7 +164,7 @@ const DeployForm: React.FC<DeployFormProps> = ({
     try {
       const values = await form.validateFields()
 
-      if (!values.dockerCompose || !values.dockerCompose.includes('version:')) {
+      if (!values.dockerCompose || !values.dockerCompose.includes('services:')) {
         message.error(t('template.invalidDockerCompose'))
         return
       }

@@ -36,7 +36,11 @@ class DockerCheckService {
 
   async checkDockerComposeInstalled(serverId: string): Promise<{ installed: boolean; version: string }> {
     try {
-      const result = await sshService.executeCommand(serverId, 'docker-compose --version')
+      // 兼容 Compose V1（docker-compose）与 V2（docker compose 插件）
+      let result = await sshService.executeCommand(serverId, 'docker-compose --version')
+      if (!result.success || !result.stdout) {
+        result = await sshService.executeCommand(serverId, 'docker compose version')
+      }
       if (result.success && result.stdout) {
         return {
           installed: true,

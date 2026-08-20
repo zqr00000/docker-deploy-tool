@@ -1,6 +1,7 @@
 ﻿import log from 'electron-log'
 import { deploymentHistoryQueries, DeploymentHistoryRow, serverQueries, appQueries } from '../database'
 import { sshService } from '../ssh'
+import { appDeployService, normalizeComposeContent } from './app-deploy'
 
 export interface DeployHistoryRecord {
   id: string
@@ -107,11 +108,13 @@ class DeployHistoryService {
       // 更新应用状态为部署中
       appQueries.update(appId, { status: 'deploying' })
 
-      // 上传历史版本的 docker-compose.yml
+      // 上传历史版本的 docker-compose.yml（按 Compose 版本规范化）
       const projectPath = appInfo.projectPath
+      const composeEnv = await appDeployService.detectComposeEnvironment(serverId)
+      const normalizedCompose = normalizeComposeContent(dockerCompose, composeEnv.type)
       const uploadResult = await sshService.uploadContent(
         serverId,
-        dockerCompose,
+        normalizedCompose,
         `${projectPath}/docker-compose.yml`
       )
 
@@ -131,19 +134,19 @@ class DeployHistoryService {
         }
       }
 
-      // 执行 docker-compose pull
+      // 执行 compose pull
       const pullResult = await sshService.executeCommand(
         serverId,
-        `cd ${projectPath} && docker-compose pull 2>/dev/null || docker compose pull`
+        `cd ${projectPath} && ${composeEnv.command} pull`
       )
       if (!pullResult.success) {
         log.warn(`Docker pull warning during rollback: ${pullResult.stderr}`)
       }
 
-      // 执行 docker-compose up -d
+      // 执行 compose up -d
       const upResult = await sshService.executeCommand(
         serverId,
-        `cd ${projectPath} && docker-compose up -d 2>/dev/null || docker compose up -d`
+        `cd ${projectPath} && ${composeEnv.command} up -d`
       )
 
       if (!upResult.success) {
@@ -157,7 +160,7 @@ class DeployHistoryService {
       // 获取容器ID列表
       const psResult = await sshService.executeCommand(
         serverId,
-        `cd ${projectPath} && docker-compose ps -aq`
+        `cd ${projectPath} && ${composeEnv.command} ps -aq`
       )
 
       const containerIds = psResult.success && psResult.stdout.trim()
