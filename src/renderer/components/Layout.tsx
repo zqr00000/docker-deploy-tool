@@ -384,7 +384,7 @@ const LayoutComponent: React.FC<LayoutProps> = memo(({ children }) => {
             />
           ) : (
             <Input
-              prefix={<SearchOutlined style={{ color: '#bfbfbf' }} />}
+              prefix={<SearchOutlined style={{ color: '#8e8e93' }} />}
               placeholder={t('globalSearch.triggerPlaceholder')}
               readOnly
               onClick={() => setSearchVisible(true)}

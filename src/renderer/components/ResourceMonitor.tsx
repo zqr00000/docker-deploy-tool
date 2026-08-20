@@ -112,8 +112,8 @@ const ResourceMonitor: React.FC<ResourceMonitorProps> = ({
 
   const getStatusColor = (percent: number): string => {
     if (percent >= 80) return '#f5222d'
-    if (percent >= 60) return '#faad14'
-    return '#52c41a'
+    if (percent >= 60) return '#FF9500'
+    return '#34C759'
   }
 
   const renderStats = () => {

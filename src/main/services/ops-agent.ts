@@ -1,4 +1,4 @@
-﻿/**
+/**
  * 运维 Agent - 基于 Mastra + Vercel AI SDK
  * Agent / 工具 / Memory 全部由 Mastra 管理，工具直接调用 sshService
  */
@@ -10,6 +10,7 @@ import log from 'electron-log'
 import { sshService } from '../ssh'
 import { createAIModel } from './ai-model'
 import { createSqliteMemoryStorage } from './sqlite-memory-store'
+import { auditLogService } from './audit-log'
 
 // ==================== 类型 ====================
 
@@ -29,7 +30,10 @@ export interface AgentModelConfig {
   maxIterations?: number
   commandBlocklist?: string[]
   approvalMode?: 'manual' | 'auto'
+  approvalTimeout?: number
   enableWebSearch?: boolean
+  enableRouting?: boolean
+  routing?: Record<string, { provider?: string; model?: string; baseUrl?: string; apiKey?: string }>
 }
 
 export interface ChatCallbacks {
@@ -38,6 +42,8 @@ export interface ChatCallbacks {
   onToolResult?: (toolName: string, success: boolean, output: any, toolCallId?: string) => void
   onError?: (error: string) => void
   onDone?: () => void
+  /** 路由通知：本次对话实际使用的路由档位（execution/thinking/critique/vision） */
+  onRoute?: (route: string) => void
 }
 
 // ==================== Mastra 动态加载 ====================
@@ -64,14 +70,13 @@ async function getMastra(): Promise<any> {
 // ==================== 配置管理 ====================
 
 let currentConfig: AgentModelConfig | null = null
-let agentInstance: any = null
 let toolsInstance: Record<string, any> | null = null
 
 export function setAgentModelConfig(config: AgentModelConfig): void {
   currentConfig = config
-  agentInstance = null // 配置变化时重建 Agent
+  agentInstances.clear() // 配置变化时清空全部路由 Agent，下次按需重建
   toolsInstance = null // 工具集可能随配置变化（如 Web 搜索开关）
-  log.info(`[ops-agent] 模型配置已更新: provider=${config.provider}, model=${config.model || '(未设置)'}, baseUrl=${config.baseUrl || '(默认)'}`)
+  log.info(`[ops-agent] 模型配置已更新: provider=${config.provider}, model=${config.model || '(未设置)'}, baseUrl=${config.baseUrl || '(默认)'}, routing=${config.enableRouting ? 'on' : 'off'}`)
 }
 
 export function getAgentConfig(): AgentModelConfig | null {
@@ -96,24 +101,45 @@ export function resolveApproval(id: string, approved: boolean): void {
   }
 }
 
-// 审批：带超时（默认 60s 未响应视为拒绝，避免工具永久挂起）
-async function requestApproval(action: string, riskLevel: string, timeoutMs = 60000): Promise<boolean> {
+// 审批：带超时（默认 60s 未响应视为拒绝，避免工具永久挂起；超时可通过 approvalTimeout 配置）
+async function requestApproval(action: string, riskLevel: string, timeoutMs?: number): Promise<boolean> {
   // 自动审批模式（配置 approvalMode=auto）直接放行
   if (currentConfig?.approvalMode === 'auto') {
     log.warn(`[ops-agent] 自动审批模式放行: risk=${riskLevel}, action=${action.slice(0, 80)}`)
+    auditLogService.log({
+      action: 'agent_approval',
+      targetType: 'agent',
+      status: 'success',
+      details: `自动批准 ${riskLevel} 风险操作: ${action.slice(0, 200)}`
+    })
     return true
   }
+  const effTimeout = timeoutMs ?? currentConfig?.approvalTimeout ?? 60000
   return new Promise((resolve) => {
     const id = `approval-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
     const timer = setTimeout(() => {
       pendingApprovals.delete(id)
       log.warn(`[ops-agent] 审批超时自动拒绝: id=${id}, action=${action.slice(0, 80)}`)
+      auditLogService.log({
+        action: 'agent_approval',
+        targetType: 'agent',
+        targetId: id,
+        status: 'failure',
+        details: `审批超时自动拒绝 ${riskLevel} 风险操作: ${action.slice(0, 200)}`
+      })
       resolve(false)
-    }, timeoutMs)
+    }, effTimeout)
     pendingApprovals.set(id, (approved) => {
       clearTimeout(timer)
       pendingApprovals.delete(id)
       log.info(`[ops-agent] 审批${approved ? '通过' : '拒绝'}: id=${id}, action=${action.slice(0, 80)}`)
+      auditLogService.log({
+        action: 'agent_approval',
+        targetType: 'agent',
+        targetId: id,
+        status: approved ? 'success' : 'failure',
+        details: `${approved ? '批准' : '拒绝'} ${riskLevel} 风险操作: ${action.slice(0, 200)}`
+      })
       resolve(approved)
     })
     approvalSender?.({ id, action, riskLevel })
@@ -435,6 +461,112 @@ async function createOpsTools(): Promise<Record<string, any>> {
       inputSchema: srv(),
       execute: async ({ serverId }) => exec(serverId,
         '(command -v apt >/dev/null && echo "== apt 可更新 ==" && apt list --upgradable 2>/dev/null | head -20) || (command -v yum >/dev/null && echo "== yum 可更新 ==" && yum check-update -q 2>/dev/null | head -20) || echo "无法检测更新源"', 30000)
+    }),
+
+    // ==================== 远程文件管理（SFTP） ====================
+
+    file_list: mk({
+      id: 'file_list',
+      description: '列出服务器上的目录内容（含权限/大小/修改时间）',
+      inputSchema: srv({ path: z.string().describe('目录路径，默认当前用户家目录') }),
+      execute: async ({ serverId, path }) => exec(serverId, path ? `ls -lah "${path}"` : 'ls -lah ~', 15000)
+    }),
+
+    file_write: mk({
+      id: 'file_write',
+      description: '写入/覆盖服务器上的文本文件（内容将通过 SFTP 写入，需用户审批）',
+      inputSchema: srv({
+        path: z.string().describe('远程文件绝对路径'),
+        content: z.string().describe('文件内容')
+      }),
+      execute: async ({ serverId, path, content }) => {
+        const ok = await requestApproval(`写入远程文件: ${path}`, 'medium')
+        if (!ok) return { success: false, output: '用户拒绝了此操作', exitCode: -1 }
+        const r = await sshService.uploadContent(serverId, content, path)
+        return { success: r.success, output: r.success ? `文件已写入: ${path} (${content.length} 字符)` : r.message, exitCode: r.success ? 0 : -1 }
+      }
+    }),
+
+    file_remove: mk({
+      id: 'file_remove',
+      description: '删除服务器上的文件或目录（危险操作，需用户审批）',
+      inputSchema: srv({
+        path: z.string().describe('远程文件/目录绝对路径'),
+        recursive: z.boolean().optional().describe('是否递归删除目录，默认 false')
+      }),
+      execute: async ({ serverId, path, recursive }) => {
+        if (!path) return { success: false, output: '无效的路径', exitCode: -1 }
+        const cmd = recursive ? `rm -rf "${path}"` : `rm -f "${path}"`
+        // 黑名单兜底：即使 approvalMode=auto 也拦截 rm -rf / 等危险路径
+        if (isBlocklisted(cmd)) {
+          return { success: false, output: '命令被黑名单拦截，已拒绝执行', exitCode: -1 }
+        }
+        const ok = await requestApproval(`删除远程${recursive ? '目录' : '文件'}: ${path}${recursive ? '（递归）' : ''}`, 'high')
+        if (!ok) return { success: false, output: '用户拒绝了此操作', exitCode: -1 }
+        return exec(serverId, cmd, 15000)
+      }
+    }),
+
+    file_upload: mk({
+      id: 'file_upload',
+      description: '将本地文件上传到服务器指定路径（通过 SFTP 传输，需用户审批）',
+      inputSchema: srv({
+        localPath: z.string().describe('本地文件绝对路径'),
+        remotePath: z.string().describe('远程目标绝对路径')
+      }),
+      execute: async ({ serverId, localPath, remotePath }) => {
+        const ok = await requestApproval(`上传文件到服务器: ${localPath} -> ${remotePath}`, 'medium')
+        if (!ok) return { success: false, output: '用户拒绝了此操作', exitCode: -1 }
+        const r = await sshService.uploadFileStream(serverId, localPath, remotePath)
+        return { success: r.success, output: r.success ? `文件已上传: ${remotePath}` : r.message, exitCode: r.success ? 0 : -1 }
+      }
+    }),
+
+    file_download: mk({
+      id: 'file_download',
+      description: '将服务器上的文件下载到本地指定路径（通过 SFTP 传输）',
+      inputSchema: srv({
+        remotePath: z.string().describe('远程文件绝对路径'),
+        localPath: z.string().describe('本地保存绝对路径')
+      }),
+      execute: async ({ serverId, remotePath, localPath }) => {
+        const r = await sshService.downloadFile(serverId, remotePath, localPath)
+        return { success: r.success, output: r.success ? `文件已下载到本地: ${localPath}` : r.message, exitCode: r.success ? 0 : -1 }
+      }
+    }),
+
+    // ==================== 日志分析增强 ====================
+
+    log_stats: mk({
+      id: 'log_stats',
+      description: '统计日志中的错误/警告数量与分布（按级别计数，支持关键词与时间范围过滤）',
+      inputSchema: srv({
+        logPath: z.string().describe('日志文件路径，或 system 表示使用 journalctl'),
+        since: z.string().optional().describe('时间过滤，如 "24h"/"7d"/"2026-08-20"，journalctl 用法'),
+        keyword: z.string().optional().describe('额外关键词过滤，如容器名/服务名')
+      }),
+      execute: async ({ serverId, logPath, since, keyword }) => {
+        const kw = keyword ? ` | grep -i "${keyword}"` : ''
+        const sinceArg = since ? `--since "${since}"` : ''
+        if (logPath === 'system') {
+          // journalctl 输出无级别列，改用 -p 优先级分别计数
+          const count = (p: string) => `echo "${p}: $(journalctl -p ${p} ${sinceArg} --no-pager 2>/dev/null | wc -l)"`
+          return exec(serverId, [
+            'echo "== 日志统计: system =="',
+            'echo "-- 级别计数:"',
+            [count('emerg'), count('alert'), count('crit'), count('err'), count('warning')].join('\n'),
+            'echo "-- 最近错误 (top5):"',
+            `journalctl -p err ${sinceArg} --no-pager 2>/dev/null | tail -5 || echo "无错误"`
+          ].join('\n'), 30000)
+        }
+        // 关键词在源头过滤，保证级别分布与错误样本都生效
+        const src = keyword ? `grep -i "${keyword}" "${logPath}"` : `cat "${logPath}"`
+        return exec(serverId, [
+          `echo "== 日志统计: ${logPath} =="`,
+          `echo "-- 级别分布:"; ${src} | grep -oE "\\[(ERROR|WARN|INFO|DEBUG|FATAL)\\]" | tr -d '[]' | sort | uniq -c | sort -rn | head -10 || echo "无匹配"`,
+          `echo "-- 错误样本:"; tail -n 5000 "${logPath}" 2>/dev/null | grep -iE "error|fatal|exception"${kw} | tail -20 || echo "无错误"`
+        ].join('\n'), 20000)
+      }
     })
   }
 
@@ -481,6 +613,7 @@ const DEFAULT_INSTRUCTIONS = `你是一个专业的服务器运维 AI 助手，�
 4. 回答时先给出分析和结论，再简要说明执行了哪些操作，不要重复粘贴工具输出的原始全文
 5. 排查问题时可组合多个工具交叉验证（如磁盘占用 + 容器状态 + 日志），一步步缩小范围
 6. 支持多轮工具调用：根据上一步结果决定下一步，直到定位根因或完成任务
+7. 工具执行失败时（网络错误、权限不足、容器不存在等），先分析错误信息，尝试改用其他工具或修正命令参数后重试，不要直接放弃；同一命令失败超过 2 次才报告错误
 
 安全规则：
 - 读取/查询类操作直接执行
@@ -489,36 +622,74 @@ const DEFAULT_INSTRUCTIONS = `你是一个专业的服务器运维 AI 助手，�
 - 批量/高影响操作前先向用户说明影响范围`
 
 let memoryDb: Database.Database | null = null
+let memoryInstance: any = null
 
-async function getAgent(): Promise<any> {
-  if (agentInstance) return agentInstance
+// 多模型路由缓存：按档位缓存 Agent 实例（execution/thinking/critique/vision）
+const agentInstances = new Map<string, any>()
+
+// 路由档位（对应 ModelRouting 键）
+export type AgentRoute = 'execution' | 'thinking' | 'compaction' | 'critique' | 'vision'
+
+// 根据用户输入启发式判断路由档位（仅当该档位配置了模型时生效，否则回退 execution）
+function detectRoute(userInput: string): AgentRoute {
+  const cfg = currentConfig
+  if (!cfg?.enableRouting || !cfg.routing) return 'execution'
+  const text = userInput
+  const has = (route: string) => !!cfg.routing?.[route]?.model
+  // vision：涉及图片/截图/画面
+  if (has('vision') && /截图|图片|画面|看图|screenshot|image|视觉/i.test(text)) return 'vision'
+  // thinking：分析/诊断/排查/优化类（复杂任务用强模型）
+  if (has('thinking') && /分析|诊断|排查|为什么|原因|优化|性能|方案|评估|规划|设计|解释|对比|定位|根因/i.test(text)) return 'thinking'
+  // critique：检查/审查/复核类
+  if (has('critique') && /检查|审查|复核|验证|确认|审核|体检/i.test(text)) return 'critique'
+  return 'execution'
+}
+
+async function getAgent(route: AgentRoute = 'execution'): Promise<any> {
+  const cached = agentInstances.get(route)
+  if (cached) return cached
+
   const { Agent, MastraCompositeStore, Memory } = await getMastra()
   const cfg = currentConfig
-  if (!cfg || !cfg.model) throw new Error('请先配置 AI 模型')
-  if (cfg.provider !== 'ollama' && !cfg.apiKey) throw new Error('请先配置 API Key')
+  if (!cfg) throw new Error('AI 模型未配置')
 
-  const model = await createAIModel(cfg.provider, cfg.apiKey, cfg.model, cfg.baseUrl || undefined, cfg)
+  // 路由解析：档位配置了模型则切换，否则使用主配置模型
+  const routeCfg = (cfg.enableRouting && cfg.routing?.[route]) || undefined
+  const provider = routeCfg?.provider || cfg.provider
+  const routeModel = routeCfg?.model || cfg.model
+  const baseUrl = routeCfg?.baseUrl || cfg.baseUrl
+  // 切换提供商但未配置 API Key 时回退主配置 Key
+  const apiKey = routeCfg?.apiKey || cfg.apiKey
+
+  // 校验基于实际生效的模型/Key（路由档位可自带 Key，不必依赖主配置）
+  if (!routeModel) throw new Error('请先配置 AI 模型')
+  if (provider !== 'ollama' && !apiKey) throw new Error('请先配置 API Key')
+
+  const model = await createAIModel(provider, apiKey, routeModel, baseUrl || undefined, cfg)
   const tools = await createOpsTools()
 
-  // 基于 better-sqlite3 的持久化 Memory（文件位于用户数据目录）
+  // 基于 better-sqlite3 的持久化 Memory（文件位于用户数据目录，多 Agent 共享单例）
   if (!memoryDb) {
     const dbPath = join(app.getPath('userData'), 'mastra-memory.db')
     memoryDb = new Database(dbPath)
     memoryDb.pragma('journal_mode = WAL')
   }
-  const memoryDomain = await createSqliteMemoryStorage(memoryDb)
-  const storage = new MastraCompositeStore({ id: 'sqlite-memory', domains: { memory: memoryDomain } })
-  const memory = new Memory({ storage, options: { lastMessages: 20 } })
+  if (!memoryInstance) {
+    const memoryDomain = await createSqliteMemoryStorage(memoryDb)
+    const storage = new MastraCompositeStore({ id: 'sqlite-memory', domains: { memory: memoryDomain } })
+    memoryInstance = new Memory({ storage, options: { lastMessages: 30 } })
+  }
 
-  agentInstance = new Agent({
-    name: 'ops-agent',
+  const agent = new Agent({
+    name: `ops-agent-${route}`,
     instructions: cfg.systemPrompt || DEFAULT_INSTRUCTIONS,
     model,
     tools,
-    memory
+    memory: memoryInstance
   })
-  log.info(`[ops-agent] Agent 构建完成: model=${cfg.model}, provider=${cfg.provider}, 工具数=${Object.keys(tools).length}`)
-  return agentInstance
+  agentInstances.set(route, agent)
+  log.info(`[ops-agent] Agent 构建完成: route=${route}, model=${routeModel}, provider=${provider}, 工具数=${Object.keys(tools).length}`)
+  return agent
 }
 
 // ==================== 对话 ====================
@@ -530,11 +701,16 @@ export async function chatWithAgent(params: {
   threadId: string
   callbacks: ChatCallbacks
   signal?: AbortSignal
+  /** 上下文自动压缩：前端传入的早期对话摘要，超长历史时由前端压缩为简短文本 */
+  historySummary?: string
 }): Promise<void> {
-  const { serverId, serverName, userInput, threadId, callbacks, signal } = params
-  const agent = await getAgent()
+  const { serverId, serverName, userInput, threadId, callbacks, signal, historySummary } = params
+  // 多模型路由：按输入特征选择档位（未开启路由或档位未配置时回退主模型）
+  const route = detectRoute(userInput)
+  const agent = await getAgent(route)
   const cfg = currentConfig
-  log.info(`[ops-agent] 对话开始: thread=${threadId}, server=${serverName || serverId || '(未选择)'}, input=${userInput.slice(0, 80)}`)
+  callbacks.onRoute?.(route)
+  log.info(`[ops-agent] 对话开始: thread=${threadId}, route=${route}, server=${serverName || serverId || '(未选择)'}, input=${userInput.slice(0, 80)}`)
 
   const messages: any[] = []
   if (serverId) {
@@ -543,6 +719,10 @@ export async function chatWithAgent(params: {
       role: 'system',
       content: `[服务器上下文] 当前目标服务器: ${serverName || '未命名'} (ID: ${serverId})。执行任何远程操作时，工具参数中的 serverId 必须填 ${serverId}。`
     })
+  }
+  if (historySummary) {
+    // 早期对话压缩摘要（避免上下文超长导致遗忘）
+    messages.push({ role: 'system', content: `[历史对话摘要] 以下是本次会话较早对话的压缩摘要，供参考：\n${historySummary}` })
   }
   messages.push({ role: 'user', content: userInput })
 

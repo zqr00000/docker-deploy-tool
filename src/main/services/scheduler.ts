@@ -1,4 +1,4 @@
-﻿import cron, { ScheduledTask } from 'node-cron'
+import cron, { ScheduledTask } from 'node-cron'
 import log from 'electron-log'
 import { app } from 'electron'
 import { join } from 'path'
@@ -8,7 +8,7 @@ import { sshService } from '../ssh'
 import { appDeployService } from './app-deploy'
 import { auditLogService } from './audit-log'
 
-type TaskType = 'restart_container' | 'update_container' | 'backup_database' | 'backup_volume' | 'cleanup_images' | 'cleanup_volumes'
+type TaskType = 'restart_container' | 'update_container' | 'backup_database' | 'backup_volume' | 'cleanup_images' | 'cleanup_volumes' | 'ai_inspection'
 
 class SchedulerService {
   private tasks: Map<string, ScheduledTask> = new Map()
@@ -84,6 +84,9 @@ class SchedulerService {
           break
         case 'cleanup_volumes':
           details = await this.executeCleanupVolumes(task)
+          break
+        case 'ai_inspection':
+          details = await this.executeInspection(task)
           break
         default:
           details = `Unknown task type: ${task.taskType}`
@@ -398,6 +401,109 @@ class SchedulerService {
     }
 
     return `Volume cleanup completed: ${result.stdout.trim() || 'No volumes to clean'}`
+  }
+
+  /**
+   * AI 智能巡检：定时执行综合健康检查，采集 CPU/内存/磁盘/负载/Docker 异常/错误日志，
+   * 按阈值评估并生成巡检报告（不依赖外部 AI 模型，纯命令采集 + 规则判断）
+   */
+  private async executeInspection(task: ScheduledTaskRow): Promise<string> {
+    const server = serverQueries.getById(task.serverId)
+    if (!server) {
+      throw new Error(`Server not found: ${task.serverId}`)
+    }
+
+    // 确保服务器已连接
+    if (!sshService.isConnected(task.serverId)) {
+      const connectResult = await sshService.connect({
+        id: server.id,
+        host: server.host,
+        port: server.port,
+        username: server.username,
+        authType: server.authType,
+        password: server.password ?? undefined,
+        privateKey: server.privateKey ?? undefined
+      })
+      if (!connectResult.success) {
+        throw new Error(`Failed to connect to server: ${connectResult.message}`)
+      }
+      await new Promise(resolve => setTimeout(resolve, 2000))
+    }
+
+    // 采集脚本（标记化输出便于解析）
+    const script = [
+      'echo "[CPU]"',
+      // 取 "Cpu(s): ... 83.9 id, ..." 中的 idle 值，CPU 使用率 = 100 - idle
+      "top -bn1 | grep 'Cpu(s)' | awk -F'id,' '{split($1,a,\",\"); print 100-(a[length(a)]+0)}' | tr -d ' \n' || echo 0",
+      'echo "[MEM]"',
+      "free | grep Mem | awk '{printf \"%.1f\", $3/$2*100}' || echo 0",
+      'echo "[DISK]"',
+      "df / | tail -1 | awk '{print $5}' | sed 's/%//' || echo 0",
+      'echo "[LOAD]"',
+      "uptime | awk -F'load average:' '{print $2}' || echo unknown",
+      'echo "[DOCKER_ABNORMAL]"',
+      "docker ps -a --format '{{.Names}}\t{{.Status}}' 2>/dev/null | grep -iE 'exited|unhealthy|restarting' | head -10 || echo none",
+      'echo "[ERR_LOG_COUNT]"',
+      "journalctl -p err --since '24 hours ago' --no-pager 2>/dev/null | wc -l || echo 0",
+      'echo "[DONE]"'
+    ].join('; ')
+
+    const result = await sshService.executeCommand(task.serverId, script, 2, 1000, 60000)
+    if (!result.success) {
+      throw new Error(`Inspection command failed: ${result.stderr}`)
+    }
+
+    const out = result.stdout
+    const lines = out.split('\n')
+    const values: Record<string, string> = {}
+    let key = ''
+    for (const line of lines) {
+      const m = line.match(/^\[(\w+)\]\s*(.*)$/)
+      if (m) {
+        key = m[1]
+        values[key] = m[2].trim()
+        continue
+      }
+      if (key && values[key] !== undefined) {
+        // 续行（如 DOCKER_ABNORMAL 多行）
+        values[key] += (values[key] ? '\n' : '') + line.trim()
+      }
+    }
+
+    // 采集值兜底：命令失败/无输出时按 0 处理，避免出现 NaN%
+    const safe = (v: number): number => (isNaN(v) || !isFinite(v) ? 0 : v)
+    const cpu = safe(parseFloat(values.CPU || '0'))
+    const mem = safe(parseFloat(values.MEM || '0'))
+    const disk = safe(parseFloat(values.DISK || '0'))
+    const load = values.LOAD || 'unknown'
+    const abnormalContainers = values.DOCKER_ABNORMAL && values.DOCKER_ABNORMAL !== 'none'
+      ? values.DOCKER_ABNORMAL.split('\n').slice(0, 10)
+      : []
+    const errCount = parseInt(values.ERR_LOG_COUNT || '0', 10)
+
+    // 阈值评估
+    const issues: string[] = []
+    const check = (name: string, v: number, warn: number, crit: number) => {
+      if (v > crit) issues.push(`[critical] ${name} 使用率 ${v.toFixed(1)}% (阈值 ${crit}%)`)
+      else if (v > warn) issues.push(`[warning] ${name} 使用率 ${v.toFixed(1)}% (阈值 ${warn}%)`)
+    }
+    check('CPU', cpu, 80, 90)
+    check('内存', mem, 80, 90)
+    check('磁盘', disk, 85, 90)
+    if (abnormalContainers.length > 0) issues.push(`[warning] ${abnormalContainers.length} 个容器状态异常: ${abnormalContainers.join(' | ')}`)
+    if (errCount > 0) issues.push(`[info] 最近 24 小时错误日志 ${errCount} 条`)
+
+    const summary = [
+      `智能巡检完成 (${new Date().toLocaleString()})`,
+      `CPU: ${cpu.toFixed(1)}% | 内存: ${mem.toFixed(1)}% | 磁盘: ${disk.toFixed(1)}% | 负载: ${load}`
+    ]
+    if (issues.length > 0) {
+      summary.push('发现异常:')
+      summary.push(...issues.map(i => `- ${i}`))
+    } else {
+      summary.push('各项指标正常，无异常')
+    }
+    return summary.join('\n')
   }
 
   private getBackupDir(): string {

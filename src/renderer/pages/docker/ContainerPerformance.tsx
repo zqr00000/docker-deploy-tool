@@ -340,8 +340,8 @@ const ContainerPerformance: React.FC = () => {
   // 获取状态颜色
   const getStatusColor = (value: number, warning: number, critical: number): string => {
     if (value >= critical) return '#cf1322'
-    if (value >= warning) return '#faad14'
-    return '#52c41a'
+    if (value >= warning) return '#FF9500'
+    return '#34C759'
   }
 
   // 获取趋势图标
@@ -356,7 +356,7 @@ const ContainerPerformance: React.FC = () => {
       : latest.memoryPercent - previous.memoryPercent
 
     if (diff > 5) return <RiseOutlined style={{ color: '#cf1322' }} />
-    if (diff < -5) return <FallOutlined style={{ color: '#52c41a' }} />
+    if (diff < -5) return <FallOutlined style={{ color: '#34C759' }} />
     return null
   }
 

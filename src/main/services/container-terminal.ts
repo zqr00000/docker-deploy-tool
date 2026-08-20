@@ -1,8 +1,10 @@
-﻿import { Client } from 'ssh2'
+import { Client } from 'ssh2'
 import { BrowserWindow } from 'electron'
 import log from 'electron-log'
 import { randomUUID } from 'crypto'
 import { sshService } from '../ssh'
+import type { SSHServerConfig } from '../ssh'
+import { serverQueries } from '../database'
 
 interface TerminalSession {
   sessionId: string
@@ -42,19 +44,21 @@ class ContainerTerminalService {
   /**
    * 打开一个终端会话，通过 docker exec 进入容器或直接 SSH 到服务器
    */
-  openTerminal(
+  async openTerminal(
     serverId: string,
     containerId: string,
     cols: number = 80,
     rows: number = 24
   ): Promise<{ success: boolean; sessionId?: string; message?: string }> {
-    return new Promise((resolve) => {
-      // 检查 SSH 连接是否存在
-      if (!sshService.isConnected(serverId)) {
-        resolve({ success: false, message: 'SSH connection not established' })
-        return
+    // 检查 SSH 连接是否存在，未连接时尝试自动重连
+    if (!sshService.isConnected(serverId)) {
+      const connected = await this.ensureConnected(serverId)
+      if (!connected) {
+        return { success: false, message: 'SSH connection not established' }
       }
+    }
 
+    return new Promise((resolve) => {
       const sessionId = randomUUID()
 
       // 服务器终端：直接 SSH 到服务器
@@ -169,6 +173,42 @@ class ContainerTerminalService {
     const entry = connections.get(serverId)
     if (!entry) return null
     return entry.connectConfig || null
+  }
+
+  /**
+   * 确保与服务器建立 SSH 连接（未连接时使用数据库中的服务器配置自动重连）
+   */
+  private async ensureConnected(serverId: string): Promise<boolean> {
+    if (sshService.isConnected(serverId)) return true
+
+    try {
+      const server = serverQueries.getById(serverId)
+      if (!server) {
+        log.warn(`Server not found in database: ${serverId}`)
+        return false
+      }
+
+      const config: SSHServerConfig = {
+        id: server.id,
+        host: server.host,
+        port: server.port,
+        username: server.username,
+        authType: server.authType,
+        password: server.password || undefined,
+        privateKey: server.privateKey || undefined
+      }
+
+      const result = await sshService.connect(config)
+      if (result.success) {
+        log.info(`SSH auto-connected for terminal on server ${serverId}`)
+      } else {
+        log.warn(`SSH auto-connect failed for server ${serverId}: ${result.message}`)
+      }
+      return result.success
+    } catch (err) {
+      log.error(`SSH auto-connect error for server ${serverId}:`, err)
+      return false
+    }
   }
 
   /**

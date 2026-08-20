@@ -80,7 +80,8 @@
       "shell_script_delete": "删除脚本",
       "shell_script_rollback": "回滚脚本",
       "shell_script_run": "运行脚本",
-      "settings_change": "修改设置"
+      "settings_change": "修改设置",
+      "agent_approval": "AI 操作审批"
     },
     "targetTypes": {
       "server": "服务器",
@@ -88,7 +89,8 @@
       "template": "模板",
       "shell_script": "Shell 脚本",
       "settings": "设置",
-      "system": "系统"
+      "system": "系统",
+      "agent": "AI 助手"
     },
     "statuses": {
       "success": "成功",
@@ -1224,7 +1226,8 @@
       "backup_database": "备份数据库",
       "backup_volume": "备份数据卷",
       "cleanup_images": "清理镜像",
-      "cleanup_volumes": "清理数据卷"
+      "cleanup_volumes": "清理数据卷",
+      "ai_inspection": "智能巡检"
     },
     "cronExpression": "Cron 表达式",
     "cronPlaceholder": "例如：0 0 * * *",

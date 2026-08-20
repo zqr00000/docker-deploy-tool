@@ -127,9 +127,9 @@ const SystemEnvironmentStatus: React.FC<SystemEnvironmentStatusProps> = ({ serve
 
   const getStatusIcon = (status: boolean) => {
     return status ? (
-      <CheckCircleOutlined style={{ color: '#52c41a' }} />
+      <CheckCircleOutlined style={{ color: '#34C759' }} />
     ) : (
-      <CloseCircleOutlined style={{ color: '#ff4d4f' }} />
+      <CloseCircleOutlined style={{ color: '#FF3B30' }} />
     )
   }
 
@@ -187,9 +187,9 @@ const SystemEnvironmentStatus: React.FC<SystemEnvironmentStatusProps> = ({ serve
             percent={info.memoryPercent}
             showInfo={false}
             strokeColor={{
-              '0%': '#52c41a',
-              '75%': '#faad14',
-              '100%': '#ff4d4f'
+              '0%': '#34C759',
+              '75%': '#FF9500',
+              '100%': '#FF3B30'
             }}
           />
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -206,9 +206,9 @@ const SystemEnvironmentStatus: React.FC<SystemEnvironmentStatusProps> = ({ serve
             percent={info.diskPercent}
             showInfo={false}
             strokeColor={{
-              '0%': '#52c41a',
-              '80%': '#faad14',
-              '100%': '#ff4d4f'
+              '0%': '#34C759',
+              '80%': '#FF9500',
+              '100%': '#FF3B30'
             }}
           />
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -219,7 +219,7 @@ const SystemEnvironmentStatus: React.FC<SystemEnvironmentStatusProps> = ({ serve
           {/* 分区明细 */}
           {info.diskPartitions && info.diskPartitions.length > 0 && (
             <div style={{ marginTop: 12 }}>
-              <Text strong style={{ fontSize: 12, color: '#8c8c8c' }}>
+              <Text strong style={{ fontSize: 12, color: '#8e8e93' }}>
                 {t('environment.partitions')} ({info.diskPartitions.length})
               </Text>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
@@ -239,9 +239,9 @@ const SystemEnvironmentStatus: React.FC<SystemEnvironmentStatusProps> = ({ serve
                       showInfo={false}
                       size="small"
                       strokeColor={{
-                        '0%': '#52c41a',
-                        '80%': '#faad14',
-                        '100%': '#ff4d4f'
+                        '0%': '#34C759',
+                        '80%': '#FF9500',
+                        '100%': '#FF3B30'
                       }}
                     />
                   </div>

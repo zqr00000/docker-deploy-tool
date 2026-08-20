@@ -169,7 +169,7 @@ const TemplateCard: React.FC<TemplateCardProps> = memo(({
             {isStack && (
               <Badge
                 count={services.length}
-                style={{ position: 'absolute', top: 8, right: 8, backgroundColor: '#faad14' }}
+                style={{ position: 'absolute', top: 8, right: 8, backgroundColor: '#FF9500' }}
               />
             )}
           </div>

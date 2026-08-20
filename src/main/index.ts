@@ -2414,13 +2414,15 @@ function registerIpcHandlers(): void {
         serverName: options?.serverName,
         userInput: options?.userInput,
         threadId: options?.threadId || `thread-${Date.now()}`,
+        historySummary: options?.historySummary,
         signal: controller.signal,
         callbacks: {
           onDelta: (delta) => sendEvent('opsAgent:chunk', { requestId, delta }),
           onToolCall: (toolName, args, toolCallId) => sendEvent('opsAgent:toolCall', { requestId, toolName, args, toolCallId }),
           onToolResult: (toolName, success, output, toolCallId) => sendEvent('opsAgent:toolResult', { requestId, toolName, success, output, toolCallId }),
           onError: (error) => sendEvent('opsAgent:error', { requestId, error }),
-          onDone: () => sendEvent('opsAgent:done', { requestId })
+          onDone: () => sendEvent('opsAgent:done', { requestId }),
+          onRoute: (route) => sendEvent('opsAgent:route', { requestId, route })
         }
       })
 

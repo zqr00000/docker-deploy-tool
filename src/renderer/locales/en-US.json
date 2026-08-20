@@ -80,7 +80,8 @@
       "shell_script_delete": "Delete Script",
       "shell_script_rollback": "Rollback Script",
       "shell_script_run": "Run Script",
-      "settings_change": "Change Settings"
+      "settings_change": "Change Settings",
+      "agent_approval": "AI Operation Approval"
     },
     "targetTypes": {
       "server": "Server",
@@ -88,7 +89,8 @@
       "template": "Template",
       "shell_script": "Shell Script",
       "settings": "Settings",
-      "system": "System"
+      "system": "System",
+      "agent": "AI Agent"
     },
     "statuses": {
       "success": "Success",
@@ -1209,7 +1211,8 @@
       "backup_database": "Backup Database",
       "backup_volume": "Backup Volume",
       "cleanup_images": "Cleanup Images",
-      "cleanup_volumes": "Cleanup Volumes"
+      "cleanup_volumes": "Cleanup Volumes",
+      "ai_inspection": "AI Inspection"
     },
     "cronExpression": "Cron Expression",
     "cronPlaceholder": "e.g., 0 0 * * *",

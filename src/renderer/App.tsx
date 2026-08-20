@@ -1,4 +1,4 @@
-﻿import React, { useEffect, Suspense, lazy } from 'react'
+import React, { useEffect, Suspense, lazy } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { ConfigProvider, App as AntApp, theme, Spin } from 'antd'
 import { useTranslation } from 'react-i18next'
@@ -83,33 +83,79 @@ const App: React.FC = () => {
     root.setAttribute('data-theme', isDark ? 'dark' : 'light')
   }
 
-  const getAntdTheme = (): { algorithm?: typeof theme.defaultAlgorithm; token?: object } => {
+  const getAntdTheme = () => {
     const savedTheme = localStorage.getItem('themeMode') as ThemeMode || 'system'
     
+    let isDark = false
     if (savedTheme === 'system') {
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-      return {
-        algorithm: prefersDark ? theme.defaultAlgorithm : theme.defaultAlgorithm
-      }
+      isDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+    } else {
+      isDark = savedTheme === 'dark'
     }
     
-    if (savedTheme === 'dark') {
-      return { algorithm: theme.defaultAlgorithm }
+    return {
+      algorithm: isDark ? theme.darkAlgorithm : theme.defaultAlgorithm,
+      token: {
+        colorPrimary: '#007AFF',
+        colorSuccess: '#34C759',
+        colorError: '#FF3B30',
+        colorWarning: '#FF9500',
+        colorInfo: '#007AFF',
+        colorLink: '#007AFF',
+        colorTextBase: isDark ? '#f5f5f7' : '#1d1d1f',
+        colorBgBase: isDark ? '#000000' : '#ffffff',
+        borderRadius: 10,
+        borderRadiusLG: 12,
+        borderRadiusSM: 8,
+        fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Segoe UI', Roboto, sans-serif",
+        fontSize: 14,
+        wireframe: false,
+      },
+      components: {
+        Layout: {
+          headerBg: isDark ? 'rgba(28,28,30,0.72)' : 'rgba(255,255,255,0.72)',
+          siderBg: isDark ? 'rgba(28,28,30,0.72)' : 'rgba(242,242,247,0.72)',
+          bodyBg: isDark ? '#000000' : '#f2f2f7',
+        },
+        Menu: {
+          itemSelectedBg: 'rgba(0, 122, 255, 0.1)',
+          itemSelectedColor: '#007AFF',
+          itemHoverBg: isDark ? 'rgba(44,44,46,0.8)' : '#f2f2f7',
+          itemBorderRadius: 8,
+          itemMarginInline: 8,
+        },
+        Card: {
+          borderRadiusLG: 12,
+          headerBg: 'transparent',
+        },
+        Button: {
+          borderRadius: 8,
+          borderRadiusLG: 10,
+          primaryShadow: '0 2px 8px rgba(0, 122, 255, 0.18)',
+        },
+        Input: {
+          borderRadius: 8,
+          activeShadow: '0 0 0 3px rgba(0, 122, 255, 0.12)',
+        },
+        Table: {
+          borderRadius: 12,
+          headerBg: isDark ? '#2c2c2e' : '#f2f2f7',
+        },
+        Modal: {
+          borderRadiusLG: 14,
+        },
+        Tag: {
+          borderRadiusSM: 6,
+        },
+      },
     }
-    
-    return {}
   }
 
   const antdTheme = getAntdTheme()
 
   return (
     <ConfigProvider
-      theme={{
-        ...antdTheme,
-        token: {
-          colorPrimary: '#1677ff'
-        }
-      }}
+      theme={antdTheme}
     >
       <AntApp>
         <ErrorBoundary>

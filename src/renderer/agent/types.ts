@@ -55,8 +55,13 @@ export interface ModelConfig {
   quickMessages?: string[]
   // 审批模式：manual=高危需人工审批（默认）；auto=自动批准高危操作
   approvalMode?: 'manual' | 'auto'
+  // 审批超时（秒），超时未响应自动拒绝，默认 60
+  approvalTimeout?: number
   // 启用 Web 搜索工具（AI 可联网查询报错/命令用法）
   enableWebSearch?: boolean
+  // 多模型路由：不同任务类型路由到不同模型（简单任务用轻量模型、分析任务用强模型）
+  enableRouting?: boolean
+  routing?: ModelRouting
   // 多提供商档案：当前激活档案 id + 档案列表（扁平字段为激活档案的镜像）
   activeProfileId?: string
   providerProfiles?: ProviderProfile[]
@@ -72,12 +77,19 @@ export interface ProviderPreset {
   description: string
 }
 
+export interface RoutingModel {
+  provider?: AIProvider
+  model?: string
+  baseUrl?: string
+  apiKey?: string
+}
+
 export interface ModelRouting {
-  execution: { provider: string; model: string }
-  thinking: { provider: string; model: string }
-  compaction: { provider: string; model: string }
-  critique: { provider: string; model: string }
-  vision: { provider: string; model: string }
+  execution?: RoutingModel
+  thinking?: RoutingModel
+  compaction?: RoutingModel
+  critique?: RoutingModel
+  vision?: RoutingModel
 }
 
 // ==================== 消息类型 ====================

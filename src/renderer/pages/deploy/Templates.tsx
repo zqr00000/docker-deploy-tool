@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useMemo, useRef, useCallback, memo } from 'react'
+import React, { useState, useEffect, useMemo, useRef, useCallback, memo } from 'react'
 import {
   Card,
   Typography,
@@ -385,11 +385,11 @@ const Templates: React.FC = () => {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div>
                 <Text type="secondary">{t('template.builtInTemplates')}</Text>
-                <div style={{ fontSize: 24, fontWeight: 'bold', color: '#52c41a' }}>
+                <div style={{ fontSize: 24, fontWeight: 'bold', color: '#34C759' }}>
                   {stats.builtInCount}
                 </div>
               </div>
-              <CloudServerOutlined style={{ fontSize: 32, color: '#52c41a' }} />
+              <CloudServerOutlined style={{ fontSize: 32, color: '#34C759' }} />
             </div>
           </Card>
         </Col>
@@ -398,11 +398,11 @@ const Templates: React.FC = () => {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div>
                 <Text type="secondary">{t('template.customTemplates')}</Text>
-                <div style={{ fontSize: 24, fontWeight: 'bold', color: '#faad14' }}>
+                <div style={{ fontSize: 24, fontWeight: 'bold', color: '#FF9500' }}>
                   {stats.customCount}
                 </div>
               </div>
-              <LaptopOutlined style={{ fontSize: 32, color: '#faad14' }} />
+              <LaptopOutlined style={{ fontSize: 32, color: '#FF9500' }} />
             </div>
           </Card>
         </Col>

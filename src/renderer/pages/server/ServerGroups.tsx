@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
   Card,
   Table,
@@ -174,7 +174,7 @@ const ServerGroups: React.FC = () => {
       key: 'name',
       render: (text: string) => (
         <Space>
-          <TeamOutlined style={{ color: '#1677ff' }} />
+          <TeamOutlined style={{ color: '#007AFF' }} />
           <Text strong>{text}</Text>
         </Space>
       )
@@ -190,7 +190,7 @@ const ServerGroups: React.FC = () => {
       dataIndex: 'serverCount',
       key: 'serverCount',
       render: (count: number) => (
-        <Badge count={count || 0} showZero style={{ backgroundColor: '#52c41a' }} />
+        <Badge count={count || 0} showZero style={{ backgroundColor: '#34C759' }} />
       )
     },
     {

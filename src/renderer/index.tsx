@@ -16,24 +16,23 @@ const getAntdLocale = () => {
 
 const getAntdTheme = () => {
   const savedTheme = (localStorage.getItem('themeMode') as ThemeMode) || 'system'
-  
+
+  let isDark = false
   if (savedTheme === 'system') {
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-    return {
-      algorithm: prefersDark ? theme.defaultAlgorithm : theme.defaultAlgorithm,
-      token: { colorPrimary: '#1677ff' }
-    }
+    isDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+  } else {
+    isDark = savedTheme === 'dark'
   }
-  
-  if (savedTheme === 'dark') {
-    return {
-      algorithm: theme.defaultAlgorithm,
-      token: { colorPrimary: '#1677ff' }
-    }
-  }
-  
+
   return {
-    token: { colorPrimary: '#1677ff' }
+    algorithm: isDark ? theme.darkAlgorithm : theme.defaultAlgorithm,
+    token: {
+      colorPrimary: '#007AFF',
+      colorSuccess: '#34C759',
+      colorError: '#FF3B30',
+      colorWarning: '#FF9500',
+      colorInfo: '#007AFF',
+    },
   }
 }
 

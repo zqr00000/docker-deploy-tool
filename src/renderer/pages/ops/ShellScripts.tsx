@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useMemo, useCallback } from 'react'
+import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import {
   Card,
   Table,
@@ -567,7 +567,7 @@ const ShellScripts: React.FC = () => {
   return (
     <div className="shell-scripts-page">
       <Title level={4} style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-        <CodeOutlined style={{ color: '#1677ff' }} />
+        <CodeOutlined style={{ color: '#007AFF' }} />
         {t('shellScript.title')}
       </Title>
 
@@ -604,7 +604,7 @@ const ShellScripts: React.FC = () => {
                   >
                     <Space wrap>
                       <Input
-                        prefix={<SearchOutlined style={{ color: '#bfbfbf' }} />}
+                        prefix={<SearchOutlined style={{ color: '#8e8e93' }} />}
                         placeholder={t('shellScript.searchPlaceholder')}
                         value={searchText}
                         onChange={e => setSearchText(e.target.value)}

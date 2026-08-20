@@ -1,4 +1,4 @@
-﻿/**
+/**
  * AI 运维终端 - 主页面（优化版）
  * 参考 AionUi、OpenDev、Warp 等开源项目的UI设计
  */
@@ -69,7 +69,8 @@ import {
   FilterOutlined,
   SearchOutlined,
   MenuFoldOutlined,
-  MenuUnfoldOutlined
+  MenuUnfoldOutlined,
+  StarOutlined
 } from '@ant-design/icons'
 import { Terminal } from 'xterm'
 import { FitAddon } from 'xterm-addon-fit'
@@ -120,19 +121,19 @@ const renderMarkdown = (content: string): string => {
 // 获取风险等级颜色
 const getRiskColor = (level: string) => {
   switch (level) {
-    case 'high': return '#ff4d4f'
-    case 'medium': return '#faad14'
-    default: return '#52c41a'
+    case 'high': return '#FF3B30'
+    case 'medium': return '#FF9500'
+    default: return '#34C759'
   }
 }
 
 // 获取诊断状态颜色
 const getDiagnosticColor = (status: string) => {
   switch (status) {
-    case 'healthy': return '#52c41a'
-    case 'warning': return '#faad14'
-    case 'critical': return '#ff4d4f'
-    default: return '#8c8c8c'
+    case 'healthy': return '#34C759'
+    case 'warning': return '#FF9500'
+    case 'critical': return '#FF3B30'
+    default: return '#8e8e93'
   }
 }
 
@@ -152,6 +153,9 @@ const ToolCallCard: React.FC<{ tc: ToolCallRecord }> = ({ tc }) => {
   const icon = isRunning ? <Spin size="small" /> : tc.status === 'success' ? <CheckCircleOutlined style={{ color: '#3fb950' }} /> : <CloseCircleOutlined style={{ color: '#ff7b72' }} />
   const tagColor = tc.status === 'success' ? 'green' : tc.status === 'error' ? 'red' : 'blue'
   const tagText = isRunning ? '执行中' : tc.status === 'success' ? '成功' : '失败'
+  // 可收藏的命令（工具参数中含 command 的命令类工具）
+  const favCommand = typeof tc.params?.command === 'string' ? tc.params.command : undefined
+  const [favorited, setFavorited] = useState(() => favCommand ? isFavoriteCommand(favCommand) : false)
   return (
     <div className="tool-card" style={{ background: 'rgba(13,17,23,0.8)', padding: 8, borderRadius: 8, border: '1px solid #21262d' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -159,8 +163,18 @@ const ToolCallCard: React.FC<{ tc: ToolCallRecord }> = ({ tc }) => {
         <CodeOutlined style={{ color: '#58a6ff' }} />
         <Text style={{ color: '#58a6ff', fontSize: 12, flex: 1, fontFamily: 'Consolas, monospace' }}>{tc.name}</Text>
         {tc.duration !== undefined && !isRunning && <Text type="secondary" style={{ fontSize: 11 }}>{tc.duration}ms</Text>}
+        {favCommand && (
+          <Tooltip title={favorited ? '取消收藏' : '收藏此命令'}>
+            <Button size="small" type="text" icon={<StarOutlined style={{ color: favorited ? '#d29922' : '#484f58' }} />}
+              style={{ padding: 0, width: 20, height: 20 }}
+              onClick={() => { const f = toggleFavoriteCommand(favCommand!, tc.name); setFavorited(f) }} />
+          </Tooltip>
+        )}
         <Tag color={tagColor} style={{ fontSize: 10, margin: 0, borderRadius: 999 }}>{tagText}</Tag>
       </div>
+      {!isRunning && tc.result && typeof tc.result === 'string' && (
+        <ResourceBars text={tc.result} />
+      )}
       {!isRunning && (
         <pre style={{ margin: '8px 0 0 24px', maxHeight: 160, overflow: 'auto', fontSize: 11, color: '#8b949e', background: 'rgba(22,27,34,0.6)', padding: 8, borderRadius: 4, whiteSpace: 'pre-wrap', border: '1px solid #21262d' }}>
           {tc.result}
@@ -168,6 +182,88 @@ const ToolCallCard: React.FC<{ tc: ToolCallRecord }> = ({ tc }) => {
       )}
     </div>
   )
+}
+
+// ==================== 命令收藏（localStorage 持久化） ====================
+
+interface FavoriteCommand {
+  command: string
+  name: string
+  createdAt: string
+}
+
+const FAVORITES_KEY = 'agentFavoriteCommands'
+const FAVORITES_EVENT = 'agent-favorites-changed'
+
+function getFavoriteCommands(): FavoriteCommand[] {
+  try {
+    const raw = localStorage.getItem(FAVORITES_KEY)
+    const list = raw ? JSON.parse(raw) : []
+    return Array.isArray(list) ? list : []
+  } catch {
+    return []
+  }
+}
+
+function isFavoriteCommand(command: string): boolean {
+  return getFavoriteCommands().some(f => f.command === command)
+}
+
+function toggleFavoriteCommand(command: string, name: string): boolean {
+  const list = getFavoriteCommands()
+  const exists = list.findIndex(f => f.command === command)
+  let next: FavoriteCommand[]
+  if (exists >= 0) {
+    next = list.filter(f => f.command !== command)
+  } else {
+    next = [{ command, name, createdAt: new Date().toISOString() }, ...list]
+  }
+  localStorage.setItem(FAVORITES_KEY, JSON.stringify(next))
+  window.dispatchEvent(new CustomEvent(FAVORITES_EVENT))
+  return exists < 0
+}
+
+// ==================== 结果可视化（资源占用进度条） ====================
+
+// 解析文本中的资源占用指标（如 "CPU: 23.5%" / "内存: 12%"/"Disk: 45%"）
+const parseResourceMetrics = (text: string): { label: string; value: number }[] => {
+  const metrics: { label: string; value: number }[] = []
+  const re = /(CPU|内存|磁盘|MEM|DISK|Memory|Disk)\s*[：:]\s*([\d.]+)\s*%/gi
+  let m: RegExpExecArray | null
+  while ((m = re.exec(text)) !== null) {
+    const raw = m[1]
+    const v = parseFloat(m[2])
+    if (isNaN(v) || v < 0 || v > 100) continue
+    const label = /^mem|^内存$/i.test(raw) ? '内存' : /^disk|^磁盘$/i.test(raw) ? '磁盘' : 'CPU'
+    if (!metrics.some(r => r.label === label)) metrics.push({ label, value: v })
+  }
+  return metrics.slice(0, 4)
+}
+
+const ResourceBars: React.FC<{ text: string }> = ({ text }) => {
+  const metrics = parseResourceMetrics(text)
+  if (metrics.length === 0) return null
+  return (
+    <div style={{ margin: '8px 0 0 24px', display: 'flex', flexDirection: 'column', gap: 5, padding: '6px 10px', background: 'rgba(22,27,34,0.5)', borderRadius: 6, border: '1px solid #21262d' }}>
+      {metrics.map(m => (
+        <div key={m.label} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Text style={{ fontSize: 11, color: '#8b949e', width: 32, flexShrink: 0 }}>{m.label}</Text>
+          <div style={{ flex: 1, height: 6, background: '#21262d', borderRadius: 3, overflow: 'hidden' }}>
+            <div style={{ width: `${Math.min(m.value, 100)}%`, height: '100%', background: m.value > 90 ? '#ff7b72' : m.value > 75 ? '#d29922' : '#3fb950', borderRadius: 3, transition: 'width 0.3s' }} />
+          </div>
+          <Text style={{ fontSize: 11, color: m.value > 90 ? '#ff7b72' : m.value > 75 ? '#d29922' : '#3fb950', width: 42, textAlign: 'right', flexShrink: 0 }}>{m.value.toFixed(1)}%</Text>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// 路由档位展示文案与颜色（多模型路由）
+const ROUTE_META: Record<string, { label: string; color: string; hint: string }> = {
+  thinking: { label: '分析模型', color: 'purple', hint: '分析/诊断/排查' },
+  critique: { label: '审查模型', color: 'geekblue', hint: '检查/复核/验证' },
+  vision: { label: '视觉模型', color: 'cyan', hint: '截图/图片' },
+  execution: { label: '默认模型', color: 'default', hint: '日常命令' }
 }
 
 // 终端配色主题（参考 Netcatty 主题系统：可切换多套终端配色）
@@ -236,6 +332,14 @@ const AgentTerminalPage: React.FC = () => {
   // 工作台左侧边栏（会话 + 服务器）折叠状态
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
+  // 收藏命令（localStorage 持久化，点击工具卡片星标添加）
+  const [favorites, setFavorites] = useState<FavoriteCommand[]>(getFavoriteCommands)
+  useEffect(() => {
+    const handler = () => setFavorites(getFavoriteCommands())
+    window.addEventListener(FAVORITES_EVENT, handler)
+    return () => window.removeEventListener(FAVORITES_EVENT, handler)
+  }, [])
+
   // 配置抽屉分组导航 + 终端主题（参考 Netcatty 设置页分组式导航）
   const [configTab, setConfigTab] = useState<'connection' | 'runtime' | 'agent' | 'appearance'>('connection')
   const [terminalThemeId, setTerminalThemeId] = useState(() => localStorage.getItem('agentTerminalTheme') || 'github-dark')
@@ -273,8 +377,10 @@ const AgentTerminalPage: React.FC = () => {
   const [showDiagnostics, setShowDiagnostics] = useState(false)
   const [runningDiagnostics, setRunningDiagnostics] = useState(false)
 
-  // Approval handling
-  const [approvalRequest, setApprovalRequest] = useState<any>(null)
+  // Approval handling（队列：多个高危操作并发时逐个审批，避免互相覆盖）
+  const [approvalQueue, setApprovalQueue] = useState<any[]>([])
+  const [approvalCountdown, setApprovalCountdown] = useState(0)
+  const currentApproval = approvalQueue.length > 0 ? approvalQueue[0] : null
 
   // 当前流式请求 ID（用于取消）
   const currentRequestIdRef = useRef<string | null>(null)
@@ -294,9 +400,9 @@ const AgentTerminalPage: React.FC = () => {
     loadSessions()
     loadCommandHistory()
 
-    // 审批请求监听（主进程 Mastra 工具触发）
+    // 审批请求监听（主进程 Mastra 工具触发，支持并发排队；记录到达时间用于真实超时计算）
     const removeApproval = window.electronAPI.opsAgent.onApprovalRequest((payload) => {
-      setApprovalRequest(payload)
+      setApprovalQueue(prev => [...prev, { ...payload, receivedAt: Date.now() }])
     })
 
     return () => {
@@ -364,7 +470,7 @@ const AgentTerminalPage: React.FC = () => {
     }
   }, [])
 
-  const handleServerChange = (serverId: string | undefined) => {
+  const handleServerChange = async (serverId: string | undefined) => {
     if (!serverId) {
       setSelectedServer(undefined)
       setConnected(false)
@@ -372,8 +478,22 @@ const AgentTerminalPage: React.FC = () => {
       return
     }
     setSelectedServer(serverId)
-    setConnected(true)
+    setConnected(false)
     setContainers([])
+    // 实际建立 SSH 连接，避免出现“SSH connection not established”
+    const server = servers.find(s => s.id === serverId)
+    if (server) {
+      try {
+        const result = await window.electronAPI.server.connect(server)
+        setConnected(result.success)
+        if (!result.success) {
+          message.warning(`服务器连接失败: ${result.message}`)
+        }
+      } catch (error) {
+        setConnected(false)
+        message.warning(`服务器连接失败: ${(error as Error).message}`)
+      }
+    }
     loadContainers(serverId)
   }
 
@@ -414,14 +534,13 @@ const AgentTerminalPage: React.FC = () => {
     message.success('会话已重命名')
   }
 
+  // 会话切换时加载消息（仅依赖 activeSessionId；sessions 变化如自动标题/持久化不应覆盖当前消息）
+  const sessionsRef = useRef(sessions)
+  sessionsRef.current = sessions
   useEffect(() => {
-    if (activeSessionId) {
-      const session = sessions.find(s => s.id === activeSessionId)
-      setMessages(session?.messages || [])
-    } else {
-      setMessages([])
-    }
-  }, [activeSessionId, sessions])
+    const session = sessionsRef.current.find(s => s.id === activeSessionId)
+    setMessages(session?.messages || [])
+  }, [activeSessionId])
 
   // 持久化当前会话（统一入口，避免在 setState updater 中做副作用）
   const persistSession = useCallback((msgs: ChatMessage[]) => {
@@ -498,6 +617,18 @@ const AgentTerminalPage: React.FC = () => {
 
     setLoading(true)
 
+    // 会话标题自动生成：新会话首条消息自动命名（代替默认时间戳）
+    if (activeSessionId && messages.length === 0) {
+      const session = sessions.find(x => x.id === activeSessionId)
+      if (session) {
+        const title = userInput.trim().slice(0, 30)
+        const updated = { ...session, name: title, updatedAt: new Date().toISOString() }
+        persistenceManager.saveSession(updated).catch(() => { /* 标题生成失败不影响对话 */ })
+        // 同步更新本地会话列表（persistSession 依赖 sessions 读取标题），不触发消息覆盖
+        setSessions(prev => prev.map(s => s.id === session.id ? updated : s))
+      }
+    }
+
     const userMessage: ChatMessage = {
       id: `msg-${Date.now()}`,
       role: 'user',
@@ -571,6 +702,17 @@ const AgentTerminalPage: React.FC = () => {
       syncSegments()
     })
 
+    // 路由通知：记录本次对话使用的模型档位（多模型路由）
+    // 防御性判断：旧版 preload 无 onRoute 时静默跳过，避免中断整个发送流程
+    const removeRoute = window.electronAPI.opsAgent.onRoute
+      ? window.electronAPI.opsAgent.onRoute(({ requestId: rid, route }) => {
+          if (rid !== requestId) return
+          setMessages(prev => prev.map(m =>
+            m.id === assistantId ? { ...m, metadata: { ...(m.metadata || {}), route } } : m
+          ))
+        })
+      : () => {}
+
     const removeError = window.electronAPI.opsAgent.onError(({ requestId: rid, error }) => {
       if (rid !== requestId) return
       const cancelled = error === 'cancelled'
@@ -609,8 +751,26 @@ const AgentTerminalPage: React.FC = () => {
       removeChunk()
       removeToolCall()
       removeToolResult()
+      removeRoute()
       removeError()
       removeDone()
+    }
+
+    // 上下文自动压缩：较早对话压缩为摘要传给后端，避免上下文超长导致模型遗忘
+    const HISTORY_KEEP = 8 // 保留最近 N 条消息完整传递，更早的压缩为摘要
+    let historySummary: string | undefined
+    if (messages.length > HISTORY_KEEP) {
+      const older = messages.slice(0, messages.length - HISTORY_KEEP)
+      const parts: string[] = []
+      for (const m of older) {
+        const role = m.role === 'user' ? '用户' : m.role === 'system' ? '系统' : '助手'
+        const content = (m.content || '').replace(/\s+/g, ' ').trim().slice(0, 300)
+        if (content) parts.push(`${role}: ${content}`)
+      }
+      historySummary = parts.join('\n')
+      if (historySummary.length > 4000) {
+        historySummary = `${historySummary.slice(0, 4000)}\n...（更早的对话内容已省略）`
+      }
     }
 
     try {
@@ -618,7 +778,8 @@ const AgentTerminalPage: React.FC = () => {
         serverId: selectedServer,
         serverName: server?.name,
         userInput,
-        threadId
+        threadId,
+        historySummary
       })
       if (!result.success) {
         setMessages(prev => prev.map(m =>
@@ -1012,14 +1173,50 @@ const AgentTerminalPage: React.FC = () => {
     }
   }
 
+  // ==================== 多模型路由配置 ====================
+
+  const updateRouting = (route: string, field: string, value: any) => {
+    const routing = { ...(modelConfig.routing || {}) }
+    const cur = { ...((routing as any)[route] || {}) }
+    ;(routing as any)[route] = { ...cur, [field]: value }
+    setModelConfig({ ...modelConfig, routing })
+  }
+
   // ==================== 审批处理 ====================
 
   const handleApproval = (approved: boolean) => {
-    if (approvalRequest?.id) {
-      window.electronAPI.opsAgent.approval(approvalRequest.id, approved)
+    if (currentApproval?.id) {
+      window.electronAPI.opsAgent.approval(currentApproval.id, approved)
     }
-    setApprovalRequest(null)
+    setApprovalQueue(prev => prev.slice(1))
+    setApprovalCountdown(0)
   }
+
+  // 审批超时倒计时：基于请求到达时间计算真实剩余（排队等待会计入超时，与主进程超时一致）
+  useEffect(() => {
+    if (!currentApproval) {
+      setApprovalCountdown(0)
+      return
+    }
+    const timeout = modelConfig.approvalTimeout || 60
+    const deadline = (currentApproval.receivedAt || Date.now()) + timeout * 1000
+    const updateRemain = () => Math.max(0, Math.round((deadline - Date.now()) / 1000))
+    setApprovalCountdown(updateRemain())
+    const timer = setInterval(() => {
+      const remain = updateRemain()
+      setApprovalCountdown(remain)
+      if (remain <= 0) {
+        clearInterval(timer)
+        // 超时自动拒绝（与主进程超时保持一致）
+        if (currentApproval?.id) {
+          window.electronAPI.opsAgent.approval(currentApproval.id, false)
+        }
+        message.warning('审批超时，操作已自动拒绝')
+        setApprovalQueue(q => q.slice(1))
+      }
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [currentApproval, modelConfig.approvalTimeout])
 
   // ==================== 终端管理 ====================
 
@@ -1471,6 +1668,53 @@ const AgentTerminalPage: React.FC = () => {
                   onChange={v => setModelConfig({ ...modelConfig, enableWebSearch: v })} />
               </div>
 
+              {/* 多模型路由 */}
+              <div style={{ marginTop: 16 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ minWidth: 0 }}>
+                    <Text style={{ color: '#e6edf3', fontSize: 12 }}>多模型路由</Text>
+                    <Text style={{ color: '#6e7681', fontSize: 10, display: 'block' }}>按任务类型路由到不同模型（复杂分析用强模型，日常用轻量模型）</Text>
+                  </div>
+                  <Switch size="small" checked={modelConfig.enableRouting}
+                    onChange={v => setModelConfig({ ...modelConfig, enableRouting: v })} />
+                </div>
+                {modelConfig.enableRouting && (
+                  <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {(['thinking', 'critique', 'vision'] as string[]).map(route => {
+                      const meta = ROUTE_META[route]
+                      const r = (modelConfig.routing || {})[route]
+                      return (
+                        <div key={route} style={{ background: 'rgba(13,17,23,0.6)', border: '1px solid #21262d', borderRadius: 8, padding: 8 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <Text style={{ color: '#e6edf3', fontSize: 12 }}>{meta.label}</Text>
+                            <Text style={{ color: '#484f58', fontSize: 10 }}>{meta.hint}</Text>
+                          </div>
+                          <Space.Compact style={{ width: '100%', marginTop: 6 }}>
+                            <Select value={r?.provider || modelConfig.provider} onChange={v => updateRouting(route, 'provider', v)}
+                              size="small" style={{ width: 118 }}
+                              options={PROVIDER_PRESETS.map(p => ({ value: p.provider, label: p.name }))} />
+                            <Input value={r?.model || ''} onChange={e => updateRouting(route, 'model', e.target.value)}
+                              size="small" placeholder="路由模型，留空回退主模型"
+                              style={{ background: '#0d1117', border: '1px solid #30363d', color: '#e6edf3' }} />
+                          </Space.Compact>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* 审批超时 */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 }}>
+                <div style={{ minWidth: 0 }}>
+                  <Text style={{ color: '#e6edf3', fontSize: 12 }}>审批超时（秒）</Text>
+                  <Text style={{ color: '#6e7681', fontSize: 10, display: 'block' }}>审批弹窗超时未响应自动拒绝，默认 60s</Text>
+                </div>
+                <InputNumber size="small" min={10} max={300} value={modelConfig.approvalTimeout || 60}
+                  onChange={v => setModelConfig({ ...modelConfig, approvalTimeout: v || 60 })}
+                  style={{ width: 90 }} />
+              </div>
+
               {/* 命令黑名单（参考 Netcatty commandBlocklist） */}
               <div style={{ marginTop: 16 }}>
                 <Text style={{ color: '#e6edf3', fontSize: 12 }}>命令黑名单</Text>
@@ -1546,6 +1790,23 @@ const AgentTerminalPage: React.FC = () => {
                     <Text style={{ fontSize: 11, color: '#484f58' }}>暂无会话，点击 + 新建</Text>
                   </div>
                 )}
+              </div>
+
+              {/* 收藏命令 */}
+              <div style={{ padding: '10px 12px', borderTop: '1px solid rgba(48,54,61,0.6)' }}>
+                <Text style={{ fontSize: 10, color: '#8b949e', letterSpacing: 1.2 }}>收藏命令</Text>
+                <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {favorites.map(f => (
+                    <div key={f.command} className="agent-sidebar-item" onClick={() => setInputText(f.command)}
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 8, cursor: 'pointer' }}>
+                      <StarOutlined style={{ color: '#d29922', fontSize: 11, flexShrink: 0 }} />
+                      <div style={{ flex: 1, minWidth: 0, fontSize: 11, color: '#8b949e', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'Consolas, monospace' }}>{f.command}</div>
+                      <Button size="small" type="text" icon={<CloseOutlined />} title="取消收藏" style={{ padding: 0, width: 16, height: 16, color: '#484f58' }}
+                        onClick={(e) => { e.stopPropagation(); toggleFavoriteCommand(f.command, f.name) }} />
+                    </div>
+                  ))}
+                  {favorites.length === 0 && <Text style={{ fontSize: 11, color: '#484f58', padding: '4px 8px' }}>暂无收藏，点击工具卡片星标添加</Text>}
+                </div>
               </div>
 
               {/* 服务器列表 */}
@@ -1782,6 +2043,11 @@ const AgentTerminalPage: React.FC = () => {
                           <div style={{ fontSize: 10, color: '#484f58', marginTop: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
                             {new Date(msg.timestamp).toLocaleTimeString()}
                             {msg.metadata?.executionTime && <span>⏱ {msg.metadata.executionTime}ms</span>}
+                            {msg.metadata?.route && msg.metadata.route !== 'execution' && (
+                              <Tag color={ROUTE_META[msg.metadata.route]?.color || 'default'} style={{ fontSize: 10, margin: 0, borderRadius: 999 }}>
+                                {ROUTE_META[msg.metadata.route]?.label || msg.metadata.route}
+                              </Tag>
+                            )}
                             <span style={{ flex: 1 }} />
                             <Tooltip title="复制回复">
                               <Button size="small" type="text" icon={<CopyOutlined />} style={{ color: '#6e7681', padding: 0, width: 20, height: 20 }}
@@ -1851,7 +2117,7 @@ const AgentTerminalPage: React.FC = () => {
               <Card key={i} size="small" style={{ background: 'rgba(13,17,23,0.8)', border: '1px solid #21262d', borderRadius: 10 }}>
                 <Space>
                   {d.status === 'healthy' && <CheckCircleOutlined style={{ color: '#3fb950', fontSize: 16 }} />}
-                  {d.status === 'warning' && <ExclamationCircleOutlined style={{ color: '#faad14', fontSize: 16 }} />}
+                  {d.status === 'warning' && <ExclamationCircleOutlined style={{ color: '#FF9500', fontSize: 16 }} />}
                   {d.status === 'critical' && <CloseCircleOutlined style={{ color: '#ff7b72', fontSize: 16 }} />}
                   <div>
                     <Text strong style={{ color: '#e6edf3', textTransform: 'capitalize' }}>{d.type}</Text>
@@ -1884,16 +2150,18 @@ const AgentTerminalPage: React.FC = () => {
         </Modal>
 
         {/* 安全审批 */}
-        <Modal title={<Space><SafetyOutlined style={{ color: '#faad14' }} /><span style={{ color: '#e6edf3' }}>安全审批</span></Space>} 
-          open={!!approvalRequest} onCancel={() => handleApproval(false)} onOk={() => handleApproval(true)} 
-          okText="确认执行" cancelText="取消" okButtonProps={{ danger: approvalRequest?.riskLevel === 'high' }}
+        <Modal title={<Space><SafetyOutlined style={{ color: '#FF9500' }} /><span style={{ color: '#e6edf3' }}>安全审批</span>
+          {approvalQueue.length > 1 && <Tag color="orange" style={{ fontSize: 10, margin: 0 }}>队列 {approvalQueue.length} 项</Tag>}</Space>} 
+          open={!!currentApproval} onCancel={() => handleApproval(false)} onOk={() => handleApproval(true)} 
+          okText="确认执行" cancelText="取消" okButtonProps={{ danger: currentApproval?.riskLevel === 'high' }}
           styles={{ body: { background: '#161b22' }, content: { background: '#161b22', border: '1px solid #30363d' }, header: { background: '#161b22', borderBottom: '1px solid #21262d' } }}>
-          {approvalRequest && (
+          {currentApproval && (
             <div>
-              <Alert message={`风险等级: ${approvalRequest.riskLevel === 'high' ? '高风险' : '中风险'}`} 
-                type={approvalRequest.riskLevel === 'high' ? 'error' : 'warning'} showIcon style={{ marginBottom: 16, borderRadius: 8 }} />
+              <Alert message={`风险等级: ${currentApproval.riskLevel === 'high' ? '高风险' : '中风险'}`} 
+                type={currentApproval.riskLevel === 'high' ? 'error' : 'warning'} showIcon style={{ marginBottom: 16, borderRadius: 8 }}
+                action={<span style={{ color: approvalCountdown <= 10 ? '#ff7b72' : '#8b949e', fontSize: 12, fontWeight: 600 }}>{approvalCountdown}s</span>} />
               <Text style={{ color: '#8b949e', fontSize: 11, display: 'block', marginBottom: 6 }}>执行命令</Text>
-              <pre style={{ background: 'rgba(13,17,23,0.85)', padding: 12, borderRadius: 8, color: '#ff7b72', border: '1px solid rgba(255,123,114,0.3)', fontFamily: 'Consolas, monospace', fontSize: 12, whiteSpace: 'pre-wrap' }}>{approvalRequest.action}</pre>
+              <pre style={{ background: 'rgba(13,17,23,0.85)', padding: 12, borderRadius: 8, color: '#ff7b72', border: '1px solid rgba(255,123,114,0.3)', fontFamily: 'Consolas, monospace', fontSize: 12, whiteSpace: 'pre-wrap' }}>{currentApproval.action}</pre>
             </div>
           )}
         </Modal>

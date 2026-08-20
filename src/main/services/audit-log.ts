@@ -1,4 +1,4 @@
-﻿import log from 'electron-log'
+import log from 'electron-log'
 import { generateId } from '../ssh'
 import { auditLogQueries, AuditLogQuery } from '../database'
 
@@ -24,6 +24,7 @@ export type AuditAction =
   | 'shell_script_rollback'
   | 'shell_script_run'
   | 'settings_change'
+  | 'agent_approval'
   | 'scheduled_task_create'
   | 'scheduled_task_update'
   | 'scheduled_task_delete'
@@ -38,6 +39,7 @@ export type AuditTargetType =
   | 'settings'
   | 'system'
   | 'scheduled_task'
+  | 'agent'
 
 export type AuditStatus = 'success' | 'failure' | 'pending'
 

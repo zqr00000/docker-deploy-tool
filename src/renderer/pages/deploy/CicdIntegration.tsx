@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import {
   Card,
   Select,
@@ -576,7 +576,7 @@ const CicdIntegration: React.FC = () => {
             <Statistic
               title={t('cicd.successfulDeploys')}
               value={deployments.filter(d => d.status === 'success').length}
-              valueStyle={{ color: '#52c41a' }}
+              valueStyle={{ color: '#34C759' }}
               prefix={<CheckCircleOutlined />}
             />
           </Card>

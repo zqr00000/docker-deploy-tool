@@ -441,7 +441,7 @@ const GlobalSearch: React.FC<GlobalSearchProps> = ({ visible, onClose }) => {
                       }
                       description={item.subtitle}
                     />
-                    <ArrowRightOutlined style={{ color: '#bfbfbf' }} />
+                    <ArrowRightOutlined style={{ color: '#8e8e93' }} />
                   </List.Item>
                 )}
               />

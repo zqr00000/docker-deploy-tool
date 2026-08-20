@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import {
   Card,
   Row,
@@ -162,11 +162,11 @@ const Dashboard: React.FC = () => {
 
   const getServerStatusColor = (status: string) => {
     switch (status) {
-      case 'online': return '#52c41a'
-      case 'offline': return '#bfbfbf'
-      case 'connecting': return '#faad14'
-      case 'error': return '#ff4d4f'
-      default: return '#bfbfbf'
+      case 'online': return '#34C759'
+      case 'offline': return '#8e8e93'
+      case 'connecting': return '#FF9500'
+      case 'error': return '#FF3B30'
+      default: return '#8e8e93'
     }
   }
 
@@ -236,7 +236,7 @@ const Dashboard: React.FC = () => {
         </div>
         <Tooltip title="刷新数据">
           <ReloadOutlined
-            style={{ fontSize: 18, cursor: 'pointer', color: '#1677ff' }}
+            style={{ fontSize: 18, cursor: 'pointer', color: '#007AFF' }}
             onClick={fetchDashboardData}
             spin={loading}
           />
@@ -251,7 +251,7 @@ const Dashboard: React.FC = () => {
               title="服务器"
               value={stats.onlineServers}
               suffix={`/ ${stats.totalServers}`}
-              prefix={<CloudServerOutlined style={{ color: '#1677ff' }} />}
+              prefix={<CloudServerOutlined style={{ color: '#007AFF' }} />}
             />
             <div style={{ marginTop: 8 }}>
               <Text type="secondary" style={{ fontSize: 12 }}>
@@ -266,7 +266,7 @@ const Dashboard: React.FC = () => {
               title="应用"
               value={stats.runningApps}
               suffix={`/ ${stats.totalApps}`}
-              prefix={<AppstoreOutlined style={{ color: '#52c41a' }} />}
+              prefix={<AppstoreOutlined style={{ color: '#34C759' }} />}
             />
             <div style={{ marginTop: 8 }}>
               <Text type="secondary" style={{ fontSize: 12 }}>
@@ -281,14 +281,14 @@ const Dashboard: React.FC = () => {
               title="容器"
               value={stats.healthyContainers}
               suffix={`/ ${stats.totalContainers}`}
-              prefix={<CheckCircleOutlined style={{ color: '#52c41a' }} />}
+              prefix={<CheckCircleOutlined style={{ color: '#34C759' }} />}
             />
             <div style={{ marginTop: 8 }}>
               <Progress
                 percent={stats.totalContainers > 0 ? Math.round((stats.healthyContainers / stats.totalContainers) * 100) : 0}
                 size="small"
                 showInfo={false}
-                strokeColor={stats.healthyContainers === stats.totalContainers ? '#52c41a' : '#faad14'}
+                strokeColor={stats.healthyContainers === stats.totalContainers ? '#34C759' : '#FF9500'}
               />
             </div>
           </Card>
@@ -298,7 +298,7 @@ const Dashboard: React.FC = () => {
             <Statistic
               title="活动告警"
               value={stats.activeAlerts}
-              prefix={<AlertOutlined style={{ color: stats.activeAlerts > 0 ? '#ff4d4f' : '#52c41a' }} />}
+              prefix={<AlertOutlined style={{ color: stats.activeAlerts > 0 ? '#FF3B30' : '#34C759' }} />}
             />
             <div style={{ marginTop: 8 }}>
               <Text type="secondary" style={{ fontSize: 12 }}>
@@ -396,7 +396,7 @@ const Dashboard: React.FC = () => {
                     <List.Item.Meta
                       avatar={
                         <Badge
-                          color={op.status === 'success' ? '#52c41a' : op.status === 'failure' ? '#ff4d4f' : '#faad14'}
+                          color={op.status === 'success' ? '#34C759' : op.status === 'failure' ? '#FF3B30' : '#FF9500'}
                         />
                       }
                       title={<Text style={{ fontSize: 13 }}>{getActionLabel(op.action)}</Text>}
@@ -433,7 +433,7 @@ const Dashboard: React.FC = () => {
               bodyStyle={{ padding: 16 }}
               onClick={() => navigate('/servers')}
             >
-              <CloudServerOutlined style={{ fontSize: 24, color: '#1677ff' }} />
+              <CloudServerOutlined style={{ fontSize: 24, color: '#007AFF' }} />
               <div style={{ marginTop: 8, fontSize: 12 }}>服务器</div>
             </Card>
           </Col>
@@ -445,7 +445,7 @@ const Dashboard: React.FC = () => {
               bodyStyle={{ padding: 16 }}
               onClick={() => navigate('/apps/deploy')}
             >
-              <AppstoreOutlined style={{ fontSize: 24, color: '#52c41a' }} />
+              <AppstoreOutlined style={{ fontSize: 24, color: '#34C759' }} />
               <div style={{ marginTop: 8, fontSize: 12 }}>部署应用</div>
             </Card>
           </Col>
@@ -458,7 +458,7 @@ const Dashboard: React.FC = () => {
               bodyStyle={{ padding: 16 }}
               onClick={() => navigate('/alerts')}
             >
-              <AlertOutlined style={{ fontSize: 24, color: '#ff4d4f' }} />
+              <AlertOutlined style={{ fontSize: 24, color: '#FF3B30' }} />
               <div style={{ marginTop: 8, fontSize: 12 }}>告警</div>
             </Card>
           </Col>
@@ -470,7 +470,7 @@ const Dashboard: React.FC = () => {
               bodyStyle={{ padding: 16 }}
               onClick={() => navigate('/health-check')}
             >
-              <CheckCircleOutlined style={{ fontSize: 24, color: '#52c41a' }} />
+              <CheckCircleOutlined style={{ fontSize: 24, color: '#34C759' }} />
               <div style={{ marginTop: 8, fontSize: 12 }}>健康检查</div>
             </Card>
           </Col>
@@ -482,7 +482,7 @@ const Dashboard: React.FC = () => {
               bodyStyle={{ padding: 16 }}
               onClick={() => navigate('/settings')}
             >
-              <SettingOutlined style={{ fontSize: 24, color: '#722ed1' }} />
+              <SettingOutlined style={{ fontSize: 24, color: '#AF52DE' }} />
               <div style={{ marginTop: 8, fontSize: 12 }}>设置</div>
             </Card>
           </Col>

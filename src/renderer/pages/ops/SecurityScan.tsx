@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import {
   Card,
   Select,
@@ -294,7 +294,7 @@ const SecurityScan: React.FC = () => {
       return <CloseCircleOutlined style={{ color: '#cf1322' }} />
     }
     if (severity === 'medium') {
-      return <ExclamationCircleOutlined style={{ color: '#faad14' }} />
+      return <ExclamationCircleOutlined style={{ color: '#FF9500' }} />
     }
     return <InfoCircleOutlined style={{ color: '#1890ff' }} />
   }
@@ -354,7 +354,7 @@ const SecurityScan: React.FC = () => {
       width: 100,
       render: (score: number) => {
         if (!score) return '-'
-        const color = score >= 9 ? '#cf1322' : score >= 7 ? '#fa8c16' : score >= 4 ? '#faad14' : '#52c41a'
+        const color = score >= 9 ? '#cf1322' : score >= 7 ? '#FF9500' : score >= 4 ? '#FF9500' : '#34C759'
         return <Text style={{ color, fontWeight: 'bold' }}>{score.toFixed(1)}</Text>
       }
     },
@@ -415,7 +415,7 @@ const SecurityScan: React.FC = () => {
                   <Statistic
                     title={t('securityScan.severityLevels.high')}
                     value={stats.high}
-                    valueStyle={{ color: '#fa8c16' }}
+                    valueStyle={{ color: '#FF9500' }}
                     prefix={<ExclamationCircleOutlined />}
                   />
                 </Card>
@@ -425,7 +425,7 @@ const SecurityScan: React.FC = () => {
                   <Statistic
                     title={t('securityScan.severityLevels.medium')}
                     value={stats.medium}
-                    valueStyle={{ color: '#faad14' }}
+                    valueStyle={{ color: '#FF9500' }}
                     prefix={<WarningOutlined />}
                   />
                 </Card>
@@ -480,8 +480,8 @@ const SecurityScan: React.FC = () => {
                   key={check.id}
                   header={
                     <Space>
-                      {check.status === 'pass' && <CheckCircleOutlined style={{ color: '#52c41a' }} />}
-                      {check.status === 'warn' && <WarningOutlined style={{ color: '#faad14' }} />}
+                      {check.status === 'pass' && <CheckCircleOutlined style={{ color: '#34C759' }} />}
+                      {check.status === 'warn' && <WarningOutlined style={{ color: '#FF9500' }} />}
                       {check.status === 'fail' && <CloseCircleOutlined style={{ color: '#cf1322' }} />}
                       <Text strong>{check.name}</Text>
                       <Tag color={check.status === 'pass' ? 'success' : check.status === 'warn' ? 'warning' : 'error'}>

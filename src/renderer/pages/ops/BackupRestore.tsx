@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import {
   Card,
   Select,
@@ -407,7 +407,7 @@ const BackupRestore: React.FC = () => {
                   title={t('backupRestore.volumeBackups')}
                   value={stats.volumeBackups}
                   prefix={<HddOutlined />}
-                  valueStyle={{ color: '#52c41a' }}
+                  valueStyle={{ color: '#34C759' }}
                 />
               </Card>
             </Col>
@@ -461,7 +461,7 @@ const BackupRestore: React.FC = () => {
                     onClick={() => (!selectedServer || backupInProgress) ? undefined : handleBackup('volume')}
                   >
                     <Space direction="vertical" style={{ width: '100%' }}>
-                      <HddOutlined style={{ fontSize: 32, color: '#52c41a' }} />
+                      <HddOutlined style={{ fontSize: 32, color: '#34C759' }} />
                       <Text strong>{t('backupRestore.backupVolume')}</Text>
                       <Text type="secondary" style={{ fontSize: 12 }}>
                         {t('backupRestore.backupVolumeDesc')}
@@ -477,7 +477,7 @@ const BackupRestore: React.FC = () => {
                     onClick={() => (!selectedServer || backupInProgress) ? undefined : handleBackup('config')}
                   >
                     <Space direction="vertical" style={{ width: '100%' }}>
-                      <SettingOutlined style={{ fontSize: 32, color: '#faad14' }} />
+                      <SettingOutlined style={{ fontSize: 32, color: '#FF9500' }} />
                       <Text strong>{t('backupRestore.backupConfig')}</Text>
                       <Text type="secondary" style={{ fontSize: 12 }}>
                         {t('backupRestore.backupConfigDesc')}

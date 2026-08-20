@@ -79,7 +79,7 @@ const OnboardingGuide: React.FC<OnboardingGuideProps> = ({ visible, onClose }) =
               renderItem={item => (
                 <List.Item style={{ padding: '4px 0' }}>
                   <Space>
-                    <CheckCircleOutlined style={{ color: '#52c41a' }} />
+                    <CheckCircleOutlined style={{ color: '#34C759' }} />
                     <Text>{item}</Text>
                   </Space>
                 </List.Item>
@@ -202,7 +202,7 @@ const OnboardingGuide: React.FC<OnboardingGuideProps> = ({ visible, onClose }) =
               renderItem={item => (
                 <List.Item style={{ padding: '4px 0' }}>
                   <Space>
-                    <BulbOutlined style={{ color: '#faad14' }} />
+                    <BulbOutlined style={{ color: '#FF9500' }} />
                     <Text>{item}</Text>
                   </Space>
                 </List.Item>

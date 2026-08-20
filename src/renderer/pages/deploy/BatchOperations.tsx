@@ -328,7 +328,7 @@ const BatchOperations: React.FC = () => {
       key: 'name',
       render: (text: string, record: ContainerInfo) => (
         <Space>
-          <AppstoreOutlined style={{ color: '#1677ff' }} />
+          <AppstoreOutlined style={{ color: '#007AFF' }} />
           <Text strong>{text}</Text>
         </Space>
       )
@@ -525,22 +525,22 @@ const BatchOperations: React.FC = () => {
                   <Row gutter={[8, 8]}>
                     <Col span={12}>
                       <Radio.Button value="start" style={{ width: '100%' }}>
-                        <PlayCircleOutlined style={{ color: '#52c41a' }} /> 启动
+                        <PlayCircleOutlined style={{ color: '#34C759' }} /> 启动
                       </Radio.Button>
                     </Col>
                     <Col span={12}>
                       <Radio.Button value="stop" style={{ width: '100%' }}>
-                        <StopOutlined style={{ color: '#faad14' }} /> 停止
+                        <StopOutlined style={{ color: '#FF9500' }} /> 停止
                       </Radio.Button>
                     </Col>
                     <Col span={12}>
                       <Radio.Button value="restart" style={{ width: '100%' }}>
-                        <ReloadOutlined style={{ color: '#1677ff' }} /> 重启
+                        <ReloadOutlined style={{ color: '#007AFF' }} /> 重启
                       </Radio.Button>
                     </Col>
                     <Col span={12}>
                       <Radio.Button value="remove" style={{ width: '100%' }}>
-                        <DeleteOutlined style={{ color: '#ff4d4f' }} /> 删除
+                        <DeleteOutlined style={{ color: '#FF3B30' }} /> 删除
                       </Radio.Button>
                     </Col>
                   </Row>

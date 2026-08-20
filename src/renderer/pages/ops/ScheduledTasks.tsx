@@ -37,7 +37,7 @@ const { Title, Text, Paragraph } = Typography
 const { Option } = Select
 const { TextArea } = Input
 
-type ScheduledTaskType = 'restart_container' | 'update_container' | 'backup_database' | 'backup_volume' | 'cleanup_images' | 'cleanup_volumes'
+type ScheduledTaskType = 'restart_container' | 'update_container' | 'backup_database' | 'backup_volume' | 'cleanup_images' | 'cleanup_volumes' | 'ai_inspection'
 
 interface ScheduledTask {
   id: string
@@ -72,7 +72,8 @@ const taskTypeColorMap: Record<ScheduledTaskType, string> = {
   backup_database: 'green',
   backup_volume: 'cyan',
   cleanup_images: 'orange',
-  cleanup_volumes: 'gold'
+  cleanup_volumes: 'gold',
+  ai_inspection: 'magenta'
 }
 
 const statusColorMap: Record<string, string> = {
@@ -400,7 +401,7 @@ const ScheduledTasks: React.FC = () => {
             {t('scheduledTasks.title')}
             <Badge
               count={tasks.filter(t => t.enabled === 1).length}
-              style={{ marginLeft: 8, backgroundColor: '#52c41a' }}
+              style={{ marginLeft: 8, backgroundColor: '#34C759' }}
             />
           </Title>
         </div>
@@ -481,6 +482,7 @@ const ScheduledTasks: React.FC = () => {
               <Option value="backup_volume">{t('scheduledTasks.types.backup_volume')}</Option>
               <Option value="cleanup_images">{t('scheduledTasks.types.cleanup_images')}</Option>
               <Option value="cleanup_volumes">{t('scheduledTasks.types.cleanup_volumes')}</Option>
+              <Option value="ai_inspection">{t('scheduledTasks.types.ai_inspection')}</Option>
             </Select>
           </Form.Item>
 

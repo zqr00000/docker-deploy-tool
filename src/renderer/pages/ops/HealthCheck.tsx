@@ -250,13 +250,13 @@ const HealthCheckPage: React.FC = () => {
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'healthy':
-        return <CheckCircleOutlined style={{ color: '#52c41a' }} />
+        return <CheckCircleOutlined style={{ color: '#34C759' }} />
       case 'unhealthy':
-        return <CloseCircleOutlined style={{ color: '#ff4d4f' }} />
+        return <CloseCircleOutlined style={{ color: '#FF3B30' }} />
       case 'starting':
         return <LoadingOutlined style={{ color: '#1890ff' }} />
       case 'partial':
-        return <ExclamationCircleOutlined style={{ color: '#faad14' }} />
+        return <ExclamationCircleOutlined style={{ color: '#FF9500' }} />
       default:
         return <ExclamationCircleOutlined style={{ color: '#d9d9d9' }} />
     }
@@ -425,7 +425,7 @@ const HealthCheckPage: React.FC = () => {
             <Statistic
               title="健康应用"
               value={healthyApps}
-              valueStyle={{ color: '#52c41a' }}
+              valueStyle={{ color: '#34C759' }}
               prefix={<CheckCircleOutlined />}
             />
           </Card>
@@ -435,7 +435,7 @@ const HealthCheckPage: React.FC = () => {
             <Statistic
               title="异常应用"
               value={unhealthyApps}
-              valueStyle={{ color: '#ff4d4f' }}
+              valueStyle={{ color: '#FF3B30' }}
               prefix={<CloseCircleOutlined />}
             />
           </Card>
@@ -445,7 +445,7 @@ const HealthCheckPage: React.FC = () => {
             <Statistic
               title="自动重启次数"
               value={totalRestarts}
-              valueStyle={{ color: totalRestarts > 0 ? '#faad14' : '#52c41a' }}
+              valueStyle={{ color: totalRestarts > 0 ? '#FF9500' : '#34C759' }}
             />
           </Card>
         </Col>

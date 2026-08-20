@@ -868,7 +868,7 @@ export interface ElectronAPI {
   opsAgent: {
     setConfig: (config: any) => Promise<{ success: boolean; error?: string }>
     getConfig: () => Promise<{ success: boolean; data?: any; error?: string }>
-    chat: (requestId: string, options: { serverId?: string; serverName?: string; userInput: string; threadId?: string }) => Promise<{ success: boolean; requestId?: string; error?: string }>
+    chat: (requestId: string, options: { serverId?: string; serverName?: string; userInput: string; threadId?: string; historySummary?: string }) => Promise<{ success: boolean; requestId?: string; error?: string }>
     cancel: (requestId: string) => Promise<{ success: boolean; error?: string }>
     approval: (id: string, approved: boolean) => Promise<{ success: boolean }>
     onChunk: (callback: (payload: { requestId: string; delta: string }) => void) => () => void
@@ -877,6 +877,7 @@ export interface ElectronAPI {
     onError: (callback: (payload: { requestId: string; error: string }) => void) => () => void
     onDone: (callback: (payload: { requestId: string }) => void) => () => void
     onApprovalRequest: (callback: (payload: { id: string; action: string; riskLevel: string }) => void) => () => void
+    onRoute: (callback: (payload: { requestId: string; route: string }) => void) => () => void
   }
   healthCheck: {
     getContainerHealth: (serverId: string, containerId: string) => Promise<ContainerHealthStatus | null>
@@ -1164,7 +1165,7 @@ const electronAPI: ElectronAPI = {
   opsAgent: {
     setConfig: (config: any): Promise<{ success: boolean; error?: string }> => ipcRenderer.invoke('opsAgent:setConfig', config),
     getConfig: (): Promise<{ success: boolean; data?: any; error?: string }> => ipcRenderer.invoke('opsAgent:getConfig'),
-    chat: (requestId: string, options: { serverId?: string; serverName?: string; userInput: string; threadId?: string }): Promise<{ success: boolean; requestId?: string; error?: string }> => ipcRenderer.invoke('opsAgent:chat', requestId, options),
+    chat: (requestId: string, options: { serverId?: string; serverName?: string; userInput: string; threadId?: string; historySummary?: string }): Promise<{ success: boolean; requestId?: string; error?: string }> => ipcRenderer.invoke('opsAgent:chat', requestId, options),
     cancel: (requestId: string): Promise<{ success: boolean; error?: string }> => ipcRenderer.invoke('opsAgent:cancel', requestId),
     approval: (id: string, approved: boolean): Promise<{ success: boolean }> => ipcRenderer.invoke('opsAgent:approval', id, approved),
     onChunk: (callback: (payload: { requestId: string; delta: string }) => void): (() => void) => {
@@ -1196,6 +1197,11 @@ const electronAPI: ElectronAPI = {
       const listener = (_e: any, payload: { id: string; action: string; riskLevel: string }) => callback(payload)
       ipcRenderer.on('opsAgent:approval-request', listener)
       return () => { ipcRenderer.removeListener('opsAgent:approval-request', listener) }
+    },
+    onRoute: (callback: (payload: { requestId: string; route: string }) => void): (() => void) => {
+      const listener = (_e: any, payload: { requestId: string; route: string }) => callback(payload)
+      ipcRenderer.on('opsAgent:route', listener)
+      return () => { ipcRenderer.removeListener('opsAgent:route', listener) }
     }
   },
   scheduledTask: {

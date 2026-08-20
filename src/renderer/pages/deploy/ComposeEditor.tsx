@@ -577,7 +577,7 @@ const ComposeEditor: React.FC = () => {
           style={{ cursor: 'pointer' }}
         >
           <Space>
-            <CloudServerOutlined style={{ fontSize: 18, color: '#1677ff' }} />
+            <CloudServerOutlined style={{ fontSize: 18, color: '#007AFF' }} />
             <div>
               <Text strong>{t('composeEditor.service')}</Text>
               <br />
@@ -593,7 +593,7 @@ const ComposeEditor: React.FC = () => {
           style={{ cursor: 'pointer' }}
         >
           <Space>
-            <ApiOutlined style={{ fontSize: 18, color: '#52c41a' }} />
+            <ApiOutlined style={{ fontSize: 18, color: '#34C759' }} />
             <div>
               <Text strong>{t('composeEditor.network')}</Text>
               <br />
@@ -609,7 +609,7 @@ const ComposeEditor: React.FC = () => {
           style={{ cursor: 'pointer' }}
         >
           <Space>
-            <DatabaseOutlined style={{ fontSize: 18, color: '#faad14' }} />
+            <DatabaseOutlined style={{ fontSize: 18, color: '#FF9500' }} />
             <div>
               <Text strong>{t('composeEditor.volume')}</Text>
               <br />
@@ -625,7 +625,7 @@ const ComposeEditor: React.FC = () => {
       
       {/* 服务列表 */}
       <div style={{ marginBottom: 12 }}>
-        <Text strong style={{ color: '#1677ff' }}>
+        <Text strong style={{ color: '#007AFF' }}>
           <CloudServerOutlined /> {t('composeEditor.services')} ({project.services.length})
         </Text>
         {project.services.length === 0 ? (
@@ -668,7 +668,7 @@ const ComposeEditor: React.FC = () => {
                 ]}
               >
                 <List.Item.Meta
-                  avatar={<ContainerOutlined style={{ color: '#1677ff' }} />}
+                  avatar={<ContainerOutlined style={{ color: '#007AFF' }} />}
                   title={<Text style={{ fontSize: 13 }}>{service.name}</Text>}
                   description={<Text type="secondary" style={{ fontSize: 11 }}>{service.image || t('composeEditor.noImage')}</Text>}
                 />
@@ -680,7 +680,7 @@ const ComposeEditor: React.FC = () => {
 
       {/* 网络列表 */}
       <div style={{ marginBottom: 12 }}>
-        <Text strong style={{ color: '#52c41a' }}>
+        <Text strong style={{ color: '#34C759' }}>
           <ApiOutlined /> {t('composeEditor.networks')} ({project.networks.length})
         </Text>
         {project.networks.length === 0 ? (
@@ -723,7 +723,7 @@ const ComposeEditor: React.FC = () => {
                 ]}
               >
                 <List.Item.Meta
-                  avatar={<GlobalOutlined style={{ color: '#52c41a' }} />}
+                  avatar={<GlobalOutlined style={{ color: '#34C759' }} />}
                   title={<Text style={{ fontSize: 13 }}>{network.name}</Text>}
                   description={<Text type="secondary" style={{ fontSize: 11 }}>{network.driver}</Text>}
                 />
@@ -735,7 +735,7 @@ const ComposeEditor: React.FC = () => {
 
       {/* 卷列表 */}
       <div>
-        <Text strong style={{ color: '#faad14' }}>
+        <Text strong style={{ color: '#FF9500' }}>
           <DatabaseOutlined /> {t('composeEditor.volumes')} ({project.volumes.length})
         </Text>
         {project.volumes.length === 0 ? (
@@ -778,7 +778,7 @@ const ComposeEditor: React.FC = () => {
                 ]}
               >
                 <List.Item.Meta
-                  avatar={<DatabaseOutlined style={{ color: '#faad14' }} />}
+                  avatar={<DatabaseOutlined style={{ color: '#FF9500' }} />}
                   title={<Text style={{ fontSize: 13 }}>{volume.name}</Text>}
                   description={<Text type="secondary" style={{ fontSize: 11 }}>{volume.driver}</Text>}
                 />
@@ -1250,7 +1250,7 @@ const ComposeEditor: React.FC = () => {
       <Header style={{ background: '#fff', padding: '0 16px', borderBottom: '1px solid #f0f2f5', height: 'auto', lineHeight: 'normal', paddingTop: 8, paddingBottom: 8 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
           <Space wrap>
-            <FileOutlined style={{ fontSize: 18, color: '#1677ff' }} />
+            <FileOutlined style={{ fontSize: 18, color: '#007AFF' }} />
             <Text strong>{t('composeEditor.title')}</Text>
             {yamlContent && (
               <Tag color={yamlValid ? 'success' : 'error'} icon={yamlValid ? <CheckCircleOutlined /> : <CloseCircleOutlined />}>
@@ -1293,7 +1293,7 @@ const ComposeEditor: React.FC = () => {
             <div style={{ padding: 16 }}>
               <Card>
                 <Empty
-                  image={<FileOutlined style={{ fontSize: 48, color: '#1677ff' }} />}
+                  image={<FileOutlined style={{ fontSize: 48, color: '#007AFF' }} />}
                   description={
                     <Space direction="vertical">
                       <Text strong style={{ fontSize: 16 }}>{t('composeEditor.welcomeTitle')}</Text>
@@ -1330,7 +1330,7 @@ const ComposeEditor: React.FC = () => {
                       }}
                     >
                       <Space>
-                        <CloudServerOutlined style={{ color: '#1677ff' }} />
+                        <CloudServerOutlined style={{ color: '#007AFF' }} />
                         <Text>Nginx</Text>
                       </Space>
                     </Card>
@@ -1353,7 +1353,7 @@ const ComposeEditor: React.FC = () => {
                       }}
                     >
                       <Space>
-                        <CloudServerOutlined style={{ color: '#1677ff' }} />
+                        <CloudServerOutlined style={{ color: '#007AFF' }} />
                         <Text>MySQL</Text>
                       </Space>
                     </Card>
@@ -1373,7 +1373,7 @@ const ComposeEditor: React.FC = () => {
                       }}
                     >
                       <Space>
-                        <CloudServerOutlined style={{ color: '#1677ff' }} />
+                        <CloudServerOutlined style={{ color: '#007AFF' }} />
                         <Text>Redis</Text>
                       </Space>
                     </Card>
@@ -1396,7 +1396,7 @@ const ComposeEditor: React.FC = () => {
                       }}
                     >
                       <Space>
-                        <CloudServerOutlined style={{ color: '#1677ff' }} />
+                        <CloudServerOutlined style={{ color: '#007AFF' }} />
                         <Text>PostgreSQL</Text>
                       </Space>
                     </Card>
@@ -1416,7 +1416,7 @@ const ComposeEditor: React.FC = () => {
                       }}
                     >
                       <Space>
-                        <CloudServerOutlined style={{ color: '#1677ff' }} />
+                        <CloudServerOutlined style={{ color: '#007AFF' }} />
                         <Text>MongoDB</Text>
                       </Space>
                     </Card>
@@ -1447,7 +1447,7 @@ const ComposeEditor: React.FC = () => {
                       }}
                     >
                       <Space>
-                        <CloudServerOutlined style={{ color: '#1677ff' }} />
+                        <CloudServerOutlined style={{ color: '#007AFF' }} />
                         <Text>WordPress</Text>
                       </Space>
                     </Card>
@@ -1461,7 +1461,7 @@ const ComposeEditor: React.FC = () => {
           <div style={{ height: 280, borderTop: '1px solid #f0f2f5', background: '#fff', display: 'flex', flexDirection: 'column' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 8px', borderBottom: '1px solid #f0f2f5' }}>
               <Space size={4}>
-                <FileOutlined style={{ color: '#1677ff' }} />
+                <FileOutlined style={{ color: '#007AFF' }} />
                 <Text strong>{t('composeEditor.yamlPreview')}</Text>
               </Space>
               <Button size="small" icon={<CopyOutlined />} onClick={handleCopyYaml}>

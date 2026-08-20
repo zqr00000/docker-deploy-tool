@@ -5,11 +5,10 @@
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
-    'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
-    'Noto Color Emoji';
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  letter-spacing: -0.01em;
 }
 
 #root {
@@ -18,39 +17,51 @@ body {
   flex-direction: column;
 }
 
-/* Ant Design Theme Overrides */
+/* Apple Design System Tokens */
 :root {
-  --ant-primary-color: #1677ff;
-  --ant-border-color: #d9d9d9;
+  --ant-primary-color: #007AFF;
+  --ant-border-color: #e5e5ea;
   --ant-bg-color: #ffffff;
-  --ant-text-color: rgba(0, 0, 0, 0.88);
-  --ant-text-color-secondary: rgba(0, 0, 0, 0.45);
+  --ant-text-color: #1d1d1f;
+  --ant-text-color-secondary: rgba(60, 60, 67, 0.6);
 }
 
-/* Light Theme */
+/* Light Theme — Apple HIG */
 [data-theme='light'] {
-  --app-bg-color: #f0f2f5;
+  --app-bg-color: #f2f2f7;
   --app-content-bg: #ffffff;
-  --app-border-color: #d9d9d9;
-  --app-text-color: rgba(0, 0, 0, 0.88);
-  --app-text-secondary: rgba(0, 0, 0, 0.45);
-  --app-hover-bg: #f5f5f5;
-  --app-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03), 0 1px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px 0 rgba(0, 0, 0, 0.02);
-  --app-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
-  --app-shadow-md: 0 6px 16px 0 rgba(0, 0, 0, 0.08), 0 3px 6px -4px rgba(0, 0, 0, 0.12), 0 9px 28px 8px rgba(0, 0, 0, 0.05);
+  --app-border-color: #e5e5ea;
+  --app-text-color: #1d1d1f;
+  --app-text-secondary: rgba(60, 60, 67, 0.6);
+  --app-hover-bg: #f2f2f7;
+  --app-radius: 12px;
+  --app-radius-sm: 8px;
+  --app-radius-lg: 16px;
+  --app-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04), 0 1px 3px -1px rgba(0, 0, 0, 0.05);
+  --app-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+  --app-shadow-md: 0 4px 8px -2px rgba(0, 0, 0, 0.06), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+  --app-shadow-lg: 0 8px 24px -8px rgba(0, 0, 0, 0.08), 0 4px 8px -4px rgba(0, 0, 0, 0.05);
+  --app-blur-bg: rgba(255, 255, 255, 0.72);
+  --app-sidebar-bg: rgba(242, 242, 247, 0.72);
 }
 
-/* Dark Theme */
+/* Dark Theme — Apple HIG Dark */
 [data-theme='dark'] {
   --app-bg-color: #000000;
-  --app-content-bg: #141414;
-  --app-border-color: #303030;
-  --app-text-color: rgba(255, 255, 255, 0.88);
-  --app-text-secondary: rgba(255, 255, 255, 0.45);
-  --app-hover-bg: #1f1f1f;
-  --app-shadow: 0 6px 16px 0 rgba(0, 0, 0, 0.32), 0 3px 6px -4px rgba(0, 0, 0, 0.48), 0 9px 28px 8px rgba(0, 0, 0, 0.24);
-  --app-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.32);
-  --app-shadow-md: 0 6px 16px 0 rgba(0, 0, 0, 0.32), 0 3px 6px -4px rgba(0, 0, 0, 0.48), 0 9px 28px 8px rgba(0, 0, 0, 0.24);
+  --app-content-bg: #1c1c1e;
+  --app-border-color: #38383a;
+  --app-text-color: #f5f5f7;
+  --app-text-secondary: rgba(235, 235, 245, 0.6);
+  --app-hover-bg: #2c2c2e;
+  --app-radius: 12px;
+  --app-radius-sm: 8px;
+  --app-radius-lg: 16px;
+  --app-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.30), 0 1px 3px -1px rgba(0, 0, 0, 0.36);
+  --app-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.30);
+  --app-shadow-md: 0 4px 8px -2px rgba(0, 0, 0, 0.44), 0 2px 4px -2px rgba(0, 0, 0, 0.36);
+  --app-shadow-lg: 0 8px 24px -8px rgba(0, 0, 0, 0.50), 0 4px 8px -4px rgba(0, 0, 0, 0.40);
+  --app-blur-bg: rgba(28, 28, 30, 0.72);
+  --app-sidebar-bg: rgba(28, 28, 30, 0.72);
 }
 
 /* Global Styles */
@@ -142,23 +153,27 @@ body {
 .gap-24 { gap: 24px !important; }
 .gap-32 { gap: 32px !important; }
 
-/* Layout Improvements */
+/* Layout — Apple Frosted Glass */
 .ant-layout {
   background-color: var(--app-bg-color) !important;
 }
 
 .ant-layout-header {
-  background-color: var(--app-content-bg) !important;
+  background-color: var(--app-blur-bg) !important;
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
   border-bottom: 1px solid var(--app-border-color) !important;
 }
 
 .ant-layout-sider {
-  background-color: var(--app-content-bg) !important;
+  background-color: var(--app-sidebar-bg) !important;
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
   border-right: 1px solid var(--app-border-color) !important;
 }
 
 .ant-layout-content {
-  background-color: var(--app-content-bg) !important;
+  background-color: transparent !important;
 }
 
 /* ====== Main App Layout ====== */
@@ -250,10 +265,10 @@ body {
   flex-direction: column !important;
 }
 
-/* ====== Content Card Styling ====== */
+/* ====== Content Card Styling — Apple ====== */
 .content-wrapper {
   background-color: var(--app-content-bg);
-  border-radius: 8px;
+  border-radius: var(--app-radius-lg);
   padding: 24px;
   box-shadow: var(--app-shadow-sm);
   min-height: calc(100vh - 180px);
@@ -294,29 +309,38 @@ body {
   flex-wrap: wrap;
 }
 
-/* ====== Cards Enhancement ====== */
+/* ====== Cards Enhancement — Apple ====== */
 .ant-card {
   border: 1px solid var(--app-border-color) !important;
-  border-radius: 8px !important;
+  border-radius: var(--app-radius) !important;
+  box-shadow: var(--app-shadow-sm) !important;
+  transition: box-shadow 0.2s ease, transform 0.2s ease !important;
+}
+
+.ant-card:hover {
+  box-shadow: var(--app-shadow-md) !important;
 }
 
 .ant-card-head {
   border-bottom: 1px solid var(--app-border-color) !important;
-  background-color: var(--app-hover-bg) !important;
+  background-color: transparent !important;
 }
 
 .ant-card-body {
   background-color: var(--app-content-bg) !important;
 }
 
-/* ====== Tables Enhancement ====== */
+/* ====== Tables Enhancement — Apple ====== */
 .ant-table {
   background-color: var(--app-content-bg) !important;
+  border-radius: var(--app-radius) !important;
+  overflow: hidden;
 }
 
 .ant-table-thead > tr > th {
   background-color: var(--app-hover-bg) !important;
   border-bottom: 1px solid var(--app-border-color) !important;
+  font-weight: 600 !important;
 }
 
 .ant-table-tbody > tr > td {
@@ -351,9 +375,10 @@ body {
   border-top: 1px solid var(--app-border-color) !important;
 }
 
-/* ====== Form Enhancement ====== */
+/* ====== Form Enhancement — Apple ====== */
 .ant-form-item-label > label {
   color: var(--app-text-color) !important;
+  font-weight: 500 !important;
 }
 
 .ant-input,
@@ -362,32 +387,34 @@ body {
 .ant-picker {
   border-color: var(--app-border-color) !important;
   background-color: var(--app-content-bg) !important;
+  border-radius: var(--app-radius-sm) !important;
 }
 
 .ant-input:hover,
 .ant-input-number:hover,
 .ant-select-selector:hover,
 .ant-picker:hover {
-  border-color: #1677ff !important;
+  border-color: #007AFF !important;
 }
 
 .ant-input:focus,
 .ant-input-number:focus,
 .ant-select-focused .ant-select-selector,
 .ant-picker-focused {
-  border-color: #1677ff !important;
-  box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.2) !important;
+  border-color: #007AFF !important;
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.12) !important;
 }
 
-/* ====== Menu Enhancement ====== */
+/* ====== Menu Enhancement — Apple ====== */
 .ant-menu {
   background-color: transparent !important;
   border-right: none !important;
 }
 
 .ant-menu-item {
-  margin: 4px 8px !important;
-  border-radius: 8px !important;
+  margin: 2px 8px !important;
+  border-radius: var(--app-radius-sm) !important;
+  transition: background-color 0.15s ease !important;
 }
 
 .ant-menu-item:hover {
@@ -395,29 +422,35 @@ body {
 }
 
 .ant-menu-item-selected {
-  background-color: rgba(22, 119, 255, 0.15) !important;
+  background-color: rgba(0, 122, 255, 0.1) !important;
+  color: #007AFF !important;
 }
 
 .ant-menu-item-selected::after {
   display: none !important;
 }
 
-/* ====== Button Enhancement ====== */
+/* ====== Button Enhancement — Apple Pill ====== */
 .ant-btn {
-  border-radius: 6px !important;
+  border-radius: var(--app-radius-sm) !important;
   font-weight: 500 !important;
-  transition: all 0.2s !important;
+  transition: all 0.18s cubic-bezier(0.32, 0.72, 0, 1) !important;
+}
+
+.ant-btn-primary {
+  background-color: #007AFF !important;
 }
 
 .ant-btn-primary:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(22, 119, 255, 0.3) !important;
+  filter: brightness(1.08);
+  box-shadow: 0 2px 8px rgba(0, 122, 255, 0.25) !important;
 }
 
-/* ====== Tags Enhancement ====== */
+/* ====== Tags Enhancement — Apple ====== */
 .ant-tag {
-  border-radius: 4px !important;
+  border-radius: 6px !important;
   padding: 2px 8px !important;
+  font-weight: 500 !important;
 }
 
 /* ====== Responsive Grid Layout ====== */
@@ -539,7 +572,7 @@ body {
 }
 
 .xterm .xterm-screen {
-  background-color: #1e1e1e;
+  background-color: #1c1c1e;
 }
 
 /* Fix xterm fit addon */
@@ -583,20 +616,20 @@ body {
 }
 
 .status-dot.online {
-  background-color: #52c41a;
+  background-color: #34C759;
 }
 
 .status-dot.offline {
-  background-color: #8c8c8c;
+  background-color: #8e8e93;
 }
 
 .status-dot.connecting {
-  background-color: #1677ff;
+  background-color: #007AFF;
   animation: pulse 1.5s infinite;
 }
 
 .status-dot.error {
-  background-color: #ff4d4f;
+  background-color: #FF3B30;
 }
 
 @keyframes pulse {
@@ -895,14 +928,14 @@ body {
   box-shadow: inset 2px 0 0 rgba(0, 212, 170, 0.7);
 }
 
-/* ====== Scrollbar Styling ====== */
+/* ====== Scrollbar Styling — Apple ====== */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--app-bg-color);
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
@@ -911,7 +944,7 @@ body {
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #888;
+  background: #8e8e93;
 }
 
 /* ====== Utility Classes ====== */
@@ -948,7 +981,7 @@ body {
 
   .content-wrapper {
     padding: 12px;
-    border-radius: 4px;
+    border-radius: var(--app-radius-sm);
   }
 
   .page-header {
@@ -1035,7 +1068,7 @@ body {
 
   .content-wrapper {
     padding: 16px;
-    border-radius: 6px;
+    border-radius: var(--app-radius);
   }
 
   .page-header {
@@ -1121,8 +1154,8 @@ body {
   justify-content: center;
   cursor: pointer;
   padding: 8px;
-  border-radius: 4px;
-  transition: background-color 0.2s;
+  border-radius: var(--app-radius-sm);
+  transition: background-color 0.15s ease;
 }
 
 .sidebar-collapse-btn:hover {
@@ -1233,21 +1266,21 @@ body {
   }
 }
 
-/* ====== Log Viewer Responsive ====== */
+/* ====== Log Viewer — Apple Terminal ====== */
 .log-viewer {
-  background-color: #1e1e1e !important;
-  color: #d4d4d4 !important;
+  background-color: #1c1c1e !important;
+  color: #f5f5f7 !important;
   padding: 16px !important;
-  border-radius: 4px !important;
+  border-radius: var(--app-radius) !important;
   max-height: 400px;
   overflow: auto;
-  font-family: 'Monaco', 'Consolas', 'Courier New', monospace !important;
+  font-family: 'SF Mono', 'JetBrains Mono', 'Monaco', 'Consolas', 'Courier New', monospace !important;
   font-size: 12px !important;
   line-height: 1.5;
 }
 
 [data-theme='dark'] .log-viewer {
-  background-color: #0d0d0d !important;
+  background-color: #000000 !important;
 }
 
 /* ====== Description Responsive ====== */
@@ -1289,13 +1322,13 @@ body {
   }
 }
 
-/* ====== Shell Script 库 ====== */
+/* ====== Shell Script — Apple Code Block ====== */
 .script-result-block {
-  background: #1e1e1e;
-  color: #d4d4d4;
-  border-radius: 6px;
+  background: #1c1c1e;
+  color: #f5f5f7;
+  border-radius: var(--app-radius-sm);
   padding: 10px 12px;
-  font-family: 'JetBrains Mono', Consolas, 'Courier New', monospace;
+  font-family: 'SF Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace;
   font-size: 12.5px;
   line-height: 1.6;
   white-space: pre-wrap;
@@ -1306,19 +1339,19 @@ body {
 }
 
 .script-result-error {
-  background: #2a1d1d;
+  background: #3a1d1d;
   color: #ff9c9c;
-  border-left: 3px solid #ff4d4f;
+  border-left: 3px solid #FF3B30;
 }
 
 [data-theme='light'] .script-result-block {
-  background: #f6f8fa;
-  color: #24292f;
-  border: 1px solid #d0d7de;
+  background: #f2f2f7;
+  color: #1d1d1f;
+  border: 1px solid #e5e5ea;
 }
 
 [data-theme='light'] .script-result-error {
-  background: #fff1f0;
-  color: #cf1322;
-  border-left: 3px solid #ff4d4f;
+  background: #ffecea;
+  color: #FF3B30;
+  border-left: 3px solid #FF3B30;
 }
