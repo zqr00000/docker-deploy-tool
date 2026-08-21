@@ -712,19 +712,22 @@ export async function chatWithAgent(params: {
   callbacks.onRoute?.(route)
   log.info(`[ops-agent] 对话开始: thread=${threadId}, route=${route}, server=${serverName || serverId || '(未选择)'}, input=${userInput.slice(0, 80)}`)
 
-  const messages: any[] = []
+  const contextBlocks: string[] = []
   if (serverId) {
     // 智能上下文感知：注入服务器标识，帮助 AI 精准定位目标主机
-    messages.push({
-      role: 'system',
-      content: `[服务器上下文] 当前目标服务器: ${serverName || '未命名'} (ID: ${serverId})。执行任何远程操作时，工具参数中的 serverId 必须填 ${serverId}。`
-    })
+    // 注意：不使用 system 角色。部分 OpenAI 兼容模型（如 Agnes 2.5 Pro）要求 system 必须位于
+    // messages 最前，叠加 Memory 恢复的历史后手插 system 会触发
+    // "System message must be at the beginning" (400)。这里改为作为用户上下文前缀发送。
+    contextBlocks.push(`[服务器上下文] 当前目标服务器: ${serverName || '未命名'} (ID: ${serverId})。执行任何远程操作时，工具参数中的 serverId 必须填 ${serverId}。`)
   }
   if (historySummary) {
-    // 早期对话压缩摘要（避免上下文超长导致遗忘）
-    messages.push({ role: 'system', content: `[历史对话摘要] 以下是本次会话较早对话的压缩摘要，供参考：\n${historySummary}` })
+    // 早期对话压缩摘要（避免上下文超长导致遗忘），同样以用户上下文前缀形式发送
+    contextBlocks.push(`[历史对话摘要] 以下是本次会话较早对话的压缩摘要，供参考：\n${historySummary}`)
   }
-  messages.push({ role: 'user', content: userInput })
+  const userMessageContent = contextBlocks.length > 0
+    ? contextBlocks.join('\n\n') + '\n\n' + userInput
+    : userInput
+  const messages: any[] = [{ role: 'user', content: userMessageContent }]
 
   try {
     // Mastra 1.x: stream() 返回 Promise<MastraModelOutput>，需 await 后消费 fullStream

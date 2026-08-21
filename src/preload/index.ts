@@ -788,6 +788,7 @@ export interface ElectronAPI {
     import: (serverId: string, localFilePath: string) => Promise<{ success: boolean; message: string }>
     showSaveDialog: (defaultName?: string) => Promise<DialogResult>
     showOpenDialog: () => Promise<DialogResult>
+    getUsedImageNames: (serverId: string) => Promise<string[]>
   }
   security: {
     scanImage: (serverId: string, imageName: string, proxy?: string) => Promise<ScanImageResult>
@@ -1040,7 +1041,8 @@ const electronAPI: ElectronAPI = {
     export: (serverId: string, imageName: string, localFilePath: string): Promise<{ success: boolean; message: string }> => ipcRenderer.invoke('image:export', serverId, imageName, localFilePath),
     import: (serverId: string, localFilePath: string): Promise<{ success: boolean; message: string }> => ipcRenderer.invoke('image:import', serverId, localFilePath),
     showSaveDialog: (defaultName?: string): Promise<DialogResult> => ipcRenderer.invoke('image:showSaveDialog', defaultName),
-    showOpenDialog: (): Promise<DialogResult> => ipcRenderer.invoke('image:showOpenDialog')
+    showOpenDialog: (): Promise<DialogResult> => ipcRenderer.invoke('image:showOpenDialog'),
+    getUsedImageNames: (serverId: string): Promise<string[]> => ipcRenderer.invoke('image:getUsedImageNames', serverId)
   },
   security: {
     scanImage: (serverId: string, imageName: string, proxy?: string): Promise<ScanImageResult> => ipcRenderer.invoke('security:scanImage', serverId, imageName, proxy),

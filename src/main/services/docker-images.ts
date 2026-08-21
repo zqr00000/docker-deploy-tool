@@ -407,6 +407,42 @@ class DockerImagesService {
       return { success: false, message: (error as Error).message }
     }
   }
+
+  /**
+   * 获取被容器使用的镜像名称集合（repository:tag 格式）
+   */
+  async getUsedImageNames(serverId: string): Promise<Set<string>> {
+    try {
+      const result = await sshService.executeCommand(
+        serverId,
+        'docker ps -a --format "{{.Image}}"',
+        0,
+        500,
+        15000
+      )
+
+      if (!result.success) {
+        log.warn(`getUsedImageNames failed: ${result.stderr}`)
+        return new Set()
+      }
+
+      const usedImages = new Set<string>()
+      const lines = result.stdout.trim().split('\n').filter(line => line.trim())
+
+      for (const line of lines) {
+        const image = line.trim()
+        if (image && image !== 'N/A') {
+          usedImages.add(image)
+        }
+      }
+
+      log.info(`Found ${usedImages.size} used images on server ${serverId}`)
+      return usedImages
+    } catch (error) {
+      log.error('getUsedImageNames error:', error)
+      return new Set()
+    }
+  }
 }
 
 export const dockerImagesService = new DockerImagesService()

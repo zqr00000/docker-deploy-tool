@@ -1001,6 +1001,16 @@ function registerIpcHandlers(): void {
     }
   })
 
+  ipcMain.handle('image:getUsedImageNames', async (_, serverId: string) => {
+    try {
+      const set = await dockerImagesService.getUsedImageNames(serverId)
+      return Array.from(set)
+    } catch (error) {
+      log.error('image:getUsedImageNames error:', error)
+      return []
+    }
+  })
+
   ipcMain.handle('image:showSaveDialog', async (_, defaultName?: string) => {
     return await dialog.showSaveDialog({
       title: '导出镜像',

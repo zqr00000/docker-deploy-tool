@@ -137,6 +137,7 @@ export interface ElectronAPI {
     import: (serverId: string, localFilePath: string) => Promise<{ success: boolean; message: string }>
     showSaveDialog: (defaultName?: string) => Promise<DialogResult>
     showOpenDialog: () => Promise<DialogResult>
+    getUsedImageNames: (serverId: string) => Promise<string[]>
   }
   security: {
     scanImage: (serverId: string, imageName: string, proxy?: string) => Promise<ScanImageResult>

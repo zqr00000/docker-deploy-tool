@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react'
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
   Table,
   Card,
@@ -34,11 +34,20 @@ import type { DockerImage } from '../../../preload/index'
 const { Title, Paragraph } = Typography
 const { Option } = Select
 
+interface AggregatedImage {
+  id: string
+  items: DockerImage[]
+  isUsed: boolean
+  size: string
+  created: string
+}
+
 const Images: React.FC = () => {
   const { t } = useTranslation()
   const { servers } = useServers()
 
   const [images, setImages] = useState<DockerImage[]>([])
+  const [usedImageNames, setUsedImageNames] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(false)
   const [selectedServerId, setSelectedServerId] = useState<string | null>(null)
   const [pullModalVisible, setPullModalVisible] = useState(false)
@@ -50,13 +59,11 @@ const Images: React.FC = () => {
   const [infoLoading, setInfoLoading] = useState(false)
   const [searchText, setSearchText] = useState('')
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
-  // 缓存选中的镜像对象（跨页/搜索过滤时仍可获取完整数据）
   const selectedImagesRef = useRef<Map<string, DockerImage>>(new Map())
   const [deleting, setDeleting] = useState(false)
   const [importing, setImporting] = useState(false)
   const [exportingId, setExportingId] = useState<string | null>(null)
 
-  // 格式化镜像创建时间：后端返回 UTC ISO，此处按本机时区显示
   const formatCreated = (created: string): string => {
     const d = new Date(created)
     if (isNaN(d.getTime())) return created
@@ -64,32 +71,34 @@ const Images: React.FC = () => {
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
   }
 
-  // 获取在线服务器列表
   const onlineServers = servers.filter(s => s.status === 'online')
 
-  // 加载镜像列表
   const loadImages = useCallback(async () => {
     if (!selectedServerId) {
       setImages([])
+      setUsedImageNames(new Set())
       return
     }
 
     setLoading(true)
     try {
-      const data = await window.electronAPI.image.getAll(selectedServerId)
+      const [data, usedNamesArr] = await Promise.all([
+        window.electronAPI.image.getAll(selectedServerId),
+        window.electronAPI.image.getUsedImageNames(selectedServerId).catch(() => [])
+      ])
       setImages(data)
+      setUsedImageNames(new Set(usedNamesArr))
     } catch (error) {
       const err = error as Error
       message.error(err.message || t('common.error'))
       setImages([])
+      setUsedImageNames(new Set())
     } finally {
       setLoading(false)
     }
   }, [selectedServerId, t])
 
-  // 当选择的服务器变化时加载镜像
   useEffect(() => {
-    // 切换服务器时清空选中
     setSelectedRowKeys([])
     selectedImagesRef.current.clear()
 
@@ -97,17 +106,16 @@ const Images: React.FC = () => {
       loadImages()
     } else {
       setImages([])
+      setUsedImageNames(new Set())
     }
   }, [selectedServerId, loadImages])
 
-  // 自动选择第一个在线服务器
   useEffect(() => {
     if (!selectedServerId && onlineServers.length > 0) {
       setSelectedServerId(onlineServers[0].id)
     }
   }, [onlineServers, selectedServerId])
 
-  // 拉取镜像
   const handlePull = async () => {
     if (!selectedServerId || !pullImageName.trim()) {
       message.warning(t('image.nameRequired'))
@@ -133,12 +141,11 @@ const Images: React.FC = () => {
     }
   }
 
-  // 删除镜像
-  const handleDelete = async (image: DockerImage) => {
+  const handleDelete = async (aggregated: AggregatedImage) => {
     if (!selectedServerId) return
 
     try {
-      const result = await window.electronAPI.image.remove(selectedServerId, image.id)
+      const result = await window.electronAPI.image.remove(selectedServerId, aggregated.id)
       if (result.success) {
         message.success(t('image.deleteSuccess'))
         loadImages()
@@ -151,7 +158,6 @@ const Images: React.FC = () => {
     }
   }
 
-  // 批量删除镜像
   const handleBatchDelete = () => {
     if (!selectedServerId || selectedRowKeys.length === 0) return
 
@@ -165,9 +171,10 @@ const Images: React.FC = () => {
       onOk: async () => {
         setDeleting(true)
         try {
+          const uniqueIds = [...new Set(imagesToDelete.map(img => img.id))]
           const result = await window.electronAPI.image.removeBatch(
             selectedServerId,
-            imagesToDelete.map(img => img.id)
+            uniqueIds
           )
 
           if (result.failCount > 0) {
@@ -193,7 +200,6 @@ const Images: React.FC = () => {
     })
   }
 
-  // 清理未使用镜像
   const handlePrune = async () => {
     if (!selectedServerId) return
 
@@ -221,15 +227,15 @@ const Images: React.FC = () => {
     })
   }
 
-  // 查看镜像详情
-  const handleViewInfo = async (image: DockerImage) => {
+  const handleViewInfo = async (aggregated: AggregatedImage) => {
     if (!selectedServerId) return
 
-    setSelectedImage(image)
+    const primaryImage = aggregated.items[0]
+    setSelectedImage(primaryImage)
     setInfoModalVisible(true)
     setInfoLoading(true)
     try {
-      const info = await window.electronAPI.image.getInfo(selectedServerId, image.id)
+      const info = await window.electronAPI.image.getInfo(selectedServerId, aggregated.id)
       setImageInfo(info)
     } catch (error) {
       const err = error as Error
@@ -239,27 +245,26 @@ const Images: React.FC = () => {
     }
   }
 
-  // 导出镜像到本地
-  const handleExport = async (image: DockerImage) => {
+  const handleExport = async (aggregated: AggregatedImage) => {
     if (!selectedServerId) return
-    if (image.repository === '<none>') {
+    const primaryImage = aggregated.items[0]
+    if (!primaryImage || primaryImage.repository === '<none>') {
       message.warning(t('image.noneImageExportTip'))
       return
     }
 
-    // 生成默认导出文件名
-    const safeRepo = image.repository.replace(/[^\w./:@-]/g, '_')
-    const defaultName = `${safeRepo}-${image.tag || 'latest'}-${new Date().toISOString().slice(0, 10)}.tar`
+    const safeRepo = primaryImage.repository.replace(/[^\w./:@-]/g, '_')
+    const defaultName = `${safeRepo}-${primaryImage.tag || 'latest'}-${new Date().toISOString().slice(0, 10)}.tar`
 
     try {
       const dialogResult = await window.electronAPI.image.showSaveDialog(defaultName)
       if (dialogResult.canceled || !dialogResult.filePath) return
 
-      setExportingId(image.id)
+      setExportingId(aggregated.id)
       message.info(t('image.exportTip'))
       const result = await window.electronAPI.image.export(
         selectedServerId,
-        `${image.repository}:${image.tag}`,
+        `${primaryImage.repository}:${primaryImage.tag}`,
         dialogResult.filePath
       )
       if (result.success) {
@@ -293,7 +298,6 @@ const Images: React.FC = () => {
     }
   }
 
-  // 从本地文件导入镜像
   const handleImport = async () => {
     if (!selectedServerId) return
 
@@ -319,47 +323,119 @@ const Images: React.FC = () => {
     }
   }
 
-  // 过滤镜像列表
-  const filteredImages = images.filter(image => {
-    if (!searchText) return true
+  const aggregatedImages = useMemo(() => {
+    const map = new Map<string, AggregatedImage>()
+    const usedNamesArr = Array.from(usedImageNames)
+
+    for (const img of images) {
+      const key = img.id
+      const existing = map.get(key)
+      const repoTag = `${img.repository}:${img.tag}`
+
+      const isUsed = usedImageNames.has(repoTag) ||
+        (img.repository !== '<none>' && usedNamesArr.some(
+          name => name === repoTag || name.startsWith(`${img.repository}:`)
+        ))
+
+      if (existing) {
+        existing.items.push(img)
+        if (!existing.isUsed && isUsed) existing.isUsed = true
+        if (!existing.size || img.size > existing.size) existing.size = img.size
+        if (!existing.created || new Date(img.created) > new Date(existing.created)) {
+          existing.created = img.created
+        }
+      } else {
+        map.set(key, {
+          id: img.id,
+          items: [img],
+          isUsed,
+          size: img.size,
+          created: img.created
+        })
+      }
+    }
+
+    return Array.from(map.values())
+  }, [images, usedImageNames])
+
+  const filteredImages = useMemo(() => {
+    if (!searchText) return aggregatedImages
     const search = searchText.toLowerCase()
-    return (
-      image.repository.toLowerCase().includes(search) ||
-      image.tag.toLowerCase().includes(search) ||
-      image.id.toLowerCase().includes(search)
-    )
-  })
+    return aggregatedImages.filter(agg => {
+      if (agg.id.toLowerCase().includes(search)) return true
+      return agg.items.some(item =>
+        item.repository.toLowerCase().includes(search) ||
+        item.tag.toLowerCase().includes(search) ||
+        `${item.repository}:${item.tag}`.toLowerCase().includes(search)
+      )
+    })
+  }, [aggregatedImages, searchText])
 
   const columns = [
     {
-      title: t('image.repository'),
-      dataIndex: 'repository',
-      key: 'repository',
-      render: (text: string) => <strong>{text}</strong>,
-      sorter: (a: DockerImage, b: DockerImage) => a.repository.localeCompare(b.repository)
-    },
-    {
-      title: t('image.tag'),
-      dataIndex: 'tag',
-      key: 'tag',
-      render: (tag: string) => (
-        <Tag color={tag === 'latest' ? 'blue' : 'default'}>{tag}</Tag>
+      title: (
+        <span>
+          Id <span style={{ color: '#888', fontSize: 12 }}>↓↑</span>
+        </span>
       ),
-      sorter: (a: DockerImage, b: DockerImage) => a.tag.localeCompare(b.tag)
-    },
-    {
-      title: t('image.id'),
       dataIndex: 'id',
       key: 'id',
+      width: 280,
       render: (id: string) => (
-        <code style={{ fontSize: 12 }}>{id.substring(0, 19)}</code>
+        <Tooltip title={id}>
+          <code style={{ fontSize: 12, color: 'var(--ant-color-text-secondary)' }}>
+            {id.length > 40 ? `${id.substring(0, 40)}...` : id}
+          </code>
+        </Tooltip>
+      ),
+      sorter: (a: AggregatedImage, b: AggregatedImage) => a.id.localeCompare(b.id)
+    },
+    {
+      title: (
+        <span>
+          标记 <span style={{ color: '#888', fontSize: 12 }}>↓↑</span>
+        </span>
+      ),
+      key: 'status',
+      width: 100,
+      render: (_: unknown, record: AggregatedImage) => (
+        record.isUsed ? null : (
+          <Tag color="orange" style={{ fontWeight: 500 }}>未使用</Tag>
+        )
+      ),
+      sorter: (a: AggregatedImage, b: AggregatedImage) => {
+        return (a.isUsed === b.isUsed ? 0 : a.isUsed ? 1 : -1)
+      }
+    },
+    {
+      title: '仓库标签',
+      key: 'tags',
+      render: (_: unknown, record: AggregatedImage) => (
+        <Space size={[4, 4]} wrap>
+          {record.items.map((item, idx) => (
+            <Tag
+              key={`${record.id}-${item.repository}-${item.tag}-${idx}`}
+              color="blue"
+              style={{
+                margin: 0,
+                borderRadius: 4,
+                fontSize: 12,
+                lineHeight: '20px'
+              }}
+              title={`${item.repository}:${item.tag}`}
+            >
+              {item.repository}:{item.tag}
+            </Tag>
+          ))}
+        </Space>
       )
     },
     {
       title: t('image.size'),
       dataIndex: 'size',
       key: 'size',
-      sorter: (a: DockerImage, b: DockerImage) => {
+      width: 80,
+      sorter: (a: AggregatedImage, b: AggregatedImage) => {
         const sizeA = parseFloat(a.size)
         const sizeB = parseFloat(b.size)
         return sizeA - sizeB
@@ -369,14 +445,15 @@ const Images: React.FC = () => {
       title: t('image.created'),
       dataIndex: 'created',
       key: 'created',
+      width: 140,
       render: (created: string) => formatCreated(created),
-      sorter: (a: DockerImage, b: DockerImage) => new Date(a.created).getTime() - new Date(b.created).getTime()
+      sorter: (a: AggregatedImage, b: AggregatedImage) => new Date(a.created).getTime() - new Date(b.created).getTime()
     },
     {
       title: t('common.actions'),
       key: 'actions',
-      width: 200,
-      render: (_: unknown, record: DockerImage) => (
+      width: 180,
+      render: (_: unknown, record: AggregatedImage) => (
         <Space size="small">
           <Tooltip title={t('image.viewInfo')}>
             <Button
@@ -390,7 +467,7 @@ const Images: React.FC = () => {
               size="small"
               icon={<ExportOutlined />}
               loading={exportingId === record.id}
-              disabled={record.repository === '<none>'}
+              disabled={record.items.length === 0 || record.items[0].repository === '<none>'}
               onClick={() => handleExport(record)}
             />
           </Tooltip>
@@ -427,7 +504,6 @@ const Images: React.FC = () => {
         </div>
       </div>
 
-      {/* 服务器选择 */}
       <Card style={{ marginBottom: 16 }}>
         <Row gutter={[16, 8]} align="middle">
           <Col xs={24} sm={24} md={8} lg={6}>
@@ -459,7 +535,6 @@ const Images: React.FC = () => {
         )}
       </Card>
 
-      {/* 操作栏 */}
       {selectedServerId && (
         <Card size="small" style={{ marginBottom: 16 }}>
           <div className="filter-bar">
@@ -505,26 +580,25 @@ const Images: React.FC = () => {
         </Card>
       )}
 
-      {/* 镜像列表 */}
       <Card>
         <Table
           columns={columns}
           dataSource={filteredImages}
-          rowKey={(record: DockerImage) => `${record.id}-${record.repository}-${record.tag}`}
+          rowKey={(record: AggregatedImage) => record.id}
           loading={loading}
           locale={{ emptyText: t('common.noData') }}
           rowSelection={{
             selectedRowKeys,
             onChange: (keys, rows) => {
-              // 移除取消选中的项
               const keySet = new Set(keys.map(String))
               selectedImagesRef.current.forEach((_, key) => {
                 if (!keySet.has(key)) selectedImagesRef.current.delete(key)
               })
-              // 加入新选中的项（跨页也可用）
               rows.forEach((row) => {
-                const img = row as DockerImage
-                selectedImagesRef.current.set(`${img.id}-${img.repository}-${img.tag}`, img)
+                const agg = row as AggregatedImage
+                agg.items.forEach(item => {
+                  selectedImagesRef.current.set(`${agg.id}-${item.repository}-${item.tag}`, item)
+                })
               })
               setSelectedRowKeys(keys)
             },
@@ -537,11 +611,13 @@ const Images: React.FC = () => {
             showTotal: (total) => `${total} ${t('image.totalItems')}`
           }}
           size="middle"
-          scroll={{ x: 800 }}
+          scroll={{ x: 900 }}
+          style={{
+            '--ant-color-border-secondary': 'transparent'
+          } as React.CSSProperties}
         />
       </Card>
 
-      {/* 拉取镜像弹窗 */}
       <Modal
         title={t('image.pull')}
         open={pullModalVisible}
@@ -587,7 +663,6 @@ const Images: React.FC = () => {
         </Space>
       </Modal>
 
-      {/* 镜像详情弹窗 */}
       <Modal
         title={`${t('image.imageInfo')} - ${selectedImage?.repository || ''}:${selectedImage?.tag || ''}`}
         open={infoModalVisible}
