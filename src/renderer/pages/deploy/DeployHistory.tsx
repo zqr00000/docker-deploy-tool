@@ -251,6 +251,65 @@ const DeployHistory: React.FC = () => {
     }
   ]
 
+  // 展开行渲染 — Docker Compose 预览
+  const expandedRowRender = (record: DeployHistoryRecord) => (
+    <div style={{ padding: '8px 0' }}>
+      <Row gutter={[16, 16]} style={{ marginBottom: 12 }}>
+        <Col xs={24} sm={12} md={6}>
+          <Text type="secondary" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 4 }}>
+            版本
+          </Text>
+          <Tag color="blue">v{record.version}</Tag>
+        </Col>
+        <Col xs={24} sm={12} md={6}>
+          <Text type="secondary" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 4 }}>
+            应用名称
+          </Text>
+          <Text style={{ fontSize: 13 }}>{record.appName}</Text>
+        </Col>
+        <Col xs={24} sm={12} md={6}>
+          <Text type="secondary" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 4 }}>
+            部署时间
+          </Text>
+          <Text style={{ fontSize: 12 }}>{formatDate(record.deployedAt)}</Text>
+        </Col>
+        <Col xs={24} sm={12} md={6}>
+          <Text type="secondary" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 4 }}>
+            状态
+          </Text>
+          <Tag color={statusColorMap[record.status] || 'default'}>
+            {t(`deployHistory.statuses.${record.status}`, { defaultValue: record.status })}
+          </Tag>
+        </Col>
+      </Row>
+      <div>
+        <Text type="secondary" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+          Docker Compose
+        </Text>
+        <pre className="log-viewer" style={{ maxHeight: 200, marginTop: 4, fontSize: 11 }}>
+          {record.dockerCompose}
+        </pre>
+      </div>
+      {record.envVariables && (
+        <div style={{ marginTop: 8 }}>
+          <Text type="secondary" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            环境变量
+          </Text>
+          <pre className="log-viewer" style={{ maxHeight: 150, marginTop: 4, fontSize: 11 }}>
+            {(() => {
+              try {
+                const envs = JSON.parse(record.envVariables)
+                return envs.map((e: { name: string; value: string }) => `${e.name}=${e.value}`).join('\n')
+              } catch {
+                return record.envVariables
+              }
+            })()}
+          </pre>
+        </div>
+      )}
+    </div>
+  )
+
   return (
     <div className="page-content">
       <div className="page-header">
@@ -308,6 +367,9 @@ const DeployHistory: React.FC = () => {
           }}
           size="middle"
           scroll={{ x: 800 }}
+          expandable={{
+            expandedRowRender,
+          }}
         />
       </Card>
 
@@ -344,7 +406,7 @@ const DeployHistory: React.FC = () => {
               </Col>
             </Row>
             {compareRecord ? (
-              <div style={{ height: 400, border: '1px solid #d9d9d9' }}>
+              <div style={{ height: 400, border: '1px solid var(--app-border-color)', borderRadius: 8, overflow: 'hidden' }}>
                 <DiffEditor
                   height="400px"
                   language="yaml"
@@ -359,7 +421,7 @@ const DeployHistory: React.FC = () => {
                 />
               </div>
             ) : (
-              <div style={{ height: 400, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #d9d9d9' }}>
+              <div style={{ height: 400, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--app-border-color)', borderRadius: 8 }}>
                 <Text type="secondary">{t('deployHistory.selectVersionHint')}</Text>
               </div>
             )}
@@ -367,11 +429,11 @@ const DeployHistory: React.FC = () => {
         )}
       </Modal>
 
-      {/* 预览抽屉 */}
+      {/* 预览底部弹出 */}
       <Drawer
         title={t('deployHistory.previewTitle')}
-        placement="right"
-        width={600}
+        placement="bottom"
+        height="75vh"
         open={previewVisible}
         onClose={() => setPreviewVisible(false)}
       >
@@ -398,8 +460,7 @@ const DeployHistory: React.FC = () => {
               </Col>
             </Row>
             <Text strong>{t('deployHistory.dockerCompose')}:</Text>
-            <pre style={{
-              background: '#f5f5f5',
+            <pre className="log-viewer" style={{
               padding: 16,
               borderRadius: 8,
               maxHeight: 500,
@@ -412,8 +473,7 @@ const DeployHistory: React.FC = () => {
             {previewRecord.envVariables && (
               <>
                 <Text strong style={{ display: 'block', marginTop: 16 }}>{t('deployHistory.envVariables')}:</Text>
-                <pre style={{
-                  background: '#f5f5f5',
+                <pre className="log-viewer" style={{
                   padding: 16,
                   borderRadius: 8,
                   maxHeight: 200,

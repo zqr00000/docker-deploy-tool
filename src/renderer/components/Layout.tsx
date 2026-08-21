@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, memo } from 'react'
-import { Menu, Typography, theme, Grid, Button, Drawer, Input, Space, Tag } from 'antd'
+import { Menu, Typography, Grid, Button, Drawer, Input, Space, Tag } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useLocation } from 'react-router-dom'
 import {
@@ -145,9 +145,6 @@ const LayoutComponent: React.FC<LayoutProps> = memo(({ children }) => {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const location = useLocation()
-  const {
-    token: { colorBgContainer, colorPrimary }
-  } = theme.useToken()
   const screens = useBreakpoint()
 
   const [selectedKey, setSelectedKey] = useState('servers')
@@ -264,27 +261,31 @@ const LayoutComponent: React.FC<LayoutProps> = memo(({ children }) => {
   // 响应式侧边栏宽度
   const sidebarWidth = collapsed ? (isMobile ? 0 : 60) : (isMobile ? 240 : 220)
 
-  // 缓存 header 样式对象
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark'
+
+  // 缓存 header 样式对象 — Apple frosted glass
   const headerStyle = useMemo(() => ({
-    background: colorBgContainer,
-    borderBottom: `1px solid ${colorPrimary}20`,
+    background: isDark ? 'rgba(28,28,30,0.72)' : 'rgba(255,255,255,0.72)',
+    backdropFilter: 'blur(20px) saturate(180%)',
+    WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+    borderBottom: `1px solid ${isDark ? '#38383a' : '#e5e5ea'}`,
     padding: isXs ? '0 12px' : isSm ? '0 16px' : '0 24px'
-  }), [colorBgContainer, colorPrimary, isXs, isSm])
+  }), [isDark, isXs, isSm])
 
   const sidebarStyle = useMemo(() => ({
     width: sidebarWidth,
-    background: colorBgContainer,
-    borderRight: `1px solid ${colorPrimary}20`,
+    background: isDark ? 'rgba(28,28,30,0.72)' : 'rgba(242,242,247,0.72)',
+    backdropFilter: 'blur(20px) saturate(180%)',
+    WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+    borderRight: `1px solid ${isDark ? '#38383a' : '#e5e5ea'}`,
     flex: `0 0 ${sidebarWidth}px`,
-    transition: 'flex 0.2s ease, width 0.2s ease'
-  }), [sidebarWidth, colorBgContainer, colorPrimary])
+    transition: 'flex 0.28s cubic-bezier(0.32,0.72,0,1), width 0.28s cubic-bezier(0.32,0.72,0,1)'
+  }), [sidebarWidth, isDark])
 
   // 响应式内容区域样式
   const contentStyle = useMemo(() => ({
-    background: colorBgContainer,
-    borderRadius: 0,
     padding: isXs ? 12 : isSm ? 16 : 24
-  }), [colorBgContainer, isXs, isSm])
+  }), [isXs, isSm])
 
   // 移动端使用 Drawer
   if (isMobile) {
@@ -301,7 +302,7 @@ const LayoutComponent: React.FC<LayoutProps> = memo(({ children }) => {
             />
             <Logo size={isXs ? 24 : 28} />
             {isSm && (
-              <Title level={5} style={{ margin: 0, color: colorPrimary }}>
+              <Title level={5} style={{ margin: 0, color: '#007AFF', fontWeight: 700 }}>
                 {t('app.title')}
               </Title>
             )}
@@ -369,7 +370,7 @@ const LayoutComponent: React.FC<LayoutProps> = memo(({ children }) => {
           />
           <Logo size={isMd ? 28 : 32} />
           {!collapsed && (
-            <Title level={isMd ? 5 : 4} style={{ margin: 0, color: colorPrimary }}>
+            <Title level={isMd ? 5 : 4} style={{ margin: 0, color: '#007AFF', fontWeight: 700 }}>
               {t('app.title')}
             </Title>
           )}

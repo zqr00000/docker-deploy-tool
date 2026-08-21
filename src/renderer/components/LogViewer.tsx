@@ -456,7 +456,7 @@ const LogViewer: React.FC<LogViewerProps> = ({
           background: '#1e1e1e',
           color: '#d4d4d4',
           padding: 16,
-          borderRadius: 4,
+          borderRadius: 6,
           maxHeight: height,
           overflow: 'auto',
           fontSize: 12,

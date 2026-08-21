@@ -107,14 +107,14 @@ const CONFIG_KEY = 'agentOpsModelConfig'
 // Markdown简单渲染（优化版）
 const renderMarkdown = (content: string): string => {
   return content
-    .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre style="background:#0d1117;padding:12px;border-radius:6px;overflow:auto;border:1px solid #30363d;margin:8px 0;"><code style="color:#e6edf3;font-family:monospace;font-size:12px;">$2</code></pre>')
-    .replace(/`([^`]+)`/g, '<code style="background:#21262d;padding:2px 6px;border-radius:4px;color:#e6edf3;font-family:monospace;font-size:12px;">$1</code>')
+    .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre style="background:#000000;padding:12px;border-radius:6px;overflow:auto;border:1px solid #48484a;margin:8px 0;"><code style="color:#f5f5f7;font-family:monospace;font-size:12px;">$2</code></pre>')
+    .replace(/`([^`]+)`/g, '<code style="background:#3a3a3c;padding:2px 6px;border-radius:4px;color:#f5f5f7;font-family:monospace;font-size:12px;">$1</code>')
     .replace(/\*\*([^*]+)\*\*/g, '<strong style="color:#fff;">$1</strong>')
-    .replace(/\*([^*]+)\*/g, '<em style="color:#8b949e;">$1</em>')
+    .replace(/\*([^*]+)\*/g, '<em style="color:#aeaeb2;">$1</em>')
     .replace(/^### (.+)$/gm, '<h3 style="color:#fff;margin:12px 0 6px;font-size:14px;">$1</h3>')
     .replace(/^## (.+)$/gm, '<h2 style="color:#fff;margin:16px 0 8px;font-size:16px;">$1</h2>')
     .replace(/^# (.+)$/gm, '<h1 style="color:#fff;margin:20px 0 10px;font-size:18px;">$1</h1>')
-    .replace(/^\- (.+)$/gm, '<li style="margin:4px 0 4px 16px;color:#e6edf3;">$1</li>')
+    .replace(/^\- (.+)$/gm, '<li style="margin:4px 0 4px 16px;color:#f5f5f7;">$1</li>')
     .replace(/\n/g, '<br/>')
 }
 
@@ -143,29 +143,29 @@ const PROVIDER_OPTIONS: Array<{ provider: AIProvider; name: string; color: strin
   { provider: 'anthropic', name: 'Anthropic', color: '#d97757', desc: 'Claude 系列' },
   { provider: 'azure', name: 'Azure', color: '#0078d4', desc: 'Azure OpenAI' },
   { provider: 'gemini', name: 'Gemini', color: '#4285f4', desc: 'Google AI' },
-  { provider: 'ollama', name: 'Ollama', color: '#58a6ff', desc: '本地模型' },
-  { provider: 'custom', name: '自定义', color: '#d29922', desc: '兼容 API' }
+  { provider: 'ollama', name: 'Ollama', color: '#0A84FF', desc: '本地模型' },
+  { provider: 'custom', name: '自定义', color: '#FF9500', desc: '兼容 API' }
 ]
 
 // 工具调用卡片（分段渲染与历史列表复用）
 const ToolCallCard: React.FC<{ tc: ToolCallRecord }> = ({ tc }) => {
   const isRunning = tc.status === 'running'
-  const icon = isRunning ? <Spin size="small" /> : tc.status === 'success' ? <CheckCircleOutlined style={{ color: '#3fb950' }} /> : <CloseCircleOutlined style={{ color: '#ff7b72' }} />
+  const icon = isRunning ? <Spin size="small" /> : tc.status === 'success' ? <CheckCircleOutlined style={{ color: '#30D158' }} /> : <CloseCircleOutlined style={{ color: '#FF453A' }} />
   const tagColor = tc.status === 'success' ? 'green' : tc.status === 'error' ? 'red' : 'blue'
   const tagText = isRunning ? '执行中' : tc.status === 'success' ? '成功' : '失败'
   // 可收藏的命令（工具参数中含 command 的命令类工具）
   const favCommand = typeof tc.params?.command === 'string' ? tc.params.command : undefined
   const [favorited, setFavorited] = useState(() => favCommand ? isFavoriteCommand(favCommand) : false)
   return (
-    <div className="tool-card" style={{ background: 'rgba(13,17,23,0.8)', padding: 8, borderRadius: 8, border: '1px solid #21262d' }}>
+    <div className="tool-card" style={{ background: 'rgba(0,0,0,0.6)', padding: 10, borderRadius: 10, border: '1px solid #3a3a3c' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         {icon}
-        <CodeOutlined style={{ color: '#58a6ff' }} />
-        <Text style={{ color: '#58a6ff', fontSize: 12, flex: 1, fontFamily: 'Consolas, monospace' }}>{tc.name}</Text>
+        <CodeOutlined style={{ color: '#0A84FF' }} />
+        <Text style={{ color: '#0A84FF', fontSize: 12, flex: 1, fontFamily: 'SF Mono, Consolas, monospace' }}>{tc.name}</Text>
         {tc.duration !== undefined && !isRunning && <Text type="secondary" style={{ fontSize: 11 }}>{tc.duration}ms</Text>}
         {favCommand && (
           <Tooltip title={favorited ? '取消收藏' : '收藏此命令'}>
-            <Button size="small" type="text" icon={<StarOutlined style={{ color: favorited ? '#d29922' : '#484f58' }} />}
+            <Button size="small" type="text" icon={<StarOutlined style={{ color: favorited ? '#FF9500' : '#636366' }} />}
               style={{ padding: 0, width: 20, height: 20 }}
               onClick={() => { const f = toggleFavoriteCommand(favCommand!, tc.name); setFavorited(f) }} />
           </Tooltip>
@@ -176,7 +176,7 @@ const ToolCallCard: React.FC<{ tc: ToolCallRecord }> = ({ tc }) => {
         <ResourceBars text={tc.result} />
       )}
       {!isRunning && (
-        <pre style={{ margin: '8px 0 0 24px', maxHeight: 160, overflow: 'auto', fontSize: 11, color: '#8b949e', background: 'rgba(22,27,34,0.6)', padding: 8, borderRadius: 4, whiteSpace: 'pre-wrap', border: '1px solid #21262d' }}>
+        <pre style={{ margin: '8px 0 0 0', maxHeight: 160, overflow: 'auto', fontSize: 11, color: '#aeaeb2', background: 'rgba(28,28,30,0.5)', padding: 8, borderRadius: 6, whiteSpace: 'pre-wrap', border: '1px solid #3a3a3c' }}>
           {tc.result}
         </pre>
       )}
@@ -244,14 +244,14 @@ const ResourceBars: React.FC<{ text: string }> = ({ text }) => {
   const metrics = parseResourceMetrics(text)
   if (metrics.length === 0) return null
   return (
-    <div style={{ margin: '8px 0 0 24px', display: 'flex', flexDirection: 'column', gap: 5, padding: '6px 10px', background: 'rgba(22,27,34,0.5)', borderRadius: 6, border: '1px solid #21262d' }}>
+    <div style={{ margin: '8px 0 0 0', display: 'flex', flexDirection: 'column', gap: 5, padding: '6px 10px', background: 'rgba(28,28,30,0.5)', borderRadius: 6, border: '1px solid #3a3a3c' }}>
       {metrics.map(m => (
         <div key={m.label} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Text style={{ fontSize: 11, color: '#8b949e', width: 32, flexShrink: 0 }}>{m.label}</Text>
-          <div style={{ flex: 1, height: 6, background: '#21262d', borderRadius: 3, overflow: 'hidden' }}>
-            <div style={{ width: `${Math.min(m.value, 100)}%`, height: '100%', background: m.value > 90 ? '#ff7b72' : m.value > 75 ? '#d29922' : '#3fb950', borderRadius: 3, transition: 'width 0.3s' }} />
+          <Text style={{ fontSize: 11, color: '#aeaeb2', width: 32, flexShrink: 0 }}>{m.label}</Text>
+          <div style={{ flex: 1, height: 6, background: '#3a3a3c', borderRadius: 3, overflow: 'hidden' }}>
+            <div style={{ width: `${Math.min(m.value, 100)}%`, height: '100%', background: m.value > 90 ? '#FF453A' : m.value > 75 ? '#FF9500' : '#30D158', borderRadius: 3, transition: 'width 0.3s' }} />
           </div>
-          <Text style={{ fontSize: 11, color: m.value > 90 ? '#ff7b72' : m.value > 75 ? '#d29922' : '#3fb950', width: 42, textAlign: 'right', flexShrink: 0 }}>{m.value.toFixed(1)}%</Text>
+          <Text style={{ fontSize: 11, color: m.value > 90 ? '#FF453A' : m.value > 75 ? '#FF9500' : '#30D158', width: 42, textAlign: 'right', flexShrink: 0 }}>{m.value.toFixed(1)}%</Text>
         </div>
       ))}
     </div>
@@ -269,8 +269,8 @@ const ROUTE_META: Record<string, { label: string; color: string; hint: string }>
 // 终端配色主题（参考 Netcatty 主题系统：可切换多套终端配色）
 const TERMINAL_THEMES: Record<string, { name: string; theme: any }> = {
   'github-dark': {
-    name: 'GitHub 暗色',
-    theme: { background: '#0d1117', foreground: '#e6edf3', cursor: '#00d4aa', black: '#0d1117', red: '#ff7b72', green: '#3fb950', yellow: '#d29922', blue: '#58a6ff', magenta: '#bc8cff', cyan: '#39d2c0', white: '#e6edf3' }
+    name: 'Apple 暗色',
+    theme: { background: '#000000', foreground: '#f5f5f7', cursor: '#0A84FF', black: '#000000', red: '#FF453A', green: '#30D158', yellow: '#FF9500', blue: '#0A84FF', magenta: '#BF5AF2', cyan: '#64D2FF', white: '#f5f5f7' }
   },
   dracula: {
     name: 'Dracula',
@@ -278,7 +278,7 @@ const TERMINAL_THEMES: Record<string, { name: string; theme: any }> = {
   },
   'solarized-dark': {
     name: 'Solarized 暗色',
-    theme: { background: '#002b36', foreground: '#839496', cursor: '#00d4aa', black: '#073642', red: '#dc322f', green: '#859900', yellow: '#b58900', blue: '#268bd2', magenta: '#d33682', cyan: '#2aa198', white: '#eee8d5' }
+    theme: { background: '#002b36', foreground: '#839496', cursor: '#0A84FF', black: '#073642', red: '#dc322f', green: '#859900', yellow: '#b58900', blue: '#268bd2', magenta: '#d33682', cyan: '#2aa198', white: '#eee8d5' }
   }
 }
 
@@ -1344,36 +1344,36 @@ const AgentTerminalPage: React.FC = () => {
   // ==================== 渲染 ====================
 
   return (
-    <ConfigProvider theme={{ algorithm: theme.darkAlgorithm, token: { colorPrimary: '#00d4aa' } }}>
-      <div className="agent-terminal-page" style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#0d1117', overflow: 'hidden' }}>
+    <ConfigProvider theme={{ algorithm: theme.darkAlgorithm, token: { colorPrimary: '#0A84FF' } }}>
+      <div className="agent-terminal-page" style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#000000', overflow: 'hidden' }}>
         
         {/* ========== 顶部状态栏 ========== */}
         <div className="agent-terminal-header" style={{ 
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', 
-          padding: '10px 20px', borderBottom: '1px solid #30363d' 
+          padding: '10px 20px', borderBottom: '1px solid #48484a', flexShrink: 0
         }}>
           <Space size="large">
             <Space>
-              <div style={{ width: 34, height: 34, borderRadius: 9, background: 'linear-gradient(135deg, rgba(0,212,170,0.18), rgba(88,166,255,0.18))', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(0,212,170,0.35)', boxShadow: '0 0 18px rgba(0,212,170,0.15)' }}>
-                <RobotOutlined style={{ fontSize: 18, color: '#00d4aa' }} />
+              <div style={{ width: 34, height: 34, borderRadius: 9, background: 'linear-gradient(135deg, rgba(10,132,255,0.18), rgba(10,132,255,0.18))', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(10,132,255,0.35)', boxShadow: '0 2px 12px rgba(10,132,255,0.12)' }}>
+                <RobotOutlined style={{ fontSize: 18, color: '#0A84FF' }} />
               </div>
               <div>
-                <Title level={4} className="agent-terminal-brand" style={{ margin: 0, fontSize: 17, lineHeight: 1.2, fontFamily: 'inherit' }}>
+                <Title level={4} className="agent-terminal-brand" style={{ margin: 0, fontSize: 16, lineHeight: 1.2, fontFamily: 'inherit', fontWeight: 700 }}>
                   AI OPS TERMINAL
                 </Title>
-                <Text style={{ fontSize: 10, color: '#6e7681', letterSpacing: 0.8 }}>Mastra Agent Console</Text>
+                <Text style={{ fontSize: 10, color: '#8e8e93', letterSpacing: 0.6 }}>Mastra Agent Console</Text>
               </div>
             </Space>
-            <Divider type="vertical" style={{ background: '#30363d', height: 28 }} />
+            <Divider type="vertical" style={{ background: '#48484a', height: 28 }} />
             <Space size="small">
-              <CloudOutlined style={{ color: '#8b949e' }} />
+              <CloudOutlined style={{ color: '#aeaeb2' }} />
               <Select value={selectedServer} onChange={handleServerChange} style={{ minWidth: 180 }} 
                 placeholder="选择服务器" allowClear size="small"
                 options={servers.map(s => ({ 
                   value: s.id, 
                   label: <Space>
                     <Badge status={s.status === 'online' ? 'success' : 'default'} />
-                    <span style={{ color: '#e6edf3' }}>{s.name}</span>
+                    <span style={{ color: '#f5f5f7' }}>{s.name}</span>
                     <Text type="secondary">({s.host})</Text>
                   </Space> 
                 }))} />
@@ -1383,19 +1383,19 @@ const AgentTerminalPage: React.FC = () => {
           
           <Space size="middle">
             {/* 统计信息 */}
-            <Space size={6} style={{ padding: '4px 12px', background: 'rgba(33,38,45,0.8)', borderRadius: 999, border: '1px solid #21262d' }}>
-              <DashboardOutlined style={{ color: '#00d4aa', fontSize: 11 }} />
-              <Text style={{ color: '#8b949e', fontSize: 11 }}>
-                <Text strong style={{ color: '#e6edf3', fontSize: 11 }}>{stats.totalCommands}</Text> 命令
-                <span style={{ margin: '0 6px', color: '#30363d' }}>|</span>
-                <Text strong style={{ color: stats.successRate >= 90 ? '#3fb950' : stats.successRate >= 60 ? '#d29922' : '#ff7b72', fontSize: 11 }}>{stats.successRate}%</Text> 成功
+            <Space size={6} style={{ padding: '4px 12px', background: 'rgba(44,44,46,0.8)', borderRadius: 999, border: '1px solid #3a3a3c' }}>
+              <DashboardOutlined style={{ color: '#0A84FF', fontSize: 11 }} />
+              <Text style={{ color: '#aeaeb2', fontSize: 11 }}>
+                <Text strong style={{ color: '#f5f5f7', fontSize: 11 }}>{stats.totalCommands}</Text> 命令
+                <span style={{ margin: '0 6px', color: '#48484a' }}>|</span>
+                <Text strong style={{ color: stats.successRate >= 90 ? '#30D158' : stats.successRate >= 60 ? '#FF9500' : '#FF453A', fontSize: 11 }}>{stats.successRate}%</Text> 成功
               </Text>
             </Space>
             
             <Tag color={modelConfig.apiKey && modelConfig.model ? 'success' : 'default'} icon={<ApiOutlined />} style={{ border: '1px solid rgba(63,185,80,0.35)', background: 'rgba(63,185,80,0.08)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {modelConfig.model || '未配置'}
             </Tag>
-            <Tooltip title="配置"><Button size="small" icon={<SettingOutlined />} type={showConfig ? 'primary' : 'default'} onClick={() => setShowConfig(!showConfig)} style={showConfig ? { background: '#00d4aa', borderColor: '#00d4aa' } : {}} /></Tooltip>
+            <Tooltip title="配置"><Button size="small" icon={<SettingOutlined />} type={showConfig ? 'primary' : 'default'} onClick={() => setShowConfig(!showConfig)} style={showConfig ? { background: '#0A84FF', borderColor: '#0A84FF' } : {}} /></Tooltip>
             <Tooltip title={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}>
               <Button size="small" icon={sidebarCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />} onClick={() => setSidebarCollapsed(!sidebarCollapsed)} />
             </Tooltip>
@@ -1406,13 +1406,13 @@ const AgentTerminalPage: React.FC = () => {
         <Drawer
           title={
             <Space>
-              <div style={{ width: 26, height: 26, borderRadius: 7, background: 'linear-gradient(135deg, rgba(88,166,255,0.16), rgba(0,212,170,0.16))', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(88,166,255,0.3)' }}>
-                <SettingOutlined style={{ color: '#58a6ff', fontSize: 13 }} />
+              <div style={{ width: 26, height: 26, borderRadius: 7, background: 'linear-gradient(135deg, rgba(88,166,255,0.16), rgba(10,132,255,0.16))', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(88,166,255,0.3)' }}>
+                <SettingOutlined style={{ color: '#0A84FF', fontSize: 13 }} />
               </div>
-              <Text strong style={{ color: '#e6edf3', fontSize: 13, letterSpacing: 0.5 }}>模型配置</Text>
-              <Tag style={{ margin: 0, fontSize: 10, background: 'rgba(0,212,170,0.1)', border: '1px solid rgba(0,212,170,0.3)', color: '#00d4aa', borderRadius: 999, padding: '0 8px' }}>Mastra Agent</Tag>
+              <Text strong style={{ color: '#f5f5f7', fontSize: 13, letterSpacing: 0.5 }}>模型配置</Text>
+              <Tag style={{ margin: 0, fontSize: 10, background: 'rgba(10,132,255,0.1)', border: '1px solid rgba(10,132,255,0.3)', color: '#0A84FF', borderRadius: 999, padding: '0 8px' }}>Mastra Agent</Tag>
               {modelConfig.apiKey && modelConfig.model && (
-                <Tag icon={<CheckCircleOutlined />} style={{ border: '1px solid rgba(63,185,80,0.4)', background: 'rgba(63,185,80,0.08)', color: '#3fb950', borderRadius: 999, fontSize: 11 }}>
+                <Tag icon={<CheckCircleOutlined />} style={{ border: '1px solid rgba(63,185,80,0.4)', background: 'rgba(63,185,80,0.08)', color: '#30D158', borderRadius: 999, fontSize: 11 }}>
                   已配置 · {modelConfig.model}
                 </Tag>
               )}
@@ -1423,19 +1423,19 @@ const AgentTerminalPage: React.FC = () => {
           open={showConfig}
           onClose={() => setShowConfig(false)}
           styles={{
-            body: { background: '#0d1117', padding: 16, overflow: 'auto' },
-            header: { background: '#161b22', borderBottom: '1px solid #21262d' },
-            footer: { background: '#161b22', borderTop: '1px solid #21262d' }
+            body: { background: '#0a0a0b', padding: 16, overflow: 'auto' },
+            header: { background: '#1c1c1e', borderBottom: '1px solid #3a3a3c' },
+            footer: { background: '#1c1c1e', borderTop: '1px solid #3a3a3c' }
           }}
           footer={
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <Space size={8}>
                 <Button size="small" icon={<ThunderboltOutlined />} loading={testingConnection} onClick={testConnection}
-                  style={{ borderColor: '#30363d', color: '#58a6ff', borderRadius: 6 }}>测试连接</Button>
+                  style={{ borderColor: '#48484a', color: '#0A84FF', borderRadius: 6 }}>测试连接</Button>
                 <Button size="small" type="primary" icon={<SaveOutlined />} onClick={saveConfig}
-                  style={{ background: 'linear-gradient(135deg, #00d4aa 0%, #00a896 100%)', borderColor: 'transparent', borderRadius: 6, boxShadow: '0 2px 10px rgba(0,212,170,0.3)' }}>保存配置</Button>
+                  style={{ background: 'linear-gradient(135deg, #0A84FF 0%, #0051D5 100%)', borderColor: 'transparent', borderRadius: 6, boxShadow: '0 2px 10px rgba(10,132,255,0.3)' }}>保存配置</Button>
               </Space>
-              <Text style={{ fontSize: 10, color: '#484f58' }}>
+              <Text style={{ fontSize: 10, color: '#8e8e93' }}>
                 {modelConfig.provider === 'ollama' ? 'Ollama 本地模型无需 API Key' : '配置将同步至 Mastra Agent'}
               </Text>
             </div>
@@ -1444,10 +1444,10 @@ const AgentTerminalPage: React.FC = () => {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, height: '100%' }}>
             {/* 设置搜索（参考 Netcatty Ctrl+F 设置搜索） */}
             <Input prefix={<SearchOutlined />} placeholder="搜索设置… 如：API / 超时 / 主题" size="small" allowClear
-              onChange={handleConfigSearch} style={{ background: '#0d1117', border: '1px solid #30363d', color: '#e6edf3' }} />
+              onChange={handleConfigSearch} style={{ background: '#000000', border: '1px solid #48484a', color: '#f5f5f7', borderRadius: 8 }} />
             <div style={{ display: 'flex', gap: 12, flex: 1, minHeight: 0 }}>
             {/* 左侧分组导航（参考 Netcatty SettingsPage 垂直 TabsList） */}
-            <div style={{ width: 122, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 4, borderRight: '1px solid rgba(33,38,45,0.9)', paddingRight: 8 }}>
+            <div style={{ width: 122, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 4, borderRight: '1px solid rgba(44,44,46,0.9)', paddingRight: 8 }}>
               {[
                 { key: 'connection', label: '连接', icon: <ApiOutlined /> },
                 { key: 'runtime', label: '运行参数', icon: <ThunderboltOutlined /> },
@@ -1474,12 +1474,12 @@ const AgentTerminalPage: React.FC = () => {
                   return (
                     <div key={p.id} className={`provider-chip ${isActive ? 'active' : ''}`} onClick={() => activateProfile(p.id)}
                       style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 8px', borderRadius: 8, cursor: 'pointer' }}>
-                      <span className="provider-dot" style={{ background: meta?.color || '#58a6ff', color: meta?.color || '#58a6ff' }} />
+                      <span className="provider-dot" style={{ background: meta?.color || '#0A84FF', color: meta?.color || '#0A84FF' }} />
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 11, color: isActive ? '#e6edf3' : '#8b949e', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
-                        <div style={{ fontSize: 10, color: '#6e7681', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.model || meta?.name || p.provider}</div>
+                        <div style={{ fontSize: 11, color: isActive ? '#f5f5f7' : '#aeaeb2', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
+                        <div style={{ fontSize: 10, color: '#8e8e93', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.model || meta?.name || p.provider}</div>
                       </div>
-                      {isActive && <CheckCircleOutlined style={{ color: '#00d4aa', fontSize: 11, flexShrink: 0 }} />}
+                      {isActive && <CheckCircleOutlined style={{ color: '#0A84FF', fontSize: 11, flexShrink: 0 }} />}
                       {(modelConfig.providerProfiles || []).length > 1 && (
                         <Button size="small" type="text" danger icon={<DeleteOutlined />} title="删除配置"
                           style={{ padding: 0, width: 16, height: 16, fontSize: 10, flexShrink: 0 }}
@@ -1489,17 +1489,17 @@ const AgentTerminalPage: React.FC = () => {
                   )
                 })}
                 <Button size="small" type="dashed" icon={<PlusOutlined />} onClick={addProfile}
-                  style={{ borderRadius: 8, borderColor: '#21262d', color: '#00d4aa', fontSize: 11 }}>添加配置</Button>
+                  style={{ borderRadius: 8, borderColor: '#3a3a3c', color: '#0A84FF', fontSize: 11 }}>添加配置</Button>
               </div>
 
               {/* 激活档案表单 */}
               <div className="config-card" style={{ flex: 1, minWidth: 0 }}>
-                <div className="config-card-title"><ApiOutlined style={{ color: '#58a6ff' }} />{activeProfile?.name || '模型连接'}</div>
+                <div className="config-card-title"><ApiOutlined style={{ color: '#0A84FF' }} />{activeProfile?.name || '模型连接'}</div>
 
                 {/* 档案名称 */}
                 <span className="field-label">配置名称</span>
                 <Input value={activeProfile?.name || ''} onChange={e => updateProfile({ name: e.target.value })}
-                  size="small" style={{ background: '#0d1117', border: '1px solid #30363d', color: '#e6edf3', borderRadius: 8 }} />
+                  size="small" style={{ background: '#000000', border: '1px solid #48484a', color: '#f5f5f7', borderRadius: 8 }} />
 
                 {/* 提供商选择 */}
                 <span className="field-label" style={{ marginTop: 10 }}>提供商</span>
@@ -1513,18 +1513,18 @@ const AgentTerminalPage: React.FC = () => {
                       }}>
                       <span className="provider-dot" style={{ background: p.color, color: p.color }} />
                       <div style={{ lineHeight: 1.25 }}>
-                        <div style={{ fontSize: 12, color: modelConfig.provider === p.provider ? '#e6edf3' : '#8b949e', fontWeight: 500 }}>{p.name}</div>
-                        <div style={{ fontSize: 10, color: '#6e7681' }}>{p.desc}</div>
+                        <div style={{ fontSize: 12, color: modelConfig.provider === p.provider ? '#f5f5f7' : '#aeaeb2', fontWeight: 500 }}>{p.name}</div>
+                        <div style={{ fontSize: 10, color: '#8e8e93' }}>{p.desc}</div>
                       </div>
                     </div>
                   ))}
                 </div>
 
                 {/* API Key */}
-                <span className="field-label">API Key {modelConfig.provider === 'ollama' && <Text style={{ fontSize: 10, color: '#6e7681', textTransform: 'none' }}>(可选)</Text>}</span>
+                <span className="field-label">API Key {modelConfig.provider === 'ollama' && <Text style={{ fontSize: 10, color: '#8e8e93', textTransform: 'none' }}>(可选)</Text>}</span>
                 <Input.Password value={modelConfig.apiKey} onChange={e => updateProfile({ apiKey: e.target.value })}
                   placeholder={modelConfig.provider === 'anthropic' ? 'sk-ant-...' : modelConfig.provider === 'ollama' ? '本地模型不需要' : 'sk-...'}
-                  size="small" style={{ background: '#0d1117', border: '1px solid #30363d', color: '#e6edf3', borderRadius: 8 }} />
+                  size="small" style={{ background: '#000000', border: '1px solid #48484a', color: '#f5f5f7', borderRadius: 8 }} />
 
                 {/* Base URL（custom / ollama） */}
                 {(modelConfig.provider === 'custom' || modelConfig.provider === 'ollama') && (
@@ -1532,7 +1532,7 @@ const AgentTerminalPage: React.FC = () => {
                     <span className="field-label" style={{ marginTop: 10 }}>Base URL</span>
                     <Input value={modelConfig.baseUrl} onChange={e => updateProfile({ baseUrl: e.target.value })}
                       placeholder={modelConfig.provider === 'ollama' ? 'http://localhost:11434' : 'https://api.example.com/v1'} size="small"
-                      style={{ background: '#0d1117', border: '1px solid #30363d', color: '#e6edf3', borderRadius: 8 }} />
+                      style={{ background: '#000000', border: '1px solid #48484a', color: '#f5f5f7', borderRadius: 8 }} />
                   </>
                 )}
 
@@ -1542,12 +1542,12 @@ const AgentTerminalPage: React.FC = () => {
                     <div>
                       <span className="field-label">Endpoint</span>
                       <Input value={modelConfig.azureEndpoint || ''} onChange={e => updateProfile({ azureEndpoint: e.target.value })}
-                        placeholder="https://xxx.openai.azure.com" size="small" style={{ background: '#0d1117', border: '1px solid #30363d', color: '#e6edf3', borderRadius: 8 }} />
+                        placeholder="https://xxx.openai.azure.com" size="small" style={{ background: '#000000', border: '1px solid #48484a', color: '#f5f5f7', borderRadius: 8 }} />
                     </div>
                     <div>
                       <span className="field-label">Deployment</span>
                       <Input value={modelConfig.azureDeployment || ''} onChange={e => updateProfile({ azureDeployment: e.target.value })}
-                        placeholder="gpt-4o" size="small" style={{ background: '#0d1117', border: '1px solid #30363d', color: '#e6edf3', borderRadius: 8 }} />
+                        placeholder="gpt-4o" size="small" style={{ background: '#000000', border: '1px solid #48484a', color: '#f5f5f7', borderRadius: 8 }} />
                     </div>
                   </div>
                 )}
@@ -1566,14 +1566,14 @@ const AgentTerminalPage: React.FC = () => {
                       <>
                         {menu}
                         <Divider style={{ margin: '4px 0' }} />
-                        <div style={{ padding: '4px 8px', fontSize: 11, color: '#8b949e' }}>
+                        <div style={{ padding: '4px 8px', fontSize: 11, color: '#aeaeb2' }}>
                           {modelConfig.provider === 'ollama' ? '提示：先安装 Ollama 并运行模型，然后点击刷新按钮获取' : '提示：点击刷新按钮获取模型列表，或手动输入'}
                         </div>
                       </>
                     )}
                   />
                   <Button size="small" icon={<ReloadOutlined />} loading={loadingModels} onClick={loadModels} title="获取模型列表"
-                    style={{ background: '#21262d', borderColor: '#30363d', color: '#58a6ff' }} />
+                    style={{ background: '#3a3a3c', borderColor: '#48484a', color: '#0A84FF' }} />
                 </Space.Compact>
               </div>
             </div>
@@ -1581,47 +1581,47 @@ const AgentTerminalPage: React.FC = () => {
             )}
             {configTab === 'runtime' && (
             <div className="config-card">
-              <div className="config-card-title"><ThunderboltOutlined style={{ color: '#00d4aa' }} />运行参数</div>
+              <div className="config-card-title"><ThunderboltOutlined style={{ color: '#0A84FF' }} />运行参数</div>
 
               {/* 温度 */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
                 <span className="field-label" style={{ margin: 0 }}>温度</span>
-                <Text strong style={{ color: '#00d4aa', fontSize: 12 }}>{modelConfig.temperature.toFixed(1)}</Text>
+                <Text strong style={{ color: '#0A84FF', fontSize: 12 }}>{modelConfig.temperature.toFixed(1)}</Text>
               </div>
               <Slider value={modelConfig.temperature} onChange={v => setModelConfig({ ...modelConfig, temperature: v })} min={0} max={1} step={0.1} tooltip={{ open: false }} />
               <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: -8, marginBottom: 14 }}>
-                <Text style={{ fontSize: 10, color: '#484f58' }}>保守</Text>
-                <Text style={{ fontSize: 10, color: '#484f58' }}>创意</Text>
+                <Text style={{ fontSize: 10, color: '#8e8e93' }}>保守</Text>
+                <Text style={{ fontSize: 10, color: '#8e8e93' }}>创意</Text>
               </div>
 
               {/* 最大 Token */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
                 <span className="field-label" style={{ margin: 0 }}>最大 Token</span>
-                <Text strong style={{ color: '#58a6ff', fontSize: 12 }}>{modelConfig.maxTokens}</Text>
+                <Text strong style={{ color: '#0A84FF', fontSize: 12 }}>{modelConfig.maxTokens}</Text>
               </div>
               <Slider value={modelConfig.maxTokens} onChange={v => setModelConfig({ ...modelConfig, maxTokens: v })} min={100} max={8000} step={100} tooltip={{ open: false }} />
               <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: -8, marginBottom: 16 }}>
-                <Text style={{ fontSize: 10, color: '#484f58' }}>100</Text>
-                <Text style={{ fontSize: 10, color: '#484f58' }}>8000</Text>
+                <Text style={{ fontSize: 10, color: '#8e8e93' }}>100</Text>
+                <Text style={{ fontSize: 10, color: '#8e8e93' }}>8000</Text>
               </div>
             </div>
             )}
             {configTab === 'agent' && (
             <div className="config-card">
-              <div className="config-card-title"><RobotOutlined style={{ color: '#bc8cff' }} />Agent 行为</div>
+              <div className="config-card-title"><RobotOutlined style={{ color: '#BF5AF2' }} />Agent 行为</div>
 
               {/* 系统提示词 */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                 <span className="field-label" style={{ margin: 0 }}>系统提示词</span>
-                <Button size="small" type="text" icon={editingPrompt ? <CheckOutlined /> : <EditOutlined />} onClick={() => setEditingPrompt(!editingPrompt)} style={{ color: '#8b949e', padding: 0, height: 20, fontSize: 11 }}>
+                <Button size="small" type="text" icon={editingPrompt ? <CheckOutlined /> : <EditOutlined />} onClick={() => setEditingPrompt(!editingPrompt)} style={{ color: '#aeaeb2', padding: 0, height: 20, fontSize: 11 }}>
                   {editingPrompt ? '完成' : '编辑'}
                 </Button>
               </div>
               {editingPrompt ? (
                 <TextArea value={modelConfig.systemPrompt} onChange={e => setModelConfig({ ...modelConfig, systemPrompt: e.target.value })} rows={4} size="small"
-                  style={{ background: '#0d1117', border: '1px solid #30363d', color: '#e6edf3', borderRadius: 8 }} />
+                  style={{ background: '#000000', border: '1px solid #48484a', color: '#f5f5f7', borderRadius: 8 }} />
               ) : (
-                <div style={{ background: 'rgba(13,17,23,0.6)', border: '1px solid #21262d', borderRadius: 8, padding: 10, fontSize: 11, color: '#8b949e', lineHeight: 1.6, maxHeight: 84, overflow: 'hidden' }}>
+                <div style={{ background: 'rgba(0,0,0,0.6)', border: '1px solid #3a3a3c', borderRadius: 8, padding: 10, fontSize: 11, color: '#aeaeb2', lineHeight: 1.6, maxHeight: 84, overflow: 'hidden' }}>
                   {modelConfig.systemPrompt || '未设置系统提示词，点击"编辑"进行配置'}
                 </div>
               )}
@@ -1629,30 +1629,30 @@ const AgentTerminalPage: React.FC = () => {
               {/* 命令超时（参考 Netcatty AI 设置的 commandTimeout） */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 }}>
                 <div style={{ minWidth: 0 }}>
-                  <Text style={{ color: '#e6edf3', fontSize: 12 }}>命令超时</Text>
-                  <Text style={{ color: '#6e7681', fontSize: 10, display: 'block' }}>AI 执行远程命令的最长等待时间</Text>
+                  <Text style={{ color: '#f5f5f7', fontSize: 12 }}>命令超时</Text>
+                  <Text style={{ color: '#8e8e93', fontSize: 10, display: 'block' }}>AI 执行远程命令的最长等待时间</Text>
                 </div>
                 <InputNumber value={modelConfig.commandTimeout} onChange={v => setModelConfig({ ...modelConfig, commandTimeout: (v as number) || 30000 })}
-                  min={5000} max={120000} step={5000} size="small" style={{ width: 110, background: '#0d1117', border: '1px solid #30363d', color: '#e6edf3' }} />
-                <Text style={{ fontSize: 10, color: '#484f58', marginLeft: 4, flexShrink: 0 }}>ms</Text>
+                  min={5000} max={120000} step={5000} size="small" style={{ width: 110, background: '#000000', border: '1px solid #48484a', color: '#f5f5f7', borderRadius: 6 }} />
+                <Text style={{ fontSize: 10, color: '#8e8e93', marginLeft: 4, flexShrink: 0 }}>ms</Text>
               </div>
 
               {/* 最大迭代步骤（参考 Netcatty AI 设置的 maxIterations） */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 }}>
                 <div style={{ minWidth: 0 }}>
-                  <Text style={{ color: '#e6edf3', fontSize: 12 }}>最大迭代步骤</Text>
-                  <Text style={{ color: '#6e7681', fontSize: 10, display: 'block' }}>一次任务中最多连续工具调用步数</Text>
+                  <Text style={{ color: '#f5f5f7', fontSize: 12 }}>最大迭代步骤</Text>
+                  <Text style={{ color: '#8e8e93', fontSize: 10, display: 'block' }}>一次任务中最多连续工具调用步数</Text>
                 </div>
                 <InputNumber value={modelConfig.maxIterations} onChange={v => setModelConfig({ ...modelConfig, maxIterations: (v as number) || 15 })}
-                  min={1} max={50} size="small" style={{ width: 80, background: '#0d1117', border: '1px solid #30363d', color: '#e6edf3' }} />
-                <Text style={{ fontSize: 10, color: '#484f58', marginLeft: 4, flexShrink: 0 }}>步</Text>
+                  min={1} max={50} size="small" style={{ width: 80, background: '#000000', border: '1px solid #48484a', color: '#f5f5f7', borderRadius: 6 }} />
+                <Text style={{ fontSize: 10, color: '#8e8e93', marginLeft: 4, flexShrink: 0 }}>步</Text>
               </div>
 
               {/* 自动批准高危操作（参考 Netcatty globalPermissionMode） */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 }}>
                 <div style={{ minWidth: 0 }}>
-                  <Text style={{ color: '#e6edf3', fontSize: 12 }}>自动批准高危操作</Text>
-                  <Text style={{ color: '#6e7681', fontSize: 10, display: 'block' }}>开启后高危命令无需人工确认（谨慎使用）</Text>
+                  <Text style={{ color: '#f5f5f7', fontSize: 12 }}>自动批准高危操作</Text>
+                  <Text style={{ color: '#8e8e93', fontSize: 10, display: 'block' }}>开启后高危命令无需人工确认（谨慎使用）</Text>
                 </div>
                 <Switch size="small" checked={modelConfig.approvalMode === 'auto'}
                   onChange={v => setModelConfig({ ...modelConfig, approvalMode: v ? 'auto' : 'manual' })} />
@@ -1661,8 +1661,8 @@ const AgentTerminalPage: React.FC = () => {
               {/* Web 搜索（参考 Netcatty webSearchConfig） */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 }}>
                 <div style={{ minWidth: 0 }}>
-                  <Text style={{ color: '#e6edf3', fontSize: 12 }}>Web 搜索</Text>
-                  <Text style={{ color: '#6e7681', fontSize: 10, display: 'block' }}>AI 可联网查询报错信息与命令用法</Text>
+                  <Text style={{ color: '#f5f5f7', fontSize: 12 }}>Web 搜索</Text>
+                  <Text style={{ color: '#8e8e93', fontSize: 10, display: 'block' }}>AI 可联网查询报错信息与命令用法</Text>
                 </div>
                 <Switch size="small" checked={modelConfig.enableWebSearch}
                   onChange={v => setModelConfig({ ...modelConfig, enableWebSearch: v })} />
@@ -1672,8 +1672,8 @@ const AgentTerminalPage: React.FC = () => {
               <div style={{ marginTop: 16 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ minWidth: 0 }}>
-                    <Text style={{ color: '#e6edf3', fontSize: 12 }}>多模型路由</Text>
-                    <Text style={{ color: '#6e7681', fontSize: 10, display: 'block' }}>按任务类型路由到不同模型（复杂分析用强模型，日常用轻量模型）</Text>
+                    <Text style={{ color: '#f5f5f7', fontSize: 12 }}>多模型路由</Text>
+                    <Text style={{ color: '#8e8e93', fontSize: 10, display: 'block' }}>按任务类型路由到不同模型（复杂分析用强模型，日常用轻量模型）</Text>
                   </div>
                   <Switch size="small" checked={modelConfig.enableRouting}
                     onChange={v => setModelConfig({ ...modelConfig, enableRouting: v })} />
@@ -1684,10 +1684,10 @@ const AgentTerminalPage: React.FC = () => {
                       const meta = ROUTE_META[route]
                       const r = (modelConfig.routing || {})[route]
                       return (
-                        <div key={route} style={{ background: 'rgba(13,17,23,0.6)', border: '1px solid #21262d', borderRadius: 8, padding: 8 }}>
+                        <div key={route} style={{ background: 'rgba(0,0,0,0.6)', border: '1px solid #3a3a3c', borderRadius: 8, padding: 8 }}>
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                            <Text style={{ color: '#e6edf3', fontSize: 12 }}>{meta.label}</Text>
-                            <Text style={{ color: '#484f58', fontSize: 10 }}>{meta.hint}</Text>
+                            <Text style={{ color: '#f5f5f7', fontSize: 12 }}>{meta.label}</Text>
+                            <Text style={{ color: '#8e8e93', fontSize: 10 }}>{meta.hint}</Text>
                           </div>
                           <Space.Compact style={{ width: '100%', marginTop: 6 }}>
                             <Select value={r?.provider || modelConfig.provider} onChange={v => updateRouting(route, 'provider', v)}
@@ -1695,7 +1695,7 @@ const AgentTerminalPage: React.FC = () => {
                               options={PROVIDER_PRESETS.map(p => ({ value: p.provider, label: p.name }))} />
                             <Input value={r?.model || ''} onChange={e => updateRouting(route, 'model', e.target.value)}
                               size="small" placeholder="路由模型，留空回退主模型"
-                              style={{ background: '#0d1117', border: '1px solid #30363d', color: '#e6edf3' }} />
+                              style={{ background: '#000000', border: '1px solid #48484a', color: '#f5f5f7' }} />
                           </Space.Compact>
                         </div>
                       )
@@ -1707,26 +1707,26 @@ const AgentTerminalPage: React.FC = () => {
               {/* 审批超时 */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 }}>
                 <div style={{ minWidth: 0 }}>
-                  <Text style={{ color: '#e6edf3', fontSize: 12 }}>审批超时（秒）</Text>
-                  <Text style={{ color: '#6e7681', fontSize: 10, display: 'block' }}>审批弹窗超时未响应自动拒绝，默认 60s</Text>
+                  <Text style={{ color: '#f5f5f7', fontSize: 12 }}>审批超时（秒）</Text>
+                  <Text style={{ color: '#8e8e93', fontSize: 10, display: 'block' }}>审批弹窗超时未响应自动拒绝，默认 60s</Text>
                 </div>
                 <InputNumber size="small" min={10} max={300} value={modelConfig.approvalTimeout || 60}
                   onChange={v => setModelConfig({ ...modelConfig, approvalTimeout: v || 60 })}
-                  style={{ width: 90 }} />
+                  style={{ width: 90, background: '#000000', border: '1px solid #48484a', color: '#f5f5f7', borderRadius: 6 }} />
               </div>
 
               {/* 命令黑名单（参考 Netcatty commandBlocklist） */}
               <div style={{ marginTop: 16 }}>
-                <Text style={{ color: '#e6edf3', fontSize: 12 }}>命令黑名单</Text>
-                <Text style={{ color: '#6e7681', fontSize: 10, display: 'block', marginBottom: 6 }}>命中子串的命令将被直接拒绝执行，回车添加</Text>
+                <Text style={{ color: '#f5f5f7', fontSize: 12 }}>命令黑名单</Text>
+                <Text style={{ color: '#8e8e93', fontSize: 10, display: 'block', marginBottom: 6 }}>命中子串的命令将被直接拒绝执行，回车添加</Text>
                 <Select mode="tags" value={modelConfig.commandBlocklist} onChange={v => setModelConfig({ ...modelConfig, commandBlocklist: v })}
                   placeholder="如：rm -rf /" size="small" tokenSeparators={[',']} style={{ width: '100%' }} />
               </div>
 
               {/* 快捷消息（参考 Netcatty quickMessages） */}
               <div style={{ marginTop: 16 }}>
-                <Text style={{ color: '#e6edf3', fontSize: 12 }}>快捷消息</Text>
-                <Text style={{ color: '#6e7681', fontSize: 10, display: 'block', marginBottom: 6 }}>空状态页显示的快捷命令，回车添加</Text>
+                <Text style={{ color: '#f5f5f7', fontSize: 12 }}>快捷消息</Text>
+                <Text style={{ color: '#8e8e93', fontSize: 10, display: 'block', marginBottom: 6 }}>空状态页显示的快捷命令，回车添加</Text>
                 <Select mode="tags" value={modelConfig.quickMessages} onChange={v => setModelConfig({ ...modelConfig, quickMessages: v })}
                   placeholder="输入快捷命令文案" size="small" tokenSeparators={[',']} style={{ width: '100%' }} />
               </div>
@@ -1734,7 +1734,7 @@ const AgentTerminalPage: React.FC = () => {
             )}
             {configTab === 'appearance' && (
             <div className="config-card">
-              <div className="config-card-title"><BulbOutlined style={{ color: '#d29922' }} />外观</div>
+              <div className="config-card-title"><BulbOutlined style={{ color: '#FF9500' }} />外观</div>
 
               {/* 终端主题（参考 Netcatty ThemeList） */}
               <span className="field-label">终端主题</span>
@@ -1743,13 +1743,13 @@ const AgentTerminalPage: React.FC = () => {
                   <div key={id} className={`provider-chip ${terminalThemeId === id ? 'active' : ''}`}
                     onClick={() => { setTerminalThemeId(id); localStorage.setItem('agentTerminalTheme', id) }}
                     style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8, cursor: 'pointer' }}>
-                    <span style={{ width: 28, height: 18, borderRadius: 4, background: `linear-gradient(135deg, ${t.theme.background} 0%, ${t.theme.blue} 100%)`, border: '1px solid #30363d', flexShrink: 0 }} />
-                    <Text style={{ color: terminalThemeId === id ? '#e6edf3' : '#8b949e', fontSize: 12 }}>{t.name}</Text>
-                    {terminalThemeId === id && <CheckCircleOutlined style={{ color: '#00d4aa', marginLeft: 'auto' }} />}
+                    <span style={{ width: 28, height: 18, borderRadius: 4, background: `linear-gradient(135deg, ${t.theme.background} 0%, ${t.theme.blue} 100%)`, border: '1px solid #48484a', flexShrink: 0 }} />
+                    <Text style={{ color: terminalThemeId === id ? '#f5f5f7' : '#aeaeb2', fontSize: 12 }}>{t.name}</Text>
+                    {terminalThemeId === id && <CheckCircleOutlined style={{ color: '#0A84FF', marginLeft: 'auto' }} />}
                   </div>
                 ))}
               </div>
-              <Text style={{ color: '#484f58', fontSize: 10, display: 'block', marginTop: 8 }}>主题对新打开的终端会话生效</Text>
+              <Text style={{ color: '#8e8e93', fontSize: 10, display: 'block', marginTop: 8 }}>主题对新打开的终端会话生效</Text>
             </div>
             )}
             </div>
@@ -1758,27 +1758,27 @@ const AgentTerminalPage: React.FC = () => {
         </Drawer>
 
         {/* ========== 主内容区 ========== */}
-        <div style={{ flex: 1, display: 'flex', minHeight: 0, overflow: 'hidden' }}>
+        <div className="agent-main-content" style={{ flex: 1, display: 'flex', minHeight: 0, overflow: 'hidden' }}>
 
           {/* ========== 左侧：会话 / 服务器 边栏（工作台风格） ========== */}
           {!sidebarCollapsed && (
-            <div className="agent-sidebar" style={{ width: 236, flexShrink: 0, display: 'flex', flexDirection: 'column', borderRight: '1px solid rgba(48,54,61,0.7)', background: 'rgba(13,17,23,0.55)', minHeight: 0 }}>
+            <div className="agent-sidebar" style={{ width: 200, flexShrink: 0, display: 'flex', flexDirection: 'column', borderRight: '1px solid rgba(72,72,74,0.8)', background: 'rgba(0,0,0,0.55)', minHeight: 0 }}>
               {/* 会话列表 */}
               <div style={{ padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Text style={{ fontSize: 10, color: '#8b949e', letterSpacing: 1.2 }}>对话 ({sessions.length})</Text>
-                <Button size="small" type="text" icon={<PlusOutlined />} onClick={createSession} title="新建对话" style={{ color: '#00d4aa', padding: 0, width: 22, height: 22 }} />
+                <Text style={{ fontSize: 10, color: '#aeaeb2', letterSpacing: 1.2 }}>对话 ({sessions.length})</Text>
+                <Button size="small" type="text" icon={<PlusOutlined />} onClick={createSession} title="新建对话" style={{ color: '#0A84FF', padding: 0, width: 22, height: 22 }} />
               </div>
               <div style={{ flex: 1, overflow: 'auto', padding: '0 6px 8px' }}>
                 {sessions.map(s => (
                   <div key={s.id} className={`agent-sidebar-item ${activeSessionId === s.id ? 'active' : ''}`} onClick={() => setActiveSessionId(s.id)}
                     style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 8px', borderRadius: 8, cursor: 'pointer' }}>
-                    <MessageOutlined style={{ color: activeSessionId === s.id ? '#00d4aa' : '#6e7681', fontSize: 12, flexShrink: 0 }} />
+                    <MessageOutlined style={{ color: activeSessionId === s.id ? '#0A84FF' : '#8e8e93', fontSize: 12, flexShrink: 0 }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 12, color: activeSessionId === s.id ? '#e6edf3' : '#8b949e', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</div>
-                      <div style={{ fontSize: 10, color: '#484f58' }}>{s.messages.length} 条消息</div>
+                      <div style={{ fontSize: 12, color: activeSessionId === s.id ? '#f5f5f7' : '#aeaeb2', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</div>
+                      <div style={{ fontSize: 10, color: '#8e8e93' }}>{s.messages.length} 条消息</div>
                     </div>
                     <Space size={2} className="agent-sidebar-actions">
-                      <Button size="small" type="text" icon={<EditOutlined />} title="重命名" style={{ color: '#8b949e', padding: 0, width: 20, height: 20 }}
+                      <Button size="small" type="text" icon={<EditOutlined />} title="重命名" style={{ color: '#aeaeb2', padding: 0, width: 20, height: 20 }}
                         onClick={(e) => { e.stopPropagation(); setRenameTarget(s); setRenameName(s.name) }} />
                       <Button size="small" type="text" danger icon={<DeleteOutlined />} title="删除" style={{ padding: 0, width: 20, height: 20 }}
                         onClick={(e) => { e.stopPropagation(); deleteSession(s.id) }} />
@@ -1787,66 +1787,66 @@ const AgentTerminalPage: React.FC = () => {
                 ))}
                 {sessions.length === 0 && (
                   <div style={{ textAlign: 'center', padding: '24px 0' }}>
-                    <Text style={{ fontSize: 11, color: '#484f58' }}>暂无会话，点击 + 新建</Text>
+                    <Text style={{ fontSize: 11, color: '#8e8e93' }}>暂无会话，点击 + 新建</Text>
                   </div>
                 )}
               </div>
 
               {/* 收藏命令 */}
-              <div style={{ padding: '10px 12px', borderTop: '1px solid rgba(48,54,61,0.6)' }}>
-                <Text style={{ fontSize: 10, color: '#8b949e', letterSpacing: 1.2 }}>收藏命令</Text>
+              <div style={{ padding: '10px 12px', borderTop: '1px solid rgba(72,72,74,0.8)' }}>
+                <Text style={{ fontSize: 10, color: '#aeaeb2', letterSpacing: 1.2 }}>收藏命令</Text>
                 <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
                   {favorites.map(f => (
                     <div key={f.command} className="agent-sidebar-item" onClick={() => setInputText(f.command)}
                       style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 8, cursor: 'pointer' }}>
-                      <StarOutlined style={{ color: '#d29922', fontSize: 11, flexShrink: 0 }} />
-                      <div style={{ flex: 1, minWidth: 0, fontSize: 11, color: '#8b949e', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'Consolas, monospace' }}>{f.command}</div>
-                      <Button size="small" type="text" icon={<CloseOutlined />} title="取消收藏" style={{ padding: 0, width: 16, height: 16, color: '#484f58' }}
+                      <StarOutlined style={{ color: '#FF9500', fontSize: 11, flexShrink: 0 }} />
+                      <div style={{ flex: 1, minWidth: 0, fontSize: 11, color: '#aeaeb2', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'Consolas, monospace' }}>{f.command}</div>
+                      <Button size="small" type="text" icon={<CloseOutlined />} title="取消收藏" style={{ padding: 0, width: 16, height: 16, color: '#8e8e93' }}
                         onClick={(e) => { e.stopPropagation(); toggleFavoriteCommand(f.command, f.name) }} />
                     </div>
                   ))}
-                  {favorites.length === 0 && <Text style={{ fontSize: 11, color: '#484f58', padding: '4px 8px' }}>暂无收藏，点击工具卡片星标添加</Text>}
+                  {favorites.length === 0 && <Text style={{ fontSize: 11, color: '#8e8e93', padding: '4px 8px' }}>暂无收藏，点击工具卡片星标添加</Text>}
                 </div>
               </div>
 
               {/* 服务器列表 */}
-              <div style={{ padding: '10px 12px', borderTop: '1px solid rgba(48,54,61,0.6)' }}>
-                <Text style={{ fontSize: 10, color: '#8b949e', letterSpacing: 1.2 }}>服务器</Text>
+              <div style={{ padding: '10px 12px', borderTop: '1px solid rgba(72,72,74,0.8)' }}>
+                <Text style={{ fontSize: 10, color: '#aeaeb2', letterSpacing: 1.2 }}>服务器</Text>
                 <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
                   {servers.map(s => (
                     <div key={s.id} className={`agent-sidebar-item ${selectedServer === s.id ? 'active' : ''}`} onClick={() => handleServerChange(s.id)}
                       style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 8, cursor: 'pointer' }}>
-                      <span style={{ width: 7, height: 7, borderRadius: '50%', background: s.status === 'online' ? '#3fb950' : '#484f58', flexShrink: 0, boxShadow: s.status === 'online' ? '0 0 5px rgba(63,185,80,0.6)' : 'none' }} />
+                      <span style={{ width: 7, height: 7, borderRadius: '50%', background: s.status === 'online' ? '#30D158' : '#636366', flexShrink: 0, boxShadow: s.status === 'online' ? '0 0 5px rgba(63,185,80,0.6)' : 'none' }} />
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 12, color: selectedServer === s.id ? '#e6edf3' : '#8b949e', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</div>
-                        <div style={{ fontSize: 10, color: '#484f58', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.host}</div>
+                        <div style={{ fontSize: 12, color: selectedServer === s.id ? '#f5f5f7' : '#aeaeb2', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</div>
+                        <div style={{ fontSize: 10, color: '#8e8e93', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.host}</div>
                       </div>
-                      {selectedServer === s.id && <LinkOutlined style={{ color: '#00d4aa', fontSize: 11 }} />}
+                      {selectedServer === s.id && <LinkOutlined style={{ color: '#0A84FF', fontSize: 11 }} />}
                     </div>
                   ))}
-                  {servers.length === 0 && <Text style={{ fontSize: 11, color: '#484f58', padding: '4px 8px' }}>暂无在线服务器</Text>}
+                  {servers.length === 0 && <Text style={{ fontSize: 11, color: '#8e8e93', padding: '4px 8px' }}>暂无在线服务器</Text>}
                 </div>
               </div>
             </div>
           )}
 
           {/* ========== 左侧：终端面板 ========== */}
-          <div style={{ flex: '1 1 55%', display: 'flex', flexDirection: 'column', borderRight: '1px solid rgba(48,54,61,0.7)', overflow: 'hidden', minHeight: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 14px', background: 'rgba(22,27,34,0.7)', backdropFilter: 'blur(8px)', borderBottom: '1px solid #30363d' }}>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', borderRight: '1px solid rgba(72,72,74,0.7)', overflow: 'hidden', minHeight: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 14px', background: 'rgba(28,28,30,0.7)', backdropFilter: 'blur(20px) saturate(180%)', borderBottom: '1px solid #48484a', flexShrink: 0 }}>
               <Space>
-                <div style={{ width: 26, height: 26, borderRadius: 7, background: 'rgba(0,212,170,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(0,212,170,0.25)' }}>
-                  <LaptopOutlined style={{ color: '#00d4aa', fontSize: 13 }} />
+                <div style={{ width: 26, height: 26, borderRadius: 7, background: 'rgba(10,132,255,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(10,132,255,0.25)' }}>
+                  <LaptopOutlined style={{ color: '#0A84FF', fontSize: 13 }} />
                 </div>
-                <Text strong style={{ color: '#e6edf3', fontSize: 12 }}>终端</Text>
-                <div style={{ display: 'flex', gap: 4, marginLeft: 8, background: '#0d1117', borderRadius: 6, padding: 2, border: '1px solid #21262d' }}>
-                  <Button size="small" type="text" onClick={() => setTerminalMode('server')} style={terminalMode === 'server' ? { background: '#21262d', color: '#00d4aa', borderRadius: 4, fontSize: 11 } : { color: '#8b949e', fontSize: 11, borderRadius: 4 }}>服务器</Button>
-                  <Button size="small" type="text" onClick={() => setTerminalMode('container')} style={terminalMode === 'container' ? { background: '#21262d', color: '#00d4aa', borderRadius: 4, fontSize: 11 } : { color: '#8b949e', fontSize: 11, borderRadius: 4 }}>容器</Button>
+                <Text strong style={{ color: '#f5f5f7', fontSize: 12 }}>终端</Text>
+                <div style={{ display: 'flex', gap: 4, marginLeft: 8, background: '#000000', borderRadius: 6, padding: 2, border: '1px solid #3a3a3c' }}>
+                  <Button size="small" type="text" onClick={() => setTerminalMode('server')} style={terminalMode === 'server' ? { background: '#3a3a3c', color: '#0A84FF', borderRadius: 4, fontSize: 11 } : { color: '#aeaeb2', fontSize: 11, borderRadius: 4 }}>服务器</Button>
+                  <Button size="small" type="text" onClick={() => setTerminalMode('container')} style={terminalMode === 'container' ? { background: '#3a3a3c', color: '#0A84FF', borderRadius: 4, fontSize: 11 } : { color: '#aeaeb2', fontSize: 11, borderRadius: 4 }}>容器</Button>
                 </div>
               </Space>
               <Space size="small">
                 <Tooltip title="AI 分析终端选中内容">
                   <Button size="small" icon={<RobotOutlined />} onClick={analyzeTerminalSelection}
-                    style={{ borderColor: '#30363d', color: '#00d4aa' }} />
+                    style={{ borderColor: '#48484a', color: '#0A84FF' }} />
                 </Tooltip>
                 {terminalMode === 'container' && <Button size="small" icon={<ReloadOutlined />} onClick={() => selectedServer && loadContainers(selectedServer)} disabled={!selectedServer}>刷新</Button>}
                 <Button size="small" type="primary" icon={<PlusOutlined />}
@@ -1860,32 +1860,32 @@ const AgentTerminalPage: React.FC = () => {
                     }
                   }}
                   disabled={!selectedServer || (terminalMode === 'container' && containers.length === 0)}
-                  style={{ background: 'linear-gradient(135deg, #00d4aa 0%, #00a896 100%)', borderColor: 'transparent', boxShadow: '0 2px 10px rgba(0,212,170,0.3)' }}>新建终端</Button>
+                  style={{ background: 'linear-gradient(135deg, #0A84FF 0%, #0051D5 100%)', borderColor: 'transparent', boxShadow: '0 2px 10px rgba(10,132,255,0.3)' }}>新建终端</Button>
               </Space>
             </div>
             
             {terminalTabs.length === 0 ? (
               <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent' }}>
                 <Empty
-                  image={<LaptopOutlined style={{ fontSize: 44, color: '#30363d' }} />}
-                  description={<span style={{ color: '#8b949e' }}>选择 {terminalMode === 'server' ? '服务器' : '容器'} 打开终端</span>} />
+                  image={<LaptopOutlined style={{ fontSize: 44, color: '#636366' }} />}
+                  description={<span style={{ color: '#aeaeb2' }}>选择 {terminalMode === 'server' ? '服务器' : '容器'} 打开终端</span>} />
               </div>
             ) : (
               <>
-                <div style={{ display: 'flex', background: 'rgba(22,27,34,0.85)', borderBottom: '1px solid #30363d', overflowX: 'auto' }}>
+                <div style={{ display: 'flex', background: 'rgba(28,28,30,0.85)', borderBottom: '1px solid #48484a', overflowX: 'auto' }}>
                   {terminalTabs.map(tab => (
                     <div key={tab.sessionId} onClick={() => setActiveTerminalTab(tab.sessionId)}
                       className={`terminal-tab ${activeTerminalTab === tab.sessionId ? 'active' : ''}`}
-                      style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 7, padding: '8px 16px', cursor: 'pointer', borderRight: '1px solid #21262d', background: activeTerminalTab === tab.sessionId ? 'rgba(0,212,170,0.06)' : 'transparent', fontSize: 12, whiteSpace: 'nowrap' }}>
-                      <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: activeTerminalTab === tab.sessionId ? '#3fb950' : '#30363d', boxShadow: activeTerminalTab === tab.sessionId ? '0 0 6px rgba(63,185,80,0.7)' : 'none' }} />
-                      <span style={{ maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', color: activeTerminalTab === tab.sessionId ? '#e6edf3' : '#8b949e' }}>{tab.containerName}</span>
-                      <CloseOutlined style={{ fontSize: 10, color: '#6e7681', transition: 'color .15s' }} onClick={(e) => { e.stopPropagation(); closeTerminalTab(tab.sessionId) }} />
+                      style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 7, padding: '8px 16px', cursor: 'pointer', borderRight: '1px solid #3a3a3c', background: activeTerminalTab === tab.sessionId ? 'rgba(10,132,255,0.06)' : 'transparent', fontSize: 12, whiteSpace: 'nowrap' }}>
+                      <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: activeTerminalTab === tab.sessionId ? '#30D158' : '#48484a', boxShadow: activeTerminalTab === tab.sessionId ? '0 0 6px rgba(63,185,80,0.7)' : 'none' }} />
+                      <span style={{ maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', color: activeTerminalTab === tab.sessionId ? '#f5f5f7' : '#aeaeb2' }}>{tab.containerName}</span>
+                      <CloseOutlined style={{ fontSize: 10, color: '#8e8e93', transition: 'color .15s' }} onClick={(e) => { e.stopPropagation(); closeTerminalTab(tab.sessionId) }} />
                     </div>
                   ))}
                 </div>
                 <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
                   {terminalTabs.map(tab => (
-                    <div key={tab.sessionId} style={{ display: activeTerminalTab === tab.sessionId ? 'block' : 'none', position: 'absolute', inset: 0, background: '#0d1117' }}>
+                    <div key={tab.sessionId} style={{ display: activeTerminalTab === tab.sessionId ? 'block' : 'none', position: 'absolute', inset: 0, background: '#000000' }}>
                       <div ref={el => { if (el) terminalContainersRef.current.set(tab.sessionId, el) }} style={{ width: '100%', height: '100%' }} />
                     </div>
                   ))}
@@ -1895,50 +1895,49 @@ const AgentTerminalPage: React.FC = () => {
           </div>
 
           {/* ========== 右侧：AI对话面板 ========== */}
-          <div style={{ flex: '1 1 45%', display: 'flex', flexDirection: 'column', background: '#0d1117', overflow: 'hidden' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 16px', background: 'rgba(22,27,34,0.7)', backdropFilter: 'blur(8px)', borderBottom: '1px solid rgba(48,54,61,0.8)' }}>
+          <div className="agent-chat-panel" style={{ width: 480, minWidth: 420, maxWidth: '35%', height: '100%', display: 'flex', flexDirection: 'column', background: '#000000', overflow: 'hidden' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 16px', background: 'rgba(28,28,30,0.7)', backdropFilter: 'blur(20px) saturate(180%)', borderBottom: '1px solid #48484a', flexShrink: 0 }}>
               <Space>
-                <div style={{ width: 26, height: 26, borderRadius: 7, background: 'linear-gradient(135deg, rgba(0,212,170,0.16), rgba(88,166,255,0.16))', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(0,212,170,0.3)' }}>
-                  <RobotOutlined style={{ color: '#00d4aa', fontSize: 13 }} />
+                <div style={{ width: 26, height: 26, borderRadius: 7, background: 'linear-gradient(135deg, rgba(10,132,255,0.16), rgba(88,166,255,0.16))', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(10,132,255,0.3)' }}>
+                  <RobotOutlined style={{ color: '#0A84FF', fontSize: 13 }} />
                 </div>
-                <Text strong style={{ color: '#e6edf3', fontSize: 12, letterSpacing: 0.5 }}>AI 对话</Text>
                 {activeSessionId && (
-                  <Tag style={{ margin: 0, fontSize: 11, background: 'rgba(88,166,255,0.12)', border: '1px solid rgba(88,166,255,0.35)', color: '#58a6ff', borderRadius: 999 }}>
+                  <Tag style={{ margin: 0, fontSize: 11, background: 'rgba(88,166,255,0.12)', border: '1px solid rgba(88,166,255,0.35)', color: '#0A84FF', borderRadius: 999 }}>
                     {sessions.find(s => s.id === activeSessionId)?.name}
                   </Tag>
                 )}
                 {/* 模型快速切换（激活提供商档案） */}
                 <Select value={modelConfig.activeProfileId} onChange={v => activateProfile(v)} size="small" variant="borderless"
-                  style={{ minWidth: 96, fontSize: 11, color: '#8b949e' }}
-                  suffixIcon={<ThunderboltOutlined style={{ color: '#00d4aa', fontSize: 10 }} />}
+                  style={{ minWidth: 96, fontSize: 11, color: '#aeaeb2' }}
+                  suffixIcon={<ThunderboltOutlined style={{ color: '#0A84FF', fontSize: 10 }} />}
                   options={(modelConfig.providerProfiles || []).map(p => ({ value: p.id, label: `${p.name} · ${p.model || '未选模型'}` }))} />
               </Space>
               <Space size={2}>
-                <Tooltip title="智能诊断修复"><Button size="small" type="text" icon={<ThunderboltFilled />} onClick={runIntelligentDiagnosis} loading={runningDiagnostics} style={{ color: '#00d4aa' }} /></Tooltip>
-                <Tooltip title="系统诊断"><Button size="small" type="text" icon={<ScanOutlined />} onClick={runDiagnostics} loading={runningDiagnostics} style={{ color: '#8b949e' }} /></Tooltip>
-                <Tooltip title="命令历史"><Button size="small" type="text" icon={<HistoryOutlined />} onClick={() => setShowHistory(true)} style={{ color: '#8b949e' }} /></Tooltip>
-                <Tooltip title="新建对话"><Button size="small" type="text" icon={<PlusOutlined />} onClick={createSession} style={{ color: '#8b949e' }} /></Tooltip>
+                <Tooltip title="智能诊断修复"><Button size="small" type="text" icon={<ThunderboltFilled />} onClick={runIntelligentDiagnosis} loading={runningDiagnostics} style={{ color: '#0A84FF' }} /></Tooltip>
+                <Tooltip title="系统诊断"><Button size="small" type="text" icon={<ScanOutlined />} onClick={runDiagnostics} loading={runningDiagnostics} style={{ color: '#aeaeb2' }} /></Tooltip>
+                <Tooltip title="命令历史"><Button size="small" type="text" icon={<HistoryOutlined />} onClick={() => setShowHistory(true)} style={{ color: '#aeaeb2' }} /></Tooltip>
+                <Tooltip title="新建对话"><Button size="small" type="text" icon={<PlusOutlined />} onClick={createSession} style={{ color: '#aeaeb2' }} /></Tooltip>
                 <Tooltip title="清空对话"><Button size="small" type="text" icon={<ClearOutlined />} onClick={clearMessages} disabled={messages.length === 0} /></Tooltip>
               </Space>
             </div>
 
-            <div ref={messagesRef} style={{ flex: 1, overflow: 'auto', padding: 16 }}>
+            <div ref={messagesRef} className="agent-messages" style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: 16 }}>
               {messages.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '60px 0' }}>
-                  <div style={{ width: 76, height: 76, margin: '0 auto 20px', borderRadius: 20, background: 'radial-gradient(circle at 30% 30%, rgba(0,212,170,0.25), rgba(88,166,255,0.08) 70%)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(0,212,170,0.2)', animation: 'glow-pulse 3.2s ease-in-out infinite' }}>
-                    <RobotOutlined style={{ fontSize: 32, color: '#00d4aa' }} />
+                  <div style={{ width: 76, height: 76, margin: '0 auto 20px', borderRadius: 20, background: 'radial-gradient(circle at 30% 30%, rgba(10,132,255,0.25), rgba(88,166,255,0.08) 70%)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(10,132,255,0.2)', animation: 'glow-pulse 3.2s ease-in-out infinite' }}>
+                    <RobotOutlined style={{ fontSize: 32, color: '#0A84FF' }} />
                   </div>
-                  <Text style={{ color: '#e6edf3', fontSize: 15, fontWeight: 600, display: 'block' }}>开始与 AI 对话，管理你的服务器</Text>
-                  <Text type="secondary" style={{ color: '#6e7681', fontSize: 12, display: 'block', marginTop: 6 }}>支持工具调用 · 智能诊断 · 风险审批</Text>
+                  <Text style={{ color: '#f5f5f7', fontSize: 15, fontWeight: 600, display: 'block' }}>开始与 AI 对话，管理你的服务器</Text>
+                  <Text type="secondary" style={{ color: '#8e8e93', fontSize: 12, display: 'block', marginTop: 6 }}>支持工具调用 · 智能诊断 · 风险审批</Text>
                   <div style={{ marginTop: 28 }}>
-                    <Text style={{ color: '#8b949e', fontSize: 11, marginBottom: 12, display: 'block', letterSpacing: 1 }}>快捷命令</Text>
-                    <Space wrap size={8}>
+                    <Text style={{ color: '#aeaeb2', fontSize: 11, marginBottom: 12, display: 'block', letterSpacing: 1 }}>快捷命令</Text>
+                    <Space wrap size={[8, 8]} style={{ width: '100%' }}>
                       {(modelConfig.quickMessages && modelConfig.quickMessages.length > 0 ? modelConfig.quickMessages : [
                         '请对当前服务器做一次综合健康检查',
                         '列出当前服务器上运行的所有 Docker 容器',
                         '查看服务器 CPU、内存、磁盘使用率'
                       ]).map((tip, i) => (
-                        <Tag key={i} className="quick-tip" onClick={() => setInputText(tip)}>{tip.slice(0, 14)}{tip.length > 14 ? '…' : ''}</Tag>
+                        <Tag key={i} className="quick-tip" onClick={() => setInputText(tip)} style={{ maxWidth: '100%', whiteSpace: 'normal', height: 'auto', lineHeight: '20px', padding: '4px 12px', textAlign: 'left' }}>{tip.slice(0, 20)}{tip.length > 20 ? '…' : ''}</Tag>
                       ))}
                     </Space>
                   </div>
@@ -1948,7 +1947,7 @@ const AgentTerminalPage: React.FC = () => {
                   <div key={msg.id} style={{ marginBottom: 16, display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
                     {/* 用户消息 */}
                     {msg.role === 'user' && (
-                      <div className="user-msg-bubble" style={{ maxWidth: '85%', padding: '10px 14px', borderRadius: 12, background: 'linear-gradient(135deg, #00d4aa 0%, #00a896 100%)', color: '#fff', borderTopRightRadius: 4 }}>
+                      <div className="user-msg-bubble" style={{ maxWidth: '85%', padding: '10px 14px', background: 'linear-gradient(135deg, #0A84FF 0%, #0051D5 100%)', color: '#fff' }}>
                         <div style={{ fontSize: 13, whiteSpace: 'pre-wrap' }}>{msg.content}</div>
                         <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.6)', marginTop: 4 }}>{new Date(msg.timestamp).toLocaleTimeString()}</div>
                       </div>
@@ -1959,14 +1958,14 @@ const AgentTerminalPage: React.FC = () => {
                       <div style={{ maxWidth: '92%', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
                         <div className="ai-avatar"><RobotOutlined style={{ color: '#fff', fontSize: 13 }} /></div>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                        <div className="ai-msg-bubble" style={{ padding: msg.status === 'running' ? '10px 14px' : '12px 14px', borderRadius: 12, borderTopLeftRadius: 4 }}>
+                        <div className="ai-msg-bubble" style={{ padding: msg.status === 'running' ? '10px 14px' : '12px 14px' }}>
                           {/* 分段内容：文本 / 工具调用 按真实执行顺序交错 */}
                           {msg.segments && msg.segments.length > 0 ? (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                               {msg.segments.map((seg, idx) => (
                                 <div key={idx}>
                                   {seg.type === 'text' ? (
-                                    <div style={{ fontSize: 13, lineHeight: 1.65, color: '#e6edf3' }} dangerouslySetInnerHTML={{ __html: renderMarkdown(seg.text) }} />
+                                    <div style={{ fontSize: 13, lineHeight: 1.65, color: '#f5f5f7' }} dangerouslySetInnerHTML={{ __html: renderMarkdown(seg.text) }} />
                                   ) : (
                                     <ToolCallCard tc={seg.toolCall} />
                                   )}
@@ -1979,7 +1978,7 @@ const AgentTerminalPage: React.FC = () => {
                               {/* 旧消息（无 segments）兼容：纯文本 + 工具调用列表 */}
                               <div style={{ display: 'flex', alignItems: 'flex-start' }}>
                                 <div style={{ flex: 1 }}>
-                                  <Text style={{ color: '#e6edf3', fontSize: 13, whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
+                                  <Text style={{ color: '#f5f5f7', fontSize: 13, whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
                                     {msg.content || '思考中'}
                                     {msg.status === 'running' && <span className="typing-cursor" />}
                                   </Text>
@@ -1996,28 +1995,28 @@ const AgentTerminalPage: React.FC = () => {
                           {/* 命令列表（历史兼容） */}
                           {msg.commands && msg.commands.length > 0 && (
                             <Space direction="vertical" size={6} style={{ width: '100%', marginTop: 12 }}>
-                              <Text style={{ fontSize: 11, color: '#8b949e', letterSpacing: 0.5 }}>建议命令</Text>
+                              <Text style={{ fontSize: 11, color: '#aeaeb2', letterSpacing: 0.5 }}>建议命令</Text>
                               {msg.commands.map((cmd, idx) => (
-                                <div key={idx} className="cmd-card" style={{ background: 'rgba(13,17,23,0.8)', padding: 8, borderRadius: 8, border: '1px solid #21262d' }}>
+                                <div key={idx} className="cmd-card" style={{ background: 'rgba(0,0,0,0.8)', padding: 8, borderRadius: 8, border: '1px solid #3a3a3c' }}>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                    <CodeOutlined style={{ color: '#3fb950' }} />
-                                    <Text code style={{ color: '#3fb950', fontSize: 12, flex: 1, background: 'transparent', padding: 0, fontFamily: 'Consolas, monospace' }}>$ {cmd.command}</Text>
+                                    <CodeOutlined style={{ color: '#30D158' }} />
+                                    <Text code style={{ color: '#30D158', fontSize: 12, flex: 1, background: 'transparent', padding: 0, fontFamily: 'Consolas, monospace' }}>$ {cmd.command}</Text>
                                     {cmd.riskLevel && cmd.riskLevel !== 'low' && (
                                       <Tag color={getRiskColor(cmd.riskLevel)} style={{ fontSize: 10, margin: 0, padding: '0 6px', borderRadius: 999 }}>
                                         {cmd.riskLevel === 'high' ? '高风险' : '中风险'}
                                       </Tag>
                                     )}
                                     <Tooltip title="在终端中运行">
-                                      <Button size="small" type="text" icon={<PlayCircleOutlined />} style={{ color: '#00d4aa', padding: 0, width: 20, height: 20 }}
+                                      <Button size="small" type="text" icon={<PlayCircleOutlined />} style={{ color: '#0A84FF', padding: 0, width: 20, height: 20 }}
                                         onClick={() => executeCommandInTerminal(cmd.command)} disabled={!activeTerminalTab} />
                                     </Tooltip>
                                     <Tooltip title="复制">
-                                      <Button size="small" type="text" icon={<CopyOutlined />} style={{ color: '#8b949e', padding: 0, width: 20, height: 20 }}
+                                      <Button size="small" type="text" icon={<CopyOutlined />} style={{ color: '#aeaeb2', padding: 0, width: 20, height: 20 }}
                                         onClick={() => { navigator.clipboard.writeText(cmd.command); message.success('已复制') }} />
                                     </Tooltip>
                                   </div>
                                   {cmd.output && (
-                                    <pre style={{ marginTop: 8, marginBottom: 0, maxHeight: 120, overflow: 'auto', fontSize: 11, color: '#8b949e', background: 'rgba(22,27,34,0.6)', padding: 8, borderRadius: 4, border: '1px solid #21262d' }}>
+                                    <pre style={{ marginTop: 8, marginBottom: 0, maxHeight: 120, overflow: 'auto', fontSize: 11, color: '#aeaeb2', background: 'rgba(28,28,30,0.6)', padding: 8, borderRadius: 4, border: '1px solid #3a3a3c' }}>
                                       {cmd.output}
                                     </pre>
                                   )}
@@ -2025,13 +2024,13 @@ const AgentTerminalPage: React.FC = () => {
                               ))}
                               {msg.status === 'success' && !msg.commands[0]?.output && (
                                 <Space size={8}>
-                                  <Button size="small" type="primary" icon={<PlayCircleOutlined />} onClick={() => executeMessageCommands(msg.id)} disabled={!connected} style={{ background: '#00d4aa', borderColor: '#00d4aa', borderRadius: 6 }}>
+                                  <Button size="small" type="primary" icon={<PlayCircleOutlined />} onClick={() => executeMessageCommands(msg.id)} disabled={!connected} style={{ background: '#0A84FF', borderColor: '#0A84FF', borderRadius: 6 }}>
                                     后台执行
                                   </Button>
                                   <Button size="small" icon={<LaptopOutlined />} onClick={() => {
                                     if (!activeTerminalTab) { message.warning('请先打开终端'); return }
                                     msg.commands?.forEach(cmd => executeCommandInTerminal(cmd.command))
-                                  }} disabled={!activeTerminalTab} style={{ borderColor: '#30363d', color: '#e6edf3', borderRadius: 6 }}>
+                                  }} disabled={!activeTerminalTab} style={{ borderColor: '#48484a', color: '#f5f5f7', borderRadius: 6 }}>
                                     在终端中执行
                                   </Button>
                                 </Space>
@@ -2040,7 +2039,7 @@ const AgentTerminalPage: React.FC = () => {
                           )}
 
                           {/* 时间戳 + 操作 */}
-                          <div style={{ fontSize: 10, color: '#484f58', marginTop: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <div style={{ fontSize: 10, color: '#8e8e93', marginTop: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
                             {new Date(msg.timestamp).toLocaleTimeString()}
                             {msg.metadata?.executionTime && <span>⏱ {msg.metadata.executionTime}ms</span>}
                             {msg.metadata?.route && msg.metadata.route !== 'execution' && (
@@ -2050,7 +2049,7 @@ const AgentTerminalPage: React.FC = () => {
                             )}
                             <span style={{ flex: 1 }} />
                             <Tooltip title="复制回复">
-                              <Button size="small" type="text" icon={<CopyOutlined />} style={{ color: '#6e7681', padding: 0, width: 20, height: 20 }}
+                              <Button size="small" type="text" icon={<CopyOutlined />} style={{ color: '#8e8e93', padding: 0, width: 20, height: 20 }}
                                 onClick={() => { navigator.clipboard.writeText(msg.content); message.success('已复制') }} />
                             </Tooltip>
                           </div>
@@ -2064,18 +2063,18 @@ const AgentTerminalPage: React.FC = () => {
             </div>
 
             {/* 输入区 */}
-            <div className="agent-input" style={{ padding: 14, borderTop: '1px solid rgba(48,54,61,0.8)', background: 'rgba(22,27,34,0.85)' }}>
-              <Space.Compact style={{ width: '100%' }}>
-                <TextArea 
+            <div className="agent-input" style={{ padding: 14, borderTop: '1px solid rgba(72,72,74,0.8)', background: 'rgba(28,28,30,0.85)', flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'stretch', gap: 0 }}>
+                <TextArea
                   ref={inputRef}
                   autoFocus
-                  placeholder={modelConfig.apiKey && modelConfig.model ? "输入你的问题，例如：检查服务器状态" : "请先配置 AI 模型"} 
+                  placeholder={modelConfig.apiKey && modelConfig.model ? "输入你的问题，例如：检查服务器状态" : "请先配置 AI 模型"}
                   value={inputText}
-                  onChange={e => setInputText(e.target.value)} 
+                  onChange={e => setInputText(e.target.value)}
                   onPressEnter={e => { if (!e.shiftKey) { e.preventDefault(); sendMessage() } }}
-                  autoSize={{ minRows: 1, maxRows: 4 }} 
+                  autoSize={{ minRows: 1, maxRows: 4 }}
                   disabled={loading || !modelConfig.apiKey || !modelConfig.model}
-                  style={{ background: '#0d1117', border: '1px solid #30363d', color: '#e6edf3', borderRadius: 8 }} />
+                  style={{ flex: 1, background: '#000000', border: '1px solid #48484a', color: '#f5f5f7', borderRadius: '8px 0 0 8px', resize: 'none' }} />
                 {loading && (
                   <Tooltip title="停止生成">
                     <Button icon={<CloseOutlined />} onClick={() => {
@@ -2083,16 +2082,16 @@ const AgentTerminalPage: React.FC = () => {
                         window.electronAPI.opsAgent.cancel(currentRequestIdRef.current)
                       }
                     }}
-                      style={{ background: '#21262d', borderColor: '#30363d', color: '#ff7b72', borderRadius: 0 }} />
+                      style={{ background: '#3a3a3c', borderColor: '#48484a', color: '#FF453A', borderRadius: 0, flexShrink: 0 }} />
                   </Tooltip>
                 )}
                 <Button type="primary" icon={loading ? <LoadingOutlined /> : <SendOutlined />} onClick={sendMessage}
-                  disabled={loading || !inputText.trim() || !modelConfig.apiKey || !modelConfig.model} 
-                  style={{ background: 'linear-gradient(135deg, #00d4aa 0%, #00a896 100%)', borderColor: 'transparent', borderTopRightRadius: 8, borderBottomRightRadius: 8 }} />
-              </Space.Compact>
+                  disabled={loading || !inputText.trim() || !modelConfig.apiKey || !modelConfig.model}
+                  style={{ background: 'linear-gradient(135deg, #0A84FF 0%, #0051D5 100%)', borderColor: 'transparent', borderRadius: '0 8px 8px 0', boxShadow: '0 2px 10px rgba(10,132,255,0.2)', flexShrink: 0, display: 'flex', alignItems: 'center' }} />
+              </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6, padding: '0 2px' }}>
-                <Text style={{ fontSize: 10, color: '#484f58' }}>Enter 发送 · Shift+Enter 换行</Text>
-                {selectedServer && <Text style={{ fontSize: 10, color: '#3fb950' }}><LinkOutlined style={{ marginRight: 3 }} />已连接 {servers.find(s => s.id === selectedServer)?.name}</Text>}
+                <Text style={{ fontSize: 10, color: '#8e8e93' }}>Enter 发送 · Shift+Enter 换行</Text>
+                {selectedServer && <Text style={{ fontSize: 10, color: '#30D158' }}><LinkOutlined style={{ marginRight: 3 }} />已连接 {servers.find(s => s.id === selectedServer)?.name}</Text>}
               </div>
             </div>
           </div>
@@ -2101,28 +2100,28 @@ const AgentTerminalPage: React.FC = () => {
         {/* ========== 模态框 ========== */}
         
         {/* 容器选择 */}
-        <Modal title={<Space><LaptopOutlined style={{ color: '#00d4aa' }} /><span style={{ color: '#e6edf3' }}>打开容器终端</span></Space>} open={openNewModal} 
+        <Modal title={<Space><LaptopOutlined style={{ color: '#0A84FF' }} /><span style={{ color: '#f5f5f7' }}>打开容器终端</span></Space>} open={openNewModal} 
           onOk={() => { if (selectedContainerId) { const c = containers.find(x => x.id === selectedContainerId); if (c) openNewTerminal(c.id, c.name, 'container') } setOpenNewModal(false) }} 
           onCancel={() => setOpenNewModal(false)} okButtonProps={{ disabled: !selectedContainerId }}
-          styles={{ body: { background: '#161b22' }, content: { background: '#161b22', border: '1px solid #30363d' }, header: { background: '#161b22', borderBottom: '1px solid #21262d' } }}>
+          styles={{ body: { background: '#1c1c1e' }, content: { background: '#1c1c1e', border: '1px solid #48484a' }, header: { background: '#1c1c1e', borderBottom: '1px solid #3a3a3c' } }}>
           <Select style={{ width: '100%' }} placeholder="请选择容器" value={selectedContainerId} onChange={setSelectedContainerId}
-            options={containers.map(c => ({ value: c.id, label: <Space><span style={{ color: '#e6edf3' }}>{c.name}</span><Tag color="blue" style={{ borderRadius: 999 }}>{c.image}</Tag><Tag color={c.status.includes('running') ? 'green' : 'default'} style={{ borderRadius: 999 }}>{c.status}</Tag></Space> }))} />
+            options={containers.map(c => ({ value: c.id, label: <Space><span style={{ color: '#f5f5f7' }}>{c.name}</span><Tag color="blue" style={{ borderRadius: 999 }}>{c.image}</Tag><Tag color={c.status.includes('running') ? 'green' : 'default'} style={{ borderRadius: 999 }}>{c.status}</Tag></Space> }))} />
         </Modal>
 
         {/* 诊断报告 */}
-        <Modal title={<Space><ScanOutlined style={{ color: '#58a6ff' }} /><span style={{ color: '#e6edf3' }}>系统诊断报告</span></Space>} open={showDiagnostics} onCancel={() => setShowDiagnostics(false)} footer={null} width={600}
-          styles={{ body: { background: '#161b22' }, content: { background: '#161b22', border: '1px solid #30363d' }, header: { background: '#161b22', borderBottom: '1px solid #21262d' } }}>
+        <Modal title={<Space><ScanOutlined style={{ color: '#0A84FF' }} /><span style={{ color: '#f5f5f7' }}>系统诊断报告</span></Space>} open={showDiagnostics} onCancel={() => setShowDiagnostics(false)} footer={null} width={600}
+          styles={{ body: { background: '#1c1c1e' }, content: { background: '#1c1c1e', border: '1px solid #48484a' }, header: { background: '#1c1c1e', borderBottom: '1px solid #3a3a3c' } }}>
           <Space direction="vertical" style={{ width: '100%' }} size="middle">
             {diagnostics.map((d, i) => (
-              <Card key={i} size="small" style={{ background: 'rgba(13,17,23,0.8)', border: '1px solid #21262d', borderRadius: 10 }}>
+              <Card key={i} size="small" style={{ background: 'rgba(0,0,0,0.8)', border: '1px solid #3a3a3c', borderRadius: 10 }}>
                 <Space>
-                  {d.status === 'healthy' && <CheckCircleOutlined style={{ color: '#3fb950', fontSize: 16 }} />}
+                  {d.status === 'healthy' && <CheckCircleOutlined style={{ color: '#30D158', fontSize: 16 }} />}
                   {d.status === 'warning' && <ExclamationCircleOutlined style={{ color: '#FF9500', fontSize: 16 }} />}
-                  {d.status === 'critical' && <CloseCircleOutlined style={{ color: '#ff7b72', fontSize: 16 }} />}
+                  {d.status === 'critical' && <CloseCircleOutlined style={{ color: '#FF453A', fontSize: 16 }} />}
                   <div>
-                    <Text strong style={{ color: '#e6edf3', textTransform: 'capitalize' }}>{d.type}</Text>
-                    <div><Text style={{ color: '#8b949e', fontSize: 12 }}>{d.message}</Text></div>
-                    {d.suggestion && <div><Text style={{ color: '#d29922', fontSize: 11 }}>💡 {d.suggestion}</Text></div>}
+                    <Text strong style={{ color: '#f5f5f7', textTransform: 'capitalize' }}>{d.type}</Text>
+                    <div><Text style={{ color: '#aeaeb2', fontSize: 12 }}>{d.message}</Text></div>
+                    {d.suggestion && <div><Text style={{ color: '#FF9500', fontSize: 11 }}>💡 {d.suggestion}</Text></div>}
                   </div>
                 </Space>
               </Card>
@@ -2131,15 +2130,15 @@ const AgentTerminalPage: React.FC = () => {
         </Modal>
 
         {/* 命令历史 */}
-        <Modal title={<Space><HistoryOutlined style={{ color: '#58a6ff' }} /><span style={{ color: '#e6edf3' }}>命令历史</span></Space>} open={showHistory} onCancel={() => setShowHistory(false)} footer={null} width={700}
-          styles={{ body: { background: '#161b22', maxHeight: 500, overflow: 'auto' }, content: { background: '#161b22', border: '1px solid #30363d' }, header: { background: '#161b22', borderBottom: '1px solid #21262d' } }}>
+        <Modal title={<Space><HistoryOutlined style={{ color: '#0A84FF' }} /><span style={{ color: '#f5f5f7' }}>命令历史</span></Space>} open={showHistory} onCancel={() => setShowHistory(false)} footer={null} width={700}
+          styles={{ body: { background: '#1c1c1e', maxHeight: 500, overflow: 'auto' }, content: { background: '#1c1c1e', border: '1px solid #48484a' }, header: { background: '#1c1c1e', borderBottom: '1px solid #3a3a3c' } }}>
           <List dataSource={commandHistory.slice(0, 50)} renderItem={item => (
-            <List.Item style={{ borderBottom: '1px solid #21262d', padding: '8px 0' }}>
+            <List.Item style={{ borderBottom: '1px solid #3a3a3c', padding: '8px 0' }}>
               <div style={{ width: '100%' }}>
                 <Space style={{ width: '100%', justifyContent: 'space-between' }}>
-                  <Text code style={{ color: '#3fb950', fontSize: 12, background: 'rgba(13,17,23,0.6)', padding: '2px 8px', borderRadius: 4, fontFamily: 'Consolas, monospace' }}>{item.command}</Text>
+                  <Text code style={{ color: '#30D158', fontSize: 12, background: 'rgba(0,0,0,0.6)', padding: '2px 8px', borderRadius: 4, fontFamily: 'Consolas, monospace' }}>{item.command}</Text>
                   <Space size={8}>
-                    {item.success ? <CheckCircleOutlined style={{ color: '#3fb950' }} /> : <CloseCircleOutlined style={{ color: '#ff7b72' }} />}
+                    {item.success ? <CheckCircleOutlined style={{ color: '#30D158' }} /> : <CloseCircleOutlined style={{ color: '#FF453A' }} />}
                     <Text type="secondary" style={{ fontSize: 11 }}>{item.executionTime}ms</Text>
                   </Space>
                 </Space>
@@ -2150,29 +2149,29 @@ const AgentTerminalPage: React.FC = () => {
         </Modal>
 
         {/* 安全审批 */}
-        <Modal title={<Space><SafetyOutlined style={{ color: '#FF9500' }} /><span style={{ color: '#e6edf3' }}>安全审批</span>
+        <Modal title={<Space><SafetyOutlined style={{ color: '#FF9500' }} /><span style={{ color: '#f5f5f7' }}>安全审批</span>
           {approvalQueue.length > 1 && <Tag color="orange" style={{ fontSize: 10, margin: 0 }}>队列 {approvalQueue.length} 项</Tag>}</Space>} 
           open={!!currentApproval} onCancel={() => handleApproval(false)} onOk={() => handleApproval(true)} 
           okText="确认执行" cancelText="取消" okButtonProps={{ danger: currentApproval?.riskLevel === 'high' }}
-          styles={{ body: { background: '#161b22' }, content: { background: '#161b22', border: '1px solid #30363d' }, header: { background: '#161b22', borderBottom: '1px solid #21262d' } }}>
+          styles={{ body: { background: '#1c1c1e' }, content: { background: '#1c1c1e', border: '1px solid #48484a' }, header: { background: '#1c1c1e', borderBottom: '1px solid #3a3a3c' } }}>
           {currentApproval && (
             <div>
               <Alert message={`风险等级: ${currentApproval.riskLevel === 'high' ? '高风险' : '中风险'}`} 
                 type={currentApproval.riskLevel === 'high' ? 'error' : 'warning'} showIcon style={{ marginBottom: 16, borderRadius: 8 }}
-                action={<span style={{ color: approvalCountdown <= 10 ? '#ff7b72' : '#8b949e', fontSize: 12, fontWeight: 600 }}>{approvalCountdown}s</span>} />
-              <Text style={{ color: '#8b949e', fontSize: 11, display: 'block', marginBottom: 6 }}>执行命令</Text>
-              <pre style={{ background: 'rgba(13,17,23,0.85)', padding: 12, borderRadius: 8, color: '#ff7b72', border: '1px solid rgba(255,123,114,0.3)', fontFamily: 'Consolas, monospace', fontSize: 12, whiteSpace: 'pre-wrap' }}>{currentApproval.action}</pre>
+                action={<span style={{ color: approvalCountdown <= 10 ? '#FF453A' : '#aeaeb2', fontSize: 12, fontWeight: 600 }}>{approvalCountdown}s</span>} />
+              <Text style={{ color: '#aeaeb2', fontSize: 11, display: 'block', marginBottom: 6 }}>执行命令</Text>
+              <pre style={{ background: 'rgba(0,0,0,0.85)', padding: 12, borderRadius: 8, color: '#FF453A', border: '1px solid rgba(255,123,114,0.3)', fontFamily: 'Consolas, monospace', fontSize: 12, whiteSpace: 'pre-wrap' }}>{currentApproval.action}</pre>
             </div>
           )}
         </Modal>
 
         {/* 会话重命名 */}
-        <Modal title={<Space><EditOutlined style={{ color: '#58a6ff' }} /><span style={{ color: '#e6edf3' }}>重命名会话</span></Space>}
+        <Modal title={<Space><EditOutlined style={{ color: '#0A84FF' }} /><span style={{ color: '#f5f5f7' }}>重命名会话</span></Space>}
           open={!!renameTarget} onOk={renameSession} onCancel={() => setRenameTarget(null)}
           okText="保存" cancelText="取消"
-          styles={{ body: { background: '#161b22' }, content: { background: '#161b22', border: '1px solid #30363d' }, header: { background: '#161b22', borderBottom: '1px solid #21262d' } }}>
+          styles={{ body: { background: '#1c1c1e' }, content: { background: '#1c1c1e', border: '1px solid #48484a' }, header: { background: '#1c1c1e', borderBottom: '1px solid #3a3a3c' } }}>
           <Input value={renameName} onChange={e => setRenameName(e.target.value)} placeholder="输入新的会话名称"
-            onPressEnter={renameSession} size="small" style={{ background: '#0d1117', border: '1px solid #30363d', color: '#e6edf3' }} />
+            onPressEnter={renameSession} size="small" style={{ background: '#000000', border: '1px solid #48484a', color: '#f5f5f7' }} />
         </Modal>
       </div>
     </ConfigProvider>

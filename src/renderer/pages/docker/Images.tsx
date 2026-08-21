@@ -604,9 +604,9 @@ const Images: React.FC = () => {
             style={{
               maxHeight: 500,
               overflow: 'auto',
-              backgroundColor: '#f5f5f5',
+              backgroundColor: 'var(--app-hover-bg)',
               padding: 16,
-              borderRadius: 4,
+              borderRadius: 6,
               fontSize: 12
             }}
           >

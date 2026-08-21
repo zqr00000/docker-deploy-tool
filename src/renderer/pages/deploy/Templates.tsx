@@ -359,50 +359,58 @@ const Templates: React.FC = () => {
       {/* Stats Cards - Responsive Row/Col */}
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
         <Col xs={12} sm={12} md={6}>
-          <Card>
+          <Card hoverable>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div>
                 <Text type="secondary">{t('template.totalTemplates')}</Text>
-                <div style={{ fontSize: 24, fontWeight: 'bold' }}>{stats.total}</div>
+                <div style={{ fontSize: 24, fontWeight: 700 }}>{stats.total}</div>
               </div>
-              <AppstoreOutlined style={{ fontSize: 32, color: '#1890ff' }} />
+              <div style={{ width: 44, height: 44, borderRadius: 10, background: 'rgba(0, 122, 255, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <AppstoreOutlined style={{ fontSize: 20, color: '#007AFF' }} />
+              </div>
             </div>
           </Card>
         </Col>
         <Col xs={12} sm={12} md={6}>
-          <Card>
+          <Card hoverable>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div>
                 <Text type="secondary">{t('template.appStacks')}</Text>
-                <div style={{ fontSize: 24, fontWeight: 'bold', color: '#f5222d' }}>{stats.stackCount}</div>
+                <div style={{ fontSize: 24, fontWeight: 700, color: '#FF3B30' }}>{stats.stackCount}</div>
               </div>
-              <ClusterOutlined style={{ fontSize: 32, color: '#f5222d' }} />
+              <div style={{ width: 44, height: 44, borderRadius: 10, background: 'rgba(255, 59, 48, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <ClusterOutlined style={{ fontSize: 20, color: '#FF3B30' }} />
+              </div>
             </div>
           </Card>
         </Col>
         <Col xs={12} sm={12} md={6}>
-          <Card>
+          <Card hoverable>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div>
                 <Text type="secondary">{t('template.builtInTemplates')}</Text>
-                <div style={{ fontSize: 24, fontWeight: 'bold', color: '#34C759' }}>
+                <div style={{ fontSize: 24, fontWeight: 700, color: '#34C759' }}>
                   {stats.builtInCount}
                 </div>
               </div>
-              <CloudServerOutlined style={{ fontSize: 32, color: '#34C759' }} />
+              <div style={{ width: 44, height: 44, borderRadius: 10, background: 'rgba(52, 199, 89, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <CloudServerOutlined style={{ fontSize: 20, color: '#34C759' }} />
+              </div>
             </div>
           </Card>
         </Col>
         <Col xs={12} sm={12} md={6}>
-          <Card>
+          <Card hoverable>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div>
                 <Text type="secondary">{t('template.customTemplates')}</Text>
-                <div style={{ fontSize: 24, fontWeight: 'bold', color: '#FF9500' }}>
+                <div style={{ fontSize: 24, fontWeight: 700, color: '#FF9500' }}>
                   {stats.customCount}
                 </div>
               </div>
-              <LaptopOutlined style={{ fontSize: 32, color: '#FF9500' }} />
+              <div style={{ width: 44, height: 44, borderRadius: 10, background: 'rgba(255, 149, 0, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <LaptopOutlined style={{ fontSize: 20, color: '#FF9500' }} />
+              </div>
             </div>
           </Card>
         </Col>
@@ -575,9 +583,9 @@ const Templates: React.FC = () => {
             <Text strong>{t('template.dockerCompose')}:</Text>
             <pre
               style={{
-                background: '#f5f5f5',
+                background: 'var(--app-hover-bg)',
                 padding: 16,
-                borderRadius: 4,
+                borderRadius: 6,
                 marginTop: 8,
                 overflow: 'auto',
                 maxHeight: 400,

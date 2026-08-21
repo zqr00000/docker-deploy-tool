@@ -83,9 +83,9 @@ class ErrorBoundary extends Component<Props, State> {
                           <Paragraph>
                             <pre
                               style={{
-                                background: '#f5f5f5',
+                                background: 'var(--app-hover-bg)',
                                 padding: 16,
-                                borderRadius: 4,
+                                borderRadius: 6,
                                 maxHeight: 200,
                                 overflow: 'auto',
                                 fontSize: 12

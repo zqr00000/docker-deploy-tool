@@ -586,7 +586,7 @@ const CicdIntegration: React.FC = () => {
             <Statistic
               title={t('cicd.failedDeploys')}
               value={deployments.filter(d => d.status === 'failed').length}
-              valueStyle={{ color: '#cf1322' }}
+              valueStyle={{ color: '#FF3B30' }}
               prefix={<CloseCircleOutlined />}
             />
           </Card>
@@ -737,7 +737,7 @@ const CicdIntegration: React.FC = () => {
                   background: '#1e1e1e',
                   color: '#d4d4d4',
                   padding: 16,
-                  borderRadius: 4,
+                  borderRadius: 6,
                   maxHeight: 300,
                   overflow: 'auto',
                   fontSize: 12,

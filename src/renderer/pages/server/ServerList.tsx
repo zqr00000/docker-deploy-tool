@@ -1,40 +1,87 @@
-﻿import React, { useState, useCallback, useMemo, memo } from 'react'
+import React, { useState, useCallback, memo } from 'react'
 import {
-  Table,
   Card,
   Button,
-  Space,
   Tag,
   Typography,
   Popconfirm,
   message,
   Tooltip,
-  Drawer
+  Drawer,
+  Empty,
+  Row,
+  Col,
+  Segmented
 } from 'antd'
-import { PlusOutlined, DeleteOutlined, LinkOutlined, DisconnectOutlined, EditOutlined, EyeOutlined, ReloadOutlined } from '@ant-design/icons'
+import {
+  PlusOutlined,
+  DeleteOutlined,
+  LinkOutlined,
+  DisconnectOutlined,
+  EditOutlined,
+  EyeOutlined,
+  ReloadOutlined,
+  AppstoreOutlined,
+  TableOutlined,
+  CloudServerOutlined,
+  UserOutlined,
+  KeyOutlined
+} from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { useServers } from '../../context/ServerContext'
 import ServerForm from '../../components/ServerForm'
 import type { Server, ServerFormData } from '../../types/server'
 
-const { Title } = Typography
+const { Title, Text } = Typography
 
-// 状态标签组件 - 使用 memo 避免重复渲染
+// 头像背景色 — Apple 系统色循环
+const AVATAR_COLORS = [
+  '#007AFF', '#34C759', '#FF9500', '#AF52DE',
+  '#5AC8FA', '#FF3B30', '#5856D6', '#FF2D55'
+]
+
+const getAvatarColor = (name: string): string => {
+  let hash = 0
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length]
+}
+
+const getInitial = (name: string): string => {
+  return name.charAt(0).toUpperCase()
+}
+
+const StatusDot: React.FC<{ status: Server['status'] }> = memo(({ status }) => {
+  const colors: Record<string, string> = {
+    online: '#34C759',
+    offline: '#8e8e93',
+    connecting: '#FF9500',
+    error: '#FF3B30'
+  }
+  return (
+    <span
+      className="server-avatar-dot"
+      style={{
+        background: colors[status] || '#8e8e93',
+        boxShadow: status === 'online' ? `0 0 0 1px ${colors[status]}40` : 'none'
+      }}
+    />
+  )
+})
+StatusDot.displayName = 'StatusDot'
+
 const StatusTag: React.FC<{ status: Server['status'] }> = memo(({ status }) => {
   const { t } = useTranslation()
-  switch (status) {
-    case 'online':
-      return <Tag color="success">{t('server.connected')}</Tag>
-    case 'offline':
-      return <Tag color="default">{t('server.disconnected')}</Tag>
-    case 'connecting':
-      return <Tag color="processing">{t('server.connecting')}</Tag>
-    case 'error':
-      return <Tag color="error">{t('common.error')}</Tag>
-    default:
-      return null
+  const config: Record<string, { color: string; text: string }> = {
+    online: { color: 'success', text: t('server.connected') },
+    offline: { color: 'default', text: t('server.disconnected') },
+    connecting: { color: 'processing', text: t('server.connecting') },
+    error: { color: 'error', text: t('common.error') }
   }
+  const cfg = config[status] || config.offline
+  return <Tag color={cfg.color} style={{ borderRadius: 6 }}>{cfg.text}</Tag>
 })
 StatusTag.displayName = 'StatusTag'
 
@@ -55,6 +102,7 @@ const ServerList: React.FC = () => {
   const [drawerVisible, setDrawerVisible] = useState(false)
   const [editingServer, setEditingServer] = useState<Server | null>(null)
   const [formLoading, setFormLoading] = useState(false)
+  const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid')
 
   const handleAdd = useCallback(() => {
     setEditingServer(null)
@@ -128,104 +176,125 @@ const ServerList: React.FC = () => {
     navigate(`/servers/${serverId}`)
   }, [navigate])
 
-  // 使用 useMemo 缓存表格列定义，避免每次渲染重新创建
-  const columns = useMemo(() => [
-    {
-      title: t('server.name'),
-      dataIndex: 'name',
-      key: 'name',
-      render: (text: string) => <strong>{text}</strong>
-    },
-    {
-      title: `${t('server.host')}:${t('server.port')}`,
-      key: 'connection',
-      render: (_: unknown, record: Server) => `${record.host}:${record.port}`
-    },
-    {
-      title: t('server.username'),
-      dataIndex: 'username',
-      key: 'username'
-    },
-    {
-      title: t('server.authMethod'),
-      dataIndex: 'authType',
-      key: 'authType',
-      render: (authType: string) => authType === 'password' ? t('server.passwordAuth') : t('server.keyAuth')
-    },
-    {
-      title: t('server.status'),
-      dataIndex: 'status',
-      key: 'status',
-      render: (status: Server['status']) => <StatusTag status={status} />
-    },
-    {
-      title: t('server.actions'),
-      key: 'actions',
-      width: 220,
-      render: (_: unknown, record: Server) => (
-        <Space size="small" wrap>
-          {record.status === 'online' ? (
-            <Tooltip title={t('server.disconnect')}>
+  const renderServerCard = useCallback((server: Server) => {
+    const avatarColor = getAvatarColor(server.name)
+    return (
+      <Col xs={24} sm={12} lg={8} xl={6} key={server.id}>
+        <Card
+          className="server-card"
+          hoverable
+          onClick={() => handleViewDetail(server.id)}
+        >
+          {/* Header: Avatar + Name + Status */}
+          <div className="server-card-header">
+            <div
+              className="server-avatar"
+              style={{ background: `linear-gradient(135deg, ${avatarColor}, ${avatarColor}dd)` }}
+            >
+              {getInitial(server.name)}
+              <StatusDot status={server.status} />
+            </div>
+            <div className="server-info">
+              <div className="server-name">{server.name}</div>
+              <div className="server-host">{server.host}:{server.port}</div>
+            </div>
+            <StatusTag status={server.status} />
+          </div>
+
+          {/* Meta: Username + Auth */}
+          <div className="server-meta">
+            <div className="server-meta-item">
+              <span className="server-meta-label"><UserOutlined /> {t('server.username')}</span>
+              <span className="server-meta-value">{server.username}</span>
+            </div>
+            <div className="server-meta-item">
+              <span className="server-meta-label"><KeyOutlined /> {t('server.authMethod')}</span>
+              <span className="server-meta-value">
+                {server.authType === 'password' ? t('server.passwordAuth') : t('server.keyAuth')}
+              </span>
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="server-actions" onClick={(e) => e.stopPropagation()}>
+            {server.status === 'online' ? (
+              <Tooltip title={t('server.disconnect')}>
+                <Button
+                  size="small"
+                  icon={<DisconnectOutlined />}
+                  onClick={() => handleDisconnect(server.id)}
+                />
+              </Tooltip>
+            ) : (
+              <Tooltip title={t('server.connect')}>
+                <Button
+                  size="small"
+                  type="primary"
+                  icon={<LinkOutlined />}
+                  loading={server.status === 'connecting'}
+                  onClick={() => handleConnect(server)}
+                />
+              </Tooltip>
+            )}
+            <Tooltip title={t('server.viewDetail')}>
               <Button
                 size="small"
-                icon={<DisconnectOutlined />}
-                onClick={() => handleDisconnect(record.id)}
+                icon={<EyeOutlined />}
+                onClick={() => handleViewDetail(server.id)}
               />
             </Tooltip>
-          ) : (
-            <Tooltip title={t('server.connect')}>
+            <Tooltip title={t('server.edit')}>
               <Button
                 size="small"
-                type="primary"
-                icon={<LinkOutlined />}
-                loading={record.status === 'connecting'}
-                onClick={() => handleConnect(record)}
+                icon={<EditOutlined />}
+                onClick={() => handleEdit(server)}
+                disabled={server.status === 'online'}
               />
             </Tooltip>
-          )}
-          <Tooltip title={t('server.viewDetail')}>
-            <Button
-              size="small"
-              icon={<EyeOutlined />}
-              onClick={() => handleViewDetail(record.id)}
-            />
-          </Tooltip>
-          <Tooltip title={t('server.edit')}>
-            <Button
-              size="small"
-              icon={<EditOutlined />}
-              onClick={() => handleEdit(record)}
-              disabled={record.status === 'online'}
-            />
-          </Tooltip>
-          <Popconfirm
-            title={t('server.confirmDelete')}
-            onConfirm={() => handleDelete(record.id)}
-            okText={t('common.yes')}
-            cancelText={t('common.no')}
-          >
-            <Tooltip title={t('server.delete')}>
-              <Button
-                size="small"
-                danger
-                icon={<DeleteOutlined />}
-                disabled={record.status === 'online'}
-              />
-            </Tooltip>
-          </Popconfirm>
-        </Space>
-      )
-    }
-  ], [t, handleDisconnect, handleConnect, handleViewDetail, handleEdit, handleDelete])
+            <Popconfirm
+              title={t('server.confirmDelete')}
+              onConfirm={() => handleDelete(server.id)}
+              okText={t('common.yes')}
+              cancelText={t('common.no')}
+            >
+              <Tooltip title={t('server.delete')}>
+                <Button
+                  size="small"
+                  danger
+                  icon={<DeleteOutlined />}
+                  disabled={server.status === 'online'}
+                />
+              </Tooltip>
+            </Popconfirm>
+          </div>
+        </Card>
+      </Col>
+    )
+  }, [t, handleDisconnect, handleConnect, handleViewDetail, handleEdit, handleDelete])
 
   return (
     <div className="page-content">
-      {/* Page Header - Flex Layout */}
+      {/* Page Header */}
       <div className="page-header">
         <div className="page-header-left">
-          <Title level={4} style={{ margin: 0 }}>{t('server.title')}</Title>
+          <Title level={4} style={{ margin: 0, fontWeight: 700 }}>
+            <CloudServerOutlined style={{ marginRight: 8, color: '#007AFF' }} />
+            {t('server.title')}
+          </Title>
+          <Text type="secondary" className="subtitle">
+            {servers.length} {t('common.items')}
+          </Text>
         </div>
         <div className="page-header-right">
+          <Segmented
+            value={viewMode}
+            onChange={(v) => setViewMode(v as 'grid' | 'table')}
+            options={[
+              { value: 'grid', icon: <AppstoreOutlined />, label: '' },
+              { value: 'table', icon: <TableOutlined />, label: '' }
+            ]}
+            size="small"
+          />
           <Button onClick={refreshServers} icon={<ReloadOutlined />}>
             {t('common.refresh')}
           </Button>
@@ -235,24 +304,30 @@ const ServerList: React.FC = () => {
         </div>
       </div>
 
-      {/* Table Card */}
-      <Card>
-        <Table
-          columns={columns}
-          dataSource={servers}
-          rowKey="id"
-          loading={loading}
-          locale={{ emptyText: t('common.noData') }}
-          pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (total) => `${total} ${t('common.items')}` }}
-          scroll={{ x: 800 }}
-        />
-      </Card>
+      {/* Content */}
+      {servers.length === 0 && !loading ? (
+        <Card>
+          <Empty
+            description={t('common.noData')}
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            style={{ padding: '40px 0' }}
+          >
+            <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
+              {t('server.add')}
+            </Button>
+          </Empty>
+        </Card>
+      ) : (
+        <Row gutter={[16, 16]}>
+          {servers.map(server => renderServerCard(server))}
+        </Row>
+      )}
 
-      {/* Drawer for Add/Edit */}
+      {/* Bottom Sheet for Add/Edit */}
       <Drawer
         title={editingServer ? t('server.edit') : t('server.add')}
-        placement="right"
-        width={480}
+        placement="bottom"
+        height="70vh"
         onClose={handleCloseDrawer}
         open={drawerVisible}
         destroyOnClose

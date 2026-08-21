@@ -1,6 +1,14 @@
-﻿import React, { useState } from 'react'
-import { Card, Form, Select, Button, message, Typography, Space, Modal, Row, Col } from 'antd'
-import { ExportOutlined, ImportOutlined } from '@ant-design/icons'
+import React, { useState, useEffect } from 'react'
+import { Card, Button, message, Typography, Space, Modal, Row, Col, Segmented } from 'antd'
+import {
+  ExportOutlined,
+  ImportOutlined,
+  SettingOutlined,
+  BgColorsOutlined,
+  GlobalOutlined,
+  InfoCircleOutlined,
+  CheckOutlined
+} from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import i18n from '../../i18n'
 
@@ -8,25 +16,36 @@ const { Title, Text, Paragraph } = Typography
 
 type ThemeMode = 'system' | 'dark' | 'light'
 
+// 主题预览组件
+const ThemePreview: React.FC<{ mode: ThemeMode }> = ({ mode }) => {
+  const isDark = mode === 'dark'
+  const isSystem = mode === 'system'
+
+  const sidebarBg = isDark || isSystem ? '#1c1c1e' : '#f2f2f7'
+  const contentBg = isDark ? '#000000' : '#ffffff'
+  const barColor = isDark ? '#3a3a3c' : '#d1d1d6'
+
+  return (
+    <div className="theme-picker-preview" style={{ background: isSystem ? 'linear-gradient(135deg, #ffffff 50%, #1c1c1e 50%)' : contentBg }}>
+      <div className="preview-sidebar" style={{ background: isSystem ? 'linear-gradient(180deg, #f2f2f7 50%, #1c1c1e 50%)' : sidebarBg }} />
+      <div className="preview-content">
+        <div className="preview-bar" style={{ width: '60%', background: barColor }} />
+        <div className="preview-bar" style={{ width: '40%', background: barColor, opacity: 0.5 }} />
+        <div className="preview-bar" style={{ width: '50%', background: '#007AFF', height: 8 }} />
+      </div>
+    </div>
+  )
+}
+
 const Settings: React.FC = () => {
   const { t } = useTranslation()
-  const [form] = Form.useForm()
   const [exportLoading, setExportLoading] = useState(false)
   const [importLoading, setImportLoading] = useState(false)
+  const [currentTheme, setCurrentTheme] = useState<ThemeMode>('system')
 
-  const getSavedTheme = (): ThemeMode => {
-    return (localStorage.getItem('themeMode') as ThemeMode) || 'system'
-  }
-
-  const getSavedLanguage = (): string => {
-    return localStorage.getItem('language') || 'zh-CN'
-  }
-
-  const handleThemeChange = (value: ThemeMode) => {
-    localStorage.setItem('themeMode', value)
-    applyTheme(value)
-    message.success(t('settings.saveSuccess'))
-  }
+  useEffect(() => {
+    setCurrentTheme((localStorage.getItem('themeMode') as ThemeMode) || 'system')
+  }, [])
 
   const applyTheme = (mode: ThemeMode) => {
     const root = document.documentElement
@@ -36,6 +55,17 @@ const Settings: React.FC = () => {
     } else {
       root.setAttribute('data-theme', mode)
     }
+  }
+
+  const handleThemeChange = (mode: ThemeMode) => {
+    localStorage.setItem('themeMode', mode)
+    setCurrentTheme(mode)
+    applyTheme(mode)
+    message.success(t('settings.saveSuccess'))
+  }
+
+  const getSavedLanguage = (): string => {
+    return localStorage.getItem('language') || 'zh-CN'
   }
 
   const handleLanguageChange = (value: string) => {
@@ -48,14 +78,14 @@ const Settings: React.FC = () => {
     try {
       setExportLoading(true)
       const dialogResult = await window.electronAPI.config.showSaveDialog()
-      
+
       if (dialogResult.canceled || !dialogResult.filePath) {
         setExportLoading(false)
         return
       }
 
       const result = await window.electronAPI.config.exportConfig(dialogResult.filePath)
-      
+
       if (result.success) {
         message.success(t('settings.configExportSuccess'))
       } else {
@@ -72,14 +102,14 @@ const Settings: React.FC = () => {
     try {
       setImportLoading(true)
       const dialogResult = await window.electronAPI.config.showOpenDialog()
-      
+
       if (dialogResult.canceled || !dialogResult.filePath) {
         setImportLoading(false)
         return
       }
 
       const result = await window.electronAPI.config.importConfig(dialogResult.filePath)
-      
+
       if (result.success) {
         Modal.success({
           title: t('settings.configImportSuccess'),
@@ -115,50 +145,92 @@ const Settings: React.FC = () => {
     })
   }
 
+  const themeOptions: { mode: ThemeMode; label: string; icon: React.ReactNode }[] = [
+    { mode: 'light', label: t('settings.themeLight'), icon: <BgColorsOutlined /> },
+    { mode: 'dark', label: t('settings.themeDark'), icon: <BgColorsOutlined /> },
+    { mode: 'system', label: t('settings.themeSystem'), icon: <BgColorsOutlined /> }
+  ]
+
   return (
     <div className="page-content">
       <div className="page-header">
         <div className="page-header-left">
-          <Title level={4} style={{ margin: 0 }}>{t('settings.title')}</Title>
+          <Title level={4} style={{ margin: 0, fontWeight: 700 }}>
+            <SettingOutlined style={{ marginRight: 8, color: '#007AFF' }} />
+            {t('settings.title')}
+          </Title>
+          <Text type="secondary" className="subtitle">
+            {t('app.title')}
+          </Text>
         </div>
       </div>
-      
+
       <Row gutter={[16, 16]}>
-        <Col xs={24} md={12}>
-          <Card title={t('settings.appearance')}>
-            <Form layout="vertical" initialValues={{
-              theme: getSavedTheme(),
-              language: getSavedLanguage()
-            }}>
-              <Form.Item label={t('settings.theme')} name="theme">
-                <Select
-                  style={{ width: '100%', maxWidth: 300 }}
-                  onChange={handleThemeChange}
-                  options={[
-                    { value: 'system', label: t('settings.themeSystem') },
-                    { value: 'dark', label: t('settings.themeDark') },
-                    { value: 'light', label: t('settings.themeLight') }
-                  ]}
-                />
-              </Form.Item>
-              <Form.Item label={t('settings.language')} name="language">
-                <Select
-                  style={{ width: '100%', maxWidth: 300 }}
-                  onChange={handleLanguageChange}
-                  options={[
-                    { value: 'zh-CN', label: '中文' },
-                    { value: 'en-US', label: 'English' }
-                  ]}
-                />
-              </Form.Item>
-            </Form>
+        {/* Appearance */}
+        <Col xs={24} md={24}>
+          <Card title={
+            <span style={{ fontWeight: 600 }}>
+              <BgColorsOutlined style={{ marginRight: 8, color: '#007AFF' }} />
+              {t('settings.appearance')}
+            </span>
+          }>
+            <div style={{ marginBottom: 24 }}>
+              <Text strong style={{ display: 'block', marginBottom: 12 }}>
+                {t('settings.theme')}
+              </Text>
+              <div className="theme-picker">
+                {themeOptions.map((opt) => (
+                  <div
+                    key={opt.mode}
+                    className={`theme-picker-card ${currentTheme === opt.mode ? 'active' : ''}`}
+                    onClick={() => handleThemeChange(opt.mode)}
+                  >
+                    <ThemePreview mode={opt.mode} />
+                    <div className="theme-picker-label">{opt.label}</div>
+                    {currentTheme === opt.mode && (
+                      <CheckOutlined
+                        style={{
+                          position: 'absolute',
+                          top: 10,
+                          right: 10,
+                          color: '#ffffff',
+                          fontSize: 10,
+                          zIndex: 1
+                        }}
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <Text strong style={{ display: 'block', marginBottom: 12 }}>
+                <GlobalOutlined style={{ marginRight: 6 }} />
+                {t('settings.language')}
+              </Text>
+              <Segmented
+                value={getSavedLanguage()}
+                onChange={(val) => handleLanguageChange(val as string)}
+                options={[
+                  { value: 'zh-CN', label: '中文' },
+                  { value: 'en-US', label: 'English' }
+                ]}
+              />
+            </div>
           </Card>
         </Col>
 
+        {/* Config Management */}
         <Col xs={24} md={12}>
-          <Card title={t('settings.configManagement')}>
-            <Space direction="vertical" style={{ width: '100%' }}>
-              <Paragraph type="secondary">
+          <Card title={
+            <span style={{ fontWeight: 600 }}>
+              <ImportOutlined style={{ marginRight: 8, color: '#34C759' }} />
+              {t('settings.configManagement')}
+            </span>
+          }>
+            <Space direction="vertical" style={{ width: '100%' }} size="middle">
+              <Paragraph type="secondary" style={{ marginBottom: 0 }}>
                 {t('settings.configManagementDesc')}
               </Paragraph>
               <Space wrap>
@@ -182,13 +254,22 @@ const Settings: React.FC = () => {
           </Card>
         </Col>
 
+        {/* About */}
         <Col xs={24} md={12}>
-          <Card title={t('app.title')}>
-            <Space direction="vertical">
+          <Card title={
+            <span style={{ fontWeight: 600 }}>
+              <InfoCircleOutlined style={{ marginRight: 8, color: '#5AC8FA' }} />
+              {t('app.title')}
+            </span>
+          }>
+            <Space direction="vertical" size="small">
               <Text>
                 <strong>{t('app.title')}</strong>
               </Text>
-              <Text type="secondary">Docker Deploy Tool - {t('app.welcome')}</Text>
+              <Text type="secondary">Docker Deploy Tool</Text>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                v1.0.0
+              </Text>
             </Space>
           </Card>
         </Col>

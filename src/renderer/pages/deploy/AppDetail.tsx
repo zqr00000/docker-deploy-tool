@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState, useCallback } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Card, Button, Space, Tag, Typography, message, Spin, Alert, Tabs, Descriptions, Table, Popconfirm, Modal, Input, Badge, Tooltip } from 'antd'
 import {
@@ -531,7 +531,7 @@ const AppDetail: React.FC = () => {
         background: '#1e1e1e',
         color: '#d4d4d4',
         padding: 16,
-        borderRadius: 4,
+        borderRadius: 6,
         maxHeight: 500,
         overflow: 'auto',
         fontSize: 12,
@@ -705,7 +705,7 @@ const AppDetail: React.FC = () => {
           background: '#1e1e1e',
           color: '#d4d4d4',
           padding: 16,
-          borderRadius: 4,
+          borderRadius: 6,
           maxHeight: 500,
           overflow: 'auto',
           fontSize: 12,

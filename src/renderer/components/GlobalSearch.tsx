@@ -352,6 +352,7 @@ const GlobalSearch: React.FC<GlobalSearchProps> = ({ visible, onClose }) => {
 
   return (
     <Modal
+      className="spotlight-modal"
       title={null}
       open={visible}
       onCancel={onClose}
@@ -362,32 +363,23 @@ const GlobalSearch: React.FC<GlobalSearchProps> = ({ visible, onClose }) => {
       closeIcon={null}
     >
       {/* 搜索输入框 */}
-      <div style={{ padding: '16px 24px', borderBottom: '1px solid #f0f0f0' }}>
+      <div className="spotlight-input-wrapper">
+        <SearchOutlined style={{ fontSize: 20, color: 'var(--app-text-secondary)' }} />
         <Input
           ref={inputRef}
-          size="large"
           placeholder={t('globalSearch.placeholder')}
-          prefix={<SearchOutlined style={{ fontSize: 18 }} />}
-          suffix={
-            searchText ? (
-              <Space>
-                <Tag>{t('globalSearch.escToClose')}</Tag>
-              </Space>
-            ) : (
-              <Tag>{t('globalSearch.escToClose')}</Tag>
-            )
-          }
           value={searchText}
           onChange={(e) => setSearchText(e.target.value)}
           onKeyDown={handleKeyDown}
-          bordered={false}
           autoComplete="off"
-          style={{ fontSize: 16 }}
         />
+        {searchText && (
+          <span className="spotlight-kbd">ESC</span>
+        )}
       </div>
 
       {/* 结果区域 */}
-      <div style={{ maxHeight: 480, overflow: 'auto' }}>
+      <div className="spotlight-results">
         {loading ? (
           <div style={{ textAlign: 'center', padding: 40 }}>
             <Spin size="large" />
@@ -404,7 +396,7 @@ const GlobalSearch: React.FC<GlobalSearchProps> = ({ visible, onClose }) => {
               onChange={setActiveTab}
               items={tabItems}
               size="small"
-              style={{ padding: '0 24px' }}
+              style={{ padding: '0 12px' }}
               tabBarStyle={{ marginBottom: 0 }}
             />
 
@@ -412,61 +404,86 @@ const GlobalSearch: React.FC<GlobalSearchProps> = ({ visible, onClose }) => {
 
             {/* 结果列表 */}
             <div ref={listRef}>
-              <List
-                dataSource={filteredResults}
-                renderItem={(item, index) => (
-                  <List.Item
+              {filteredResults.map((item, index) => (
+                <div
+                  key={`${item.type}-${item.id}`}
+                  className={`spotlight-result-item ${index === selectedIndex ? 'selected' : ''}`}
+                  onMouseEnter={() => setSelectedIndex(index)}
+                  onClick={() => handleSelectResult(item)}
+                >
+                  <div
+                    className="spotlight-result-icon"
                     style={{
-                      padding: '12px 24px',
-                      cursor: 'pointer',
-                      backgroundColor: index === selectedIndex ? '#e6f7ff' : undefined,
-                      transition: 'background-color 0.2s'
+                      background: (() => {
+                        const colors: Record<string, string> = {
+                          server: 'rgba(0, 122, 255, 0.1)',
+                          app: 'rgba(52, 199, 89, 0.1)',
+                          template: 'rgba(90, 200, 250, 0.1)',
+                          container: 'rgba(88, 86, 214, 0.1)',
+                          image: 'rgba(175, 82, 222, 0.1)',
+                          volume: 'rgba(255, 149, 0, 0.1)',
+                          network: 'rgba(255, 45, 85, 0.1)',
+                          deployHistory: 'rgba(142, 142, 147, 0.1)'
+                        }
+                        return colors[item.type] || 'rgba(0, 122, 255, 0.1)'
+                      })()
                     }}
-                    onMouseEnter={() => setSelectedIndex(index)}
-                    onClick={() => handleSelectResult(item)}
                   >
-                    <List.Item.Meta
-                      avatar={
-                        <Badge dot status={item.status === 'online' || item.status === 'running' ? 'success' : 'default'}>
-                          <span style={{ fontSize: 20, color: '#1890ff' }}>{item.icon}</span>
-                        </Badge>
-                      }
-                      title={
-                        <Space>
-                          <Text strong>{item.title}</Text>
-                          <Tag color={item.color} style={{ marginLeft: 4 }}>
-                            {getTypeLabel(item.type)}
-                          </Tag>
-                        </Space>
-                      }
-                      description={item.subtitle}
-                    />
-                    <ArrowRightOutlined style={{ color: '#8e8e93' }} />
-                  </List.Item>
-                )}
-              />
+                    <span style={{
+                      color: (() => {
+                        const colors: Record<string, string> = {
+                          server: '#007AFF',
+                          app: '#34C759',
+                          template: '#5AC8FA',
+                          container: '#5856D6',
+                          image: '#AF52DE',
+                          volume: '#FF9500',
+                          network: '#FF2D55',
+                          deployHistory: '#8e8e93'
+                        }
+                        return colors[item.type] || '#007AFF'
+                      })()
+                    }}>
+                      {item.icon}
+                    </span>
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="spotlight-result-title">
+                      {item.title}
+                      <Tag color={item.color} style={{ marginLeft: 6, borderRadius: 6 }}>
+                        {getTypeLabel(item.type)}
+                      </Tag>
+                    </div>
+                    {item.subtitle && (
+                      <div className="spotlight-result-subtitle">{item.subtitle}</div>
+                    )}
+                  </div>
+                  {index === selectedIndex && (
+                    <ArrowRightOutlined style={{ color: '#007AFF', fontSize: 12 }} />
+                  )}
+                </div>
+              ))}
             </div>
           </>
         ) : (
-          <div style={{ padding: '24px' }}>
+          <div style={{ padding: '16px' }}>
             <Card size="small">
               <Space direction="vertical" style={{ width: '100%' }}>
                 <Text strong>{t('globalSearch.quickTips')}:</Text>
                 <Text type="secondary">
                   <Space>
-                    <Tag>{t('globalSearch.tip1')}</Tag>
-                    <Tag>{t('globalSearch.tip2')}</Tag>
-                    <Tag>{t('globalSearch.tip3')}</Tag>
+                    <Tag style={{ borderRadius: 6 }}>{t('globalSearch.tip1')}</Tag>
+                    <Tag style={{ borderRadius: 6 }}>{t('globalSearch.tip2')}</Tag>
+                    <Tag style={{ borderRadius: 6 }}>{t('globalSearch.tip3')}</Tag>
                   </Space>
                 </Text>
                 <Divider style={{ margin: '8px 0' }} />
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  {t('globalSearch.keyboardHints')}: 
-                  <Tag style={{ marginLeft: 8 }}>↑</Tag>
-                  <Tag>↓</Tag>
-                  <Tag style={{ marginLeft: 8 }}><EnterOutlined /></Tag>
-                  <Tag style={{ marginLeft: 8 }}>ESC</Tag>
-                </Text>
+                <Space size="small">
+                  <span className="spotlight-kbd">↑</span>
+                  <span className="spotlight-kbd">↓</span>
+                  <span className="spotlight-kbd"><EnterOutlined /></span>
+                  <span className="spotlight-kbd">ESC</span>
+                </Space>
               </Space>
             </Card>
           </div>
@@ -475,14 +492,15 @@ const GlobalSearch: React.FC<GlobalSearchProps> = ({ visible, onClose }) => {
 
       {/* 底部提示 */}
       {filteredResults.length > 0 && (
-        <div style={{ padding: '8px 24px', borderTop: '1px solid #f0f0f0', background: '#fafafa' }}>
-          <Space split={<Divider type="vertical" />}>
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              {t('globalSearch.totalResults').replace('{{count}}', filteredResults.length.toString())}
-            </Text>
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              {t('globalSearch.keyboardHints')}: ↑ ↓ <EnterOutlined /> ESC
-            </Text>
+        <div className="spotlight-footer">
+          <Text type="secondary" style={{ fontSize: 11 }}>
+            {t('globalSearch.totalResults').replace('{{count}}', filteredResults.length.toString())}
+          </Text>
+          <Space size="small">
+            <span className="spotlight-kbd">↑</span>
+            <span className="spotlight-kbd">↓</span>
+            <span className="spotlight-kbd"><EnterOutlined /></span>
+            <span className="spotlight-kbd">ESC</span>
           </Space>
         </div>
       )}

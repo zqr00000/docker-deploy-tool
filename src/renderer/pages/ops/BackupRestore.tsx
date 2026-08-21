@@ -397,7 +397,7 @@ const BackupRestore: React.FC = () => {
                   title={t('backupRestore.databaseBackups')}
                   value={stats.databaseBackups}
                   prefix={<DatabaseOutlined />}
-                  valueStyle={{ color: '#1890ff' }}
+                  valueStyle={{ color: '#007AFF' }}
                 />
               </Card>
             </Col>
@@ -445,7 +445,9 @@ const BackupRestore: React.FC = () => {
                     onClick={() => (!selectedServer || backupInProgress) ? undefined : handleBackup('database')}
                   >
                     <Space direction="vertical" style={{ width: '100%' }}>
-                      <DatabaseOutlined style={{ fontSize: 32, color: '#1890ff' }} />
+                      <div style={{ width: 48, height: 48, borderRadius: 12, background: 'rgba(0, 122, 255, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 8px' }}>
+                        <DatabaseOutlined style={{ fontSize: 22, color: '#007AFF' }} />
+                      </div>
                       <Text strong>{t('backupRestore.backupDatabase')}</Text>
                       <Text type="secondary" style={{ fontSize: 12 }}>
                         {t('backupRestore.backupDatabaseDesc')}
@@ -461,7 +463,9 @@ const BackupRestore: React.FC = () => {
                     onClick={() => (!selectedServer || backupInProgress) ? undefined : handleBackup('volume')}
                   >
                     <Space direction="vertical" style={{ width: '100%' }}>
-                      <HddOutlined style={{ fontSize: 32, color: '#34C759' }} />
+                      <div style={{ width: 48, height: 48, borderRadius: 12, background: 'rgba(52, 199, 89, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 8px' }}>
+                        <HddOutlined style={{ fontSize: 22, color: '#34C759' }} />
+                      </div>
                       <Text strong>{t('backupRestore.backupVolume')}</Text>
                       <Text type="secondary" style={{ fontSize: 12 }}>
                         {t('backupRestore.backupVolumeDesc')}
@@ -477,7 +481,9 @@ const BackupRestore: React.FC = () => {
                     onClick={() => (!selectedServer || backupInProgress) ? undefined : handleBackup('config')}
                   >
                     <Space direction="vertical" style={{ width: '100%' }}>
-                      <SettingOutlined style={{ fontSize: 32, color: '#FF9500' }} />
+                      <div style={{ width: 48, height: 48, borderRadius: 12, background: 'rgba(255, 149, 0, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 8px' }}>
+                        <SettingOutlined style={{ fontSize: 22, color: '#FF9500' }} />
+                      </div>
                       <Text strong>{t('backupRestore.backupConfig')}</Text>
                       <Text type="secondary" style={{ fontSize: 12 }}>
                         {t('backupRestore.backupConfigDesc')}

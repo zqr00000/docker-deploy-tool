@@ -254,11 +254,11 @@ const HealthCheckPage: React.FC = () => {
       case 'unhealthy':
         return <CloseCircleOutlined style={{ color: '#FF3B30' }} />
       case 'starting':
-        return <LoadingOutlined style={{ color: '#1890ff' }} />
+        return <LoadingOutlined style={{ color: '#007AFF' }} />
       case 'partial':
         return <ExclamationCircleOutlined style={{ color: '#FF9500' }} />
       default:
-        return <ExclamationCircleOutlined style={{ color: '#d9d9d9' }} />
+        return <ExclamationCircleOutlined style={{ color: '#8e8e93' }} />
     }
   }
 

@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback, useMemo, memo } from 'react'
+import React, { useState, useEffect, useCallback, useMemo, memo } from 'react'
 import {
   Table,
   Card,
@@ -9,7 +9,9 @@ import {
   Popconfirm,
   message,
   Tooltip,
-  Modal
+  Modal,
+  Row,
+  Col
 } from 'antd'
 import {
   PlusOutlined,
@@ -26,7 +28,7 @@ import type { App, AppStatus } from '../../types/app'
 import type { Server } from '../../types/server'
 import type { Template } from '../../types/template'
 
-const { Title } = Typography
+const { Title, Text } = Typography
 
 // 状态标签组件 - 使用 memo 避免重复渲染
 const AppStatusTag: React.FC<{ status: AppStatus }> = memo(({ status }) => {
@@ -303,6 +305,58 @@ const Apps: React.FC = () => {
     }
   ], [t, getServerName, getTemplateName, actionLoading, handleStop, handleStart, handleRestart, handleViewLogs, handleViewDetail, handleDelete])
 
+  // 展开行渲染 — 应用详细信息
+  const expandedRowRender = useCallback((record: App) => {
+    return (
+      <div style={{ padding: '8px 0' }}>
+        <Row gutter={[24, 16]}>
+          <Col xs={24} sm={12} md={6}>
+            <div style={{ marginBottom: 4 }}>
+              <Text type="secondary" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                项目路径
+              </Text>
+            </div>
+            <Text code style={{ fontSize: 12 }}>{record.projectPath || '-'}</Text>
+          </Col>
+          <Col xs={24} sm={12} md={6}>
+            <div style={{ marginBottom: 4 }}>
+              <Text type="secondary" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                模板
+              </Text>
+            </div>
+            <Text style={{ fontSize: 13 }}>{getTemplateName(record.templateId)}</Text>
+          </Col>
+          <Col xs={24} sm={12} md={6}>
+            <div style={{ marginBottom: 4 }}>
+              <Text type="secondary" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                服务器
+              </Text>
+            </div>
+            <Text style={{ fontSize: 13 }}>{getServerName(record.serverId)}</Text>
+          </Col>
+          <Col xs={24} sm={12} md={6}>
+            <div style={{ marginBottom: 4 }}>
+              <Text type="secondary" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                创建时间
+              </Text>
+            </div>
+            <Text style={{ fontSize: 13 }}>{new Date(record.createdAt).toLocaleString()}</Text>
+          </Col>
+        </Row>
+        {record.dockerCompose && (
+          <div style={{ marginTop: 12 }}>
+            <Text type="secondary" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              Docker Compose
+            </Text>
+            <pre className="log-viewer" style={{ maxHeight: 200, marginTop: 4, fontSize: 11 }}>
+              {record.dockerCompose}
+            </pre>
+          </div>
+        )}
+      </div>
+    )
+  }, [getServerName, getTemplateName])
+
   return (
     <div className="page-content">
       {/* Page Header - Flex Layout */}
@@ -330,6 +384,10 @@ const Apps: React.FC = () => {
           locale={{ emptyText: t('common.noData') }}
           pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (total) => `${total} ${t('common.items')}` }}
           scroll={{ x: 900 }}
+          expandable={{
+            expandedRowRender,
+            rowExpandable: (record) => record.status !== 'deploying',
+          }}
         />
       </Card>
 

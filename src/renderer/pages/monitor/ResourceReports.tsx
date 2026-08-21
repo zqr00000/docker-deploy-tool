@@ -457,7 +457,7 @@ const ResourceReports: React.FC = () => {
                 title={t('resourceReports.avgCpu')}
                 value={summary.avgCpuPercent.toFixed(2)}
                 suffix="%"
-                valueStyle={{ color: summary.avgCpuPercent > 80 ? '#cf1322' : '#3f8600' }}
+                valueStyle={{ color: summary.avgCpuPercent > 80 ? '#FF3B30' : '#34C759' }}
               />
             </Card>
           </Col>
@@ -467,7 +467,7 @@ const ResourceReports: React.FC = () => {
                 title={t('resourceReports.maxCpu')}
                 value={summary.maxCpuPercent.toFixed(2)}
                 suffix="%"
-                valueStyle={{ color: summary.maxCpuPercent > 80 ? '#cf1322' : '#3f8600' }}
+                valueStyle={{ color: summary.maxCpuPercent > 80 ? '#FF3B30' : '#34C759' }}
               />
             </Card>
           </Col>

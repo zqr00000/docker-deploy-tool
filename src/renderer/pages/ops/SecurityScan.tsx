@@ -291,12 +291,12 @@ const SecurityScan: React.FC = () => {
   // 获取严重程度图标
   const getSeverityIcon = (severity: string) => {
     if (severity === 'critical' || severity === 'high') {
-      return <CloseCircleOutlined style={{ color: '#cf1322' }} />
+      return <CloseCircleOutlined style={{ color: '#FF3B30' }} />
     }
     if (severity === 'medium') {
       return <ExclamationCircleOutlined style={{ color: '#FF9500' }} />
     }
-    return <InfoCircleOutlined style={{ color: '#1890ff' }} />
+    return <InfoCircleOutlined style={{ color: '#007AFF' }} />
   }
 
   // 严重程度排序权重
@@ -354,8 +354,8 @@ const SecurityScan: React.FC = () => {
       width: 100,
       render: (score: number) => {
         if (!score) return '-'
-        const color = score >= 9 ? '#cf1322' : score >= 7 ? '#FF9500' : score >= 4 ? '#FF9500' : '#34C759'
-        return <Text style={{ color, fontWeight: 'bold' }}>{score.toFixed(1)}</Text>
+        const color = score >= 9 ? '#FF3B30' : score >= 7 ? '#FF9500' : score >= 4 ? '#FF9500' : '#34C759'
+        return <Text style={{ color, fontWeight: 700 }}>{score.toFixed(1)}</Text>
       }
     },
     {
@@ -405,7 +405,7 @@ const SecurityScan: React.FC = () => {
                   <Statistic
                     title={t('securityScan.severityLevels.critical')}
                     value={stats.critical}
-                    valueStyle={{ color: '#cf1322' }}
+                    valueStyle={{ color: '#FF3B30' }}
                     prefix={<CloseCircleOutlined />}
                   />
                 </Card>
@@ -435,7 +435,7 @@ const SecurityScan: React.FC = () => {
                   <Statistic
                     title={t('securityScan.severityLevels.low')}
                     value={stats.low}
-                    valueStyle={{ color: '#1890ff' }}
+                    valueStyle={{ color: '#007AFF' }}
                     prefix={<InfoCircleOutlined />}
                   />
                 </Card>
@@ -482,7 +482,7 @@ const SecurityScan: React.FC = () => {
                     <Space>
                       {check.status === 'pass' && <CheckCircleOutlined style={{ color: '#34C759' }} />}
                       {check.status === 'warn' && <WarningOutlined style={{ color: '#FF9500' }} />}
-                      {check.status === 'fail' && <CloseCircleOutlined style={{ color: '#cf1322' }} />}
+                      {check.status === 'fail' && <CloseCircleOutlined style={{ color: '#FF3B30' }} />}
                       <Text strong>{check.name}</Text>
                       <Tag color={check.status === 'pass' ? 'success' : check.status === 'warn' ? 'warning' : 'error'}>
                         {t(`securityScan.checkStatus.${check.status}`)}

@@ -583,7 +583,7 @@ const Alerts: React.FC = () => {
             <Statistic
               title="启用规则"
               value={stats.activeRules}
-              valueStyle={{ color: '#3f8600' }}
+              valueStyle={{ color: '#34C759' }}
               prefix={<CheckCircleOutlined />}
             />
           </Card>
@@ -593,7 +593,7 @@ const Alerts: React.FC = () => {
             <Statistic
               title="活动告警"
               value={stats.activeAlerts}
-              valueStyle={{ color: stats.activeAlerts > 0 ? '#cf1322' : '#3f8600' }}
+              valueStyle={{ color: stats.activeAlerts > 0 ? '#FF3B30' : '#34C759' }}
               prefix={stats.activeAlerts > 0 ? <AlertOutlined /> : <CheckCircleOutlined />}
             />
           </Card>

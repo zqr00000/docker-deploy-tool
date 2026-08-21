@@ -320,8 +320,8 @@ const ServerGroups: React.FC = () => {
                       style={{
                         padding: '8px 12px',
                         marginBottom: 4,
-                        border: '1px solid #d9d9d9',
-                        borderRadius: 4,
+                        border: '1px solid var(--app-border-color)',
+                        borderRadius: 6,
                         cursor: 'pointer'
                       }}
                       onClick={() => setSelectedServerIds([...selectedServerIds, server.id])}
@@ -347,10 +347,10 @@ const ServerGroups: React.FC = () => {
                       style={{
                         padding: '8px 12px',
                         marginBottom: 4,
-                        border: '1px solid #d9d9d9',
-                        borderRadius: 4,
+                        border: '1px solid var(--app-border-color)',
+                        borderRadius: 6,
                         cursor: 'pointer',
-                        background: '#f6ffed'
+                        background: 'rgba(52,199,89,0.1)'
                       }}
                       onClick={() => setSelectedServerIds(selectedServerIds.filter(id => id !== server.id))}
                     >

@@ -281,11 +281,11 @@ const OnboardingGuide: React.FC<OnboardingGuideProps> = ({ visible, onClose }) =
       closeIcon={null}
     >
       {/* Header */}
-      <div style={{ padding: '24px 24px 16px', borderBottom: '1px solid #f0f0f0' }}>
+      <div style={{ padding: '24px 24px 16px', borderBottom: '1px solid var(--app-border-color)' }}>
         <Space align="center" style={{ width: '100%', justifyContent: 'space-between' }}>
           <Space>
-            <Badge count={<QuestionCircleOutlined style={{ color: '#1890ff' }} />}>
-              <Card size="small" style={{ background: '#e6f7ff', border: 'none' }}>
+            <Badge count={<QuestionCircleOutlined style={{ color: '#007AFF' }} />}>
+              <Card size="small" style={{ background: 'rgba(0, 122, 255, 0.08)', border: 'none' }}>
                 {currentStepData.icon}
               </Card>
             </Badge>
@@ -305,7 +305,7 @@ const OnboardingGuide: React.FC<OnboardingGuideProps> = ({ visible, onClose }) =
       </div>
 
       {/* Progress Steps */}
-      <div style={{ padding: '16px 24px', background: '#fafafa' }}>
+      <div style={{ padding: '16px 24px', background: 'var(--app-hover-bg)' }}>
         <Steps
           current={currentStep}
           size="small"
@@ -323,7 +323,7 @@ const OnboardingGuide: React.FC<OnboardingGuideProps> = ({ visible, onClose }) =
       </div>
 
       {/* Footer */}
-      <div style={{ padding: '16px 24px', borderTop: '1px solid #f0f0f0' }}>
+      <div style={{ padding: '16px 24px', borderTop: '1px solid var(--app-border-color)' }}>
         <Space style={{ width: '100%', justifyContent: 'space-between' }}>
           <Space>
             {currentStep > 0 && (

@@ -145,7 +145,7 @@ const TemplateCard: React.FC<TemplateCardProps> = memo(({
   // 缓存封面样式
   const coverStyle = useMemo(() => ({
     background: isStack
-      ? 'linear-gradient(135deg, #f5222d 0%, #ff7875 100%)'
+      ? 'linear-gradient(135deg, #FF3B30 0%, #FF9500 100%)'
       : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
     height: 100,
     display: 'flex',
@@ -344,9 +344,9 @@ const TemplateCard: React.FC<TemplateCardProps> = memo(({
           <Text strong>{t('template.dockerCompose')}:</Text>
           <pre
             style={{
-              background: '#f5f5f5',
+              background: 'var(--app-hover-bg)',
               padding: 16,
-              borderRadius: 4,
+              borderRadius: 6,
               marginTop: 8,
               overflow: 'auto',
               maxHeight: 400,

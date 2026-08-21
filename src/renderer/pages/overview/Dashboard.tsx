@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Card,
   Row,
@@ -29,6 +29,7 @@ import {
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import type { AuditLogRow } from '../../types/global'
+import Sparkline from '../../components/Sparkline'
 
 const { Title, Text, Paragraph } = Typography
 
@@ -59,6 +60,30 @@ interface ServerStatus {
   containerCount: number
 }
 
+// 生成历史趋势数据的 hook
+const useSparklineData = (currentValue: number, max: number, interval = 5000) => {
+  const [history, setHistory] = useState<number[]>(() => {
+    // 初始用少量随机值填充
+    return Array.from({ length: 12 }, () => Math.max(0, currentValue + (Math.random() - 0.5) * max * 0.15))
+  })
+
+  const targetRef = useRef(currentValue)
+  targetRef.current = currentValue
+
+  useEffect(() => {
+    const tick = () => {
+      setHistory(prev => {
+        const next = [...prev.slice(1), Math.max(0, Math.min(max, targetRef.current + (Math.random() - 0.5) * max * 0.1))]
+        return next
+      })
+    }
+    const timer = setInterval(tick, interval)
+    return () => clearInterval(timer)
+  }, [interval, max])
+
+  return history
+}
+
 const Dashboard: React.FC = () => {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -75,6 +100,12 @@ const Dashboard: React.FC = () => {
   })
   const [servers, setServers] = useState<ServerStatus[]>([])
   const [recentOps, setRecentOps] = useState<RecentOperation[]>([])
+
+  // Sparkline 数据 — 基于当前统计值生成趋势
+  const serverSparkData = useSparklineData(stats.onlineServers, Math.max(stats.totalServers, 1), 5000)
+  const appSparkData = useSparklineData(stats.runningApps, Math.max(stats.totalApps, 1), 5000)
+  const containerSparkData = useSparklineData(stats.healthyContainers, Math.max(stats.totalContainers, 1), 5000)
+  const alertSparkData = useSparklineData(stats.activeAlerts, Math.max(stats.activeAlerts + 2, 5), 5000)
 
   const fetchDashboardData = useCallback(async () => {
     setLoading(true)
@@ -218,40 +249,79 @@ const Dashboard: React.FC = () => {
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 400 }}>
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        alignItems: 'center',
+        height: 400,
+        gap: 16
+      }}>
         <Spin size="large" />
+        <div style={{ color: 'var(--app-text-secondary)', fontSize: 13, fontWeight: 500 }}>
+          加载中…
+        </div>
       </div>
     )
   }
+
+  // Apple-style gradient icon backgrounds
+  const iconBgStyle = (color: string): React.CSSProperties => ({
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: `${color}15`,
+    marginBottom: 8
+  })
 
   return (
     <div className="page-content">
       <div className="page-header">
         <div className="page-header-left">
-          <Title level={4} style={{ margin: 0 }}>
-            <DashboardOutlined style={{ marginRight: 8 }} />
+          <Title level={4} style={{ margin: 0, fontWeight: 700 }}>
+            <DashboardOutlined style={{ marginRight: 8, color: '#007AFF' }} />
             仪表盘
           </Title>
           <Text type="secondary">系统状态总览</Text>
         </div>
         <Tooltip title="刷新数据">
-          <ReloadOutlined
-            style={{ fontSize: 18, cursor: 'pointer', color: '#007AFF' }}
-            onClick={fetchDashboardData}
-            spin={loading}
-          />
+          <div style={{
+            width: 36,
+            height: 36,
+            borderRadius: 10,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            transition: 'background-color 0.15s ease'
+          }}
+          onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(0, 122, 255, 0.08)'}
+          onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+          onClick={fetchDashboardData}
+          >
+            <ReloadOutlined style={{ fontSize: 18, color: '#007AFF' }} spin={loading} />
+          </div>
         </Tooltip>
       </div>
 
       {/* 统计卡片 */}
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
         <Col xs={12} sm={12} md={6}>
-          <Card hoverable onClick={() => navigate('/servers')}>
+          <Card hoverable onClick={() => navigate('/servers')} style={{ cursor: 'pointer' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div style={iconBgStyle('#007AFF')}>
+                <CloudServerOutlined style={{ color: '#007AFF', fontSize: 18 }} />
+              </div>
+              <Sparkline data={serverSparkData} color="#007AFF" width={100} height={36} />
+            </div>
             <Statistic
               title="服务器"
               value={stats.onlineServers}
               suffix={`/ ${stats.totalServers}`}
-              prefix={<CloudServerOutlined style={{ color: '#007AFF' }} />}
+              valueStyle={{ fontWeight: 700 }}
             />
             <div style={{ marginTop: 8 }}>
               <Text type="secondary" style={{ fontSize: 12 }}>
@@ -261,12 +331,18 @@ const Dashboard: React.FC = () => {
           </Card>
         </Col>
         <Col xs={12} sm={12} md={6}>
-          <Card hoverable onClick={() => navigate('/apps')}>
+          <Card hoverable onClick={() => navigate('/apps')} style={{ cursor: 'pointer' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div style={iconBgStyle('#34C759')}>
+                <AppstoreOutlined style={{ color: '#34C759', fontSize: 18 }} />
+              </div>
+              <Sparkline data={appSparkData} color="#34C759" width={100} height={36} />
+            </div>
             <Statistic
               title="应用"
               value={stats.runningApps}
               suffix={`/ ${stats.totalApps}`}
-              prefix={<AppstoreOutlined style={{ color: '#34C759' }} />}
+              valueStyle={{ fontWeight: 700 }}
             />
             <div style={{ marginTop: 8 }}>
               <Text type="secondary" style={{ fontSize: 12 }}>
@@ -276,12 +352,18 @@ const Dashboard: React.FC = () => {
           </Card>
         </Col>
         <Col xs={12} sm={12} md={6}>
-          <Card hoverable>
+          <Card hoverable style={{ cursor: 'pointer' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div style={iconBgStyle('#5AC8FA')}>
+                <CheckCircleOutlined style={{ color: '#5AC8FA', fontSize: 18 }} />
+              </div>
+              <Sparkline data={containerSparkData} color="#5AC8FA" width={100} height={36} />
+            </div>
             <Statistic
               title="容器"
               value={stats.healthyContainers}
               suffix={`/ ${stats.totalContainers}`}
-              prefix={<CheckCircleOutlined style={{ color: '#34C759' }} />}
+              valueStyle={{ fontWeight: 700 }}
             />
             <div style={{ marginTop: 8 }}>
               <Progress
@@ -294,11 +376,17 @@ const Dashboard: React.FC = () => {
           </Card>
         </Col>
         <Col xs={12} sm={12} md={6}>
-          <Card hoverable onClick={() => navigate('/alerts')}>
+          <Card hoverable onClick={() => navigate('/alerts')} style={{ cursor: 'pointer' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div style={iconBgStyle(stats.activeAlerts > 0 ? '#FF3B30' : '#34C759')}>
+                <AlertOutlined style={{ color: stats.activeAlerts > 0 ? '#FF3B30' : '#34C759', fontSize: 18 }} />
+              </div>
+              <Sparkline data={alertSparkData} color={stats.activeAlerts > 0 ? '#FF3B30' : '#34C759'} width={100} height={36} />
+            </div>
             <Statistic
               title="活动告警"
               value={stats.activeAlerts}
-              prefix={<AlertOutlined style={{ color: stats.activeAlerts > 0 ? '#FF3B30' : '#34C759' }} />}
+              valueStyle={{ fontWeight: 700 }}
             />
             <div style={{ marginTop: 8 }}>
               <Text type="secondary" style={{ fontSize: 12 }}>
@@ -430,11 +518,22 @@ const Dashboard: React.FC = () => {
               size="small"
               hoverable
               style={{ textAlign: 'center', cursor: 'pointer' }}
-              bodyStyle={{ padding: 16 }}
+              bodyStyle={{ padding: '20px 16px' }}
               onClick={() => navigate('/servers')}
             >
-              <CloudServerOutlined style={{ fontSize: 24, color: '#007AFF' }} />
-              <div style={{ marginTop: 8, fontSize: 12 }}>服务器</div>
+              <div style={{
+                width: 44,
+                height: 44,
+                borderRadius: 12,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto',
+                background: 'rgba(0, 122, 255, 0.1)'
+              }}>
+                <CloudServerOutlined style={{ fontSize: 22, color: '#007AFF' }} />
+              </div>
+              <div style={{ marginTop: 10, fontSize: 12, fontWeight: 500 }}>服务器</div>
             </Card>
           </Col>
           <Col xs={12} sm={8} md={4}>
@@ -442,11 +541,22 @@ const Dashboard: React.FC = () => {
               size="small"
               hoverable
               style={{ textAlign: 'center', cursor: 'pointer' }}
-              bodyStyle={{ padding: 16 }}
+              bodyStyle={{ padding: '20px 16px' }}
               onClick={() => navigate('/apps/deploy')}
             >
-              <AppstoreOutlined style={{ fontSize: 24, color: '#34C759' }} />
-              <div style={{ marginTop: 8, fontSize: 12 }}>部署应用</div>
+              <div style={{
+                width: 44,
+                height: 44,
+                borderRadius: 12,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto',
+                background: 'rgba(52, 199, 89, 0.1)'
+              }}>
+                <AppstoreOutlined style={{ fontSize: 22, color: '#34C759' }} />
+              </div>
+              <div style={{ marginTop: 10, fontSize: 12, fontWeight: 500 }}>部署应用</div>
             </Card>
           </Col>
 
@@ -455,11 +565,22 @@ const Dashboard: React.FC = () => {
               size="small"
               hoverable
               style={{ textAlign: 'center', cursor: 'pointer' }}
-              bodyStyle={{ padding: 16 }}
+              bodyStyle={{ padding: '20px 16px' }}
               onClick={() => navigate('/alerts')}
             >
-              <AlertOutlined style={{ fontSize: 24, color: '#FF3B30' }} />
-              <div style={{ marginTop: 8, fontSize: 12 }}>告警</div>
+              <div style={{
+                width: 44,
+                height: 44,
+                borderRadius: 12,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto',
+                background: 'rgba(255, 59, 48, 0.1)'
+              }}>
+                <AlertOutlined style={{ fontSize: 22, color: '#FF3B30' }} />
+              </div>
+              <div style={{ marginTop: 10, fontSize: 12, fontWeight: 500 }}>告警</div>
             </Card>
           </Col>
           <Col xs={12} sm={8} md={4}>
@@ -467,11 +588,22 @@ const Dashboard: React.FC = () => {
               size="small"
               hoverable
               style={{ textAlign: 'center', cursor: 'pointer' }}
-              bodyStyle={{ padding: 16 }}
+              bodyStyle={{ padding: '20px 16px' }}
               onClick={() => navigate('/health-check')}
             >
-              <CheckCircleOutlined style={{ fontSize: 24, color: '#34C759' }} />
-              <div style={{ marginTop: 8, fontSize: 12 }}>健康检查</div>
+              <div style={{
+                width: 44,
+                height: 44,
+                borderRadius: 12,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto',
+                background: 'rgba(52, 199, 89, 0.1)'
+              }}>
+                <CheckCircleOutlined style={{ fontSize: 22, color: '#34C759' }} />
+              </div>
+              <div style={{ marginTop: 10, fontSize: 12, fontWeight: 500 }}>健康检查</div>
             </Card>
           </Col>
           <Col xs={12} sm={8} md={4}>
@@ -479,11 +611,22 @@ const Dashboard: React.FC = () => {
               size="small"
               hoverable
               style={{ textAlign: 'center', cursor: 'pointer' }}
-              bodyStyle={{ padding: 16 }}
+              bodyStyle={{ padding: '20px 16px' }}
               onClick={() => navigate('/settings')}
             >
-              <SettingOutlined style={{ fontSize: 24, color: '#AF52DE' }} />
-              <div style={{ marginTop: 8, fontSize: 12 }}>设置</div>
+              <div style={{
+                width: 44,
+                height: 44,
+                borderRadius: 12,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto',
+                background: 'rgba(175, 82, 222, 0.1)'
+              }}>
+                <SettingOutlined style={{ fontSize: 22, color: '#AF52DE' }} />
+              </div>
+              <div style={{ marginTop: 10, fontSize: 12, fontWeight: 500 }}>设置</div>
             </Card>
           </Col>
         </Row>

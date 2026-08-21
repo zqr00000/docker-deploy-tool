@@ -639,7 +639,7 @@ const ComposeEditor: React.FC = () => {
               <List.Item
                 style={{
                   cursor: 'pointer',
-                  background: selectedId === service.id ? '#e6f7ff' : undefined,
+                  background: selectedId === service.id ? 'rgba(0, 122, 255, 0.08)' : undefined,
                   padding: '6px 8px',
                   borderRadius: 4
                 }}
@@ -694,7 +694,7 @@ const ComposeEditor: React.FC = () => {
               <List.Item
                 style={{
                   cursor: 'pointer',
-                  background: selectedId === network.id ? '#f6ffed' : undefined,
+                  background: selectedId === network.id ? 'rgba(52,199,89,0.1)' : undefined,
                   padding: '6px 8px',
                   borderRadius: 4
                 }}
@@ -749,7 +749,7 @@ const ComposeEditor: React.FC = () => {
               <List.Item
                 style={{
                   cursor: 'pointer',
-                  background: selectedId === volume.id ? '#fffbe6' : undefined,
+                  background: selectedId === volume.id ? 'rgba(255,149,0,0.1)' : undefined,
                   padding: '6px 8px',
                   borderRadius: 4
                 }}
@@ -1245,9 +1245,9 @@ const ComposeEditor: React.FC = () => {
 
   // ============ 主渲染 ============
   return (
-    <Layout style={{ height: '100%', background: '#f0f2f5' }}>
+    <Layout style={{ height: '100%', background: 'var(--app-bg-color)' }}>
       {/* 顶部工具栏 */}
-      <Header style={{ background: '#fff', padding: '0 16px', borderBottom: '1px solid #f0f2f5', height: 'auto', lineHeight: 'normal', paddingTop: 8, paddingBottom: 8 }}>
+      <Header style={{ background: 'var(--app-content-bg)', padding: '0 16px', borderBottom: '1px solid var(--app-border-color)', height: 'auto', lineHeight: 'normal', paddingTop: 8, paddingBottom: 8 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
           <Space wrap>
             <FileOutlined style={{ fontSize: 18, color: '#007AFF' }} />
@@ -1283,13 +1283,13 @@ const ComposeEditor: React.FC = () => {
 
       <Layout>
         {/* 左侧组件面板 */}
-        <Sider width={260} style={{ background: '#fff', borderRight: '1px solid #f0f2f5', overflow: 'auto' }}>
+        <Sider width={260} style={{ background: 'var(--app-content-bg)', borderRight: '1px solid var(--app-border-color)', overflow: 'auto' }}>
           {renderComponentPanel()}
         </Sider>
 
         {/* 中间编辑区域 */}
         <Layout>
-          <Content style={{ background: '#fff', overflow: 'auto' }}>
+          <Content style={{ background: 'var(--app-content-bg)', overflow: 'auto' }}>
             <div style={{ padding: 16 }}>
               <Card>
                 <Empty
@@ -1458,8 +1458,8 @@ const ComposeEditor: React.FC = () => {
           </Content>
 
           {/* 底部 YAML 预览 */}
-          <div style={{ height: 280, borderTop: '1px solid #f0f2f5', background: '#fff', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 8px', borderBottom: '1px solid #f0f2f5' }}>
+          <div style={{ height: 280, borderTop: '1px solid var(--app-border-color)', background: 'var(--app-content-bg)', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 8px', borderBottom: '1px solid var(--app-border-color)' }}>
               <Space size={4}>
                 <FileOutlined style={{ color: '#007AFF' }} />
                 <Text strong>{t('composeEditor.yamlPreview')}</Text>
@@ -1477,7 +1477,7 @@ const ComposeEditor: React.FC = () => {
                   fontFamily: 'Monaco, Consolas, monospace',
                   fontSize: 13,
                   resize: 'none',
-                  background: '#f5f5f5',
+                  background: 'var(--app-hover-bg)',
                   whiteSpace: 'pre',
                   overflow: 'auto'
                 }}
@@ -1488,7 +1488,7 @@ const ComposeEditor: React.FC = () => {
         </Layout>
 
         {/* 右侧属性面板 */}
-        <Sider width={320} style={{ background: '#fff', borderLeft: '1px solid #f0f2f5', overflow: 'auto' }}>
+        <Sider width={320} style={{ background: 'var(--app-content-bg)', borderLeft: '1px solid var(--app-border-color)', overflow: 'auto' }}>
           {selectedId ? (
             selectedType === 'service' && getSelectedService()
               ? renderServiceProperties(getSelectedService()!)

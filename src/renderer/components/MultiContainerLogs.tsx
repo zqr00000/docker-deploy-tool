@@ -383,7 +383,7 @@ const MultiContainerLogs: React.FC<MultiContainerLogsProps> = ({
           background: '#1e1e1e',
           color: '#d4d4d4',
           padding: 16,
-          borderRadius: 4,
+          borderRadius: 6,
           height,
           overflow: 'auto',
           fontSize: 12,
@@ -416,7 +416,7 @@ const MultiContainerLogs: React.FC<MultiContainerLogsProps> = ({
                 <Text style={{ color: '#888', marginRight: 8 }}>
                   {new Date(entry.timestamp).toLocaleTimeString()}
                 </Text>
-                <Text style={{ color, fontWeight: 'bold', marginRight: 8 }}>
+                <Text style={{ color, fontWeight: 700, marginRight: 8 }}>
                   [{entry.containerName}]
                 </Text>
                 <span>{entry.message}</span>

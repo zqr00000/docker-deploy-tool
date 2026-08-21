@@ -265,8 +265,8 @@ const SystemEnvironmentStatus: React.FC<SystemEnvironmentStatusProps> = ({ serve
               alignItems: 'center',
               justifyContent: 'space-between',
               padding: 8,
-              backgroundColor: port.isOpen ? '#f6ffed' : '#fff2f0',
-              borderRadius: 4,
+              backgroundColor: port.isOpen ? 'rgba(52,199,89,0.1)' : 'rgba(255,59,48,0.1)',
+              borderRadius: 6,
               border: `1px solid ${port.isOpen ? '#b7eb8f' : '#ffccc7'}`
             }}
           >
