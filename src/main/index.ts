@@ -22,6 +22,7 @@ import { schedulerService } from './services/scheduler'
 import { healthCheckService } from './services/health-check'
 import { resourceReportsService } from './services/resource-reports'
 import { shellScriptService } from './services/shell-scripts'
+import { createAIModel } from './services/ai-model'
 
 log.transports.file.level = 'info'
 log.transports.console.level = 'debug'
@@ -2355,6 +2356,28 @@ function registerIpcHandlers(): void {
       })
     } catch (error) {
       log.error('ai:getModels error:', error)
+      return { success: false, error: (error as Error).message }
+    }
+  })
+
+  // AI 生成 Shell 脚本文本（供 Shell 脚本库"AI 编写"使用）
+  ipcMain.handle('ai:generateScript', async (_event, cfg: any, prompt: string) => {
+    try {
+      const model = await createAIModel(cfg?.provider, cfg?.apiKey, cfg?.model, cfg?.baseUrl, cfg?.extraParams)
+      const { generateText } = await import('ai')
+      const system =
+        '你是一名熟练的 Linux/Unix Shell 脚本专家。根据用户需求编写完整、健壮、可直接运行的 Shell 脚本，' +
+        '包含必要的错误处理和清晰的中文注释。只输出脚本代码本身，不要任何解释文字，也不要 markdown 代码块包裹。'
+      const { text } = await generateText({
+        model,
+        system,
+        prompt,
+        temperature: 0.3,
+        maxOutputTokens: 4000
+      })
+      return { success: true, text }
+    } catch (error) {
+      log.error('ai:generateScript error:', error)
       return { success: false, error: (error as Error).message }
     }
   })

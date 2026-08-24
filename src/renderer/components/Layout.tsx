@@ -113,6 +113,7 @@ const MENU_ITEM_CONFIG: MenuItemConfig[] = [
     labelKey: 'menuGroups.system',
     children: [
       { key: 'audit-logs', iconKey: 'AuditOutlined', labelKey: 'menu.auditLogs' },
+      { key: 'ai-model-config', iconKey: 'RobotOutlined', labelKey: 'menu.aiModelConfig' },
       { key: 'settings', iconKey: 'SettingOutlined', labelKey: 'menu.settings' }
     ]
   }

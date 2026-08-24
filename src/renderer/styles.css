@@ -1053,7 +1053,8 @@ body {
 /* xterm.js Terminal Styling */
 .xterm {
   height: 100%;
-  padding: 4px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .xterm .xterm-viewport {
@@ -1393,16 +1394,37 @@ body {
   background: rgba(10, 132, 255, 0.06);
 }
 
-/* 流式打字光标 */
-.typing-cursor {
-  display: inline-block;
-  width: 2px;
-  height: 1em;
-  margin-left: 2px;
-  vertical-align: text-bottom;
+/* AI 思考中的三点跳动加载（替代光标闪烁） */
+.typing-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+.typing-dots i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
   background: #0A84FF;
-  border-radius: 1px;
-  animation: blink 1s step-start infinite;
+  display: inline-block;
+  animation: typing-dot 1.2s ease-in-out infinite;
+}
+.typing-dots i:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.typing-dots i:nth-child(3) {
+  animation-delay: 0.4s;
+}
+@keyframes typing-dot {
+  0%, 60%, 100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  30% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
 }
 
 /* ====== 模型配置面板 - 视觉增强 ====== */
@@ -2799,3 +2821,7 @@ body {
 .filter-bar .ant-input-affix-wrapper {
   max-width: 300px;
 }
+
+/* 脚本参数跳转标签 */
+.jump-var-tag{cursor:pointer;user-select:none;}
+.jump-var-tag:hover{opacity:.8;box-shadow:0 0 0 1px #0A84FF inset;}

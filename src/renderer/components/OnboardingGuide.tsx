@@ -261,11 +261,14 @@ const OnboardingGuide: React.FC<OnboardingGuideProps> = ({ visible, onClose }) =
     }
   }, [steps, navigate])
 
-  // 关闭引导
+  // 关闭引导（任意方式关闭；若勾选了"不再显示"则立即落盘）
   const handleClose = useCallback(() => {
+    if (dontShowAgain) {
+      localStorage.setItem('onboardingCompleted', 'true')
+    }
     onClose()
     setCurrentStep(0)
-  }, [onClose])
+  }, [dontShowAgain, onClose])
 
   const currentStepData = steps[currentStep]
 

@@ -323,11 +323,11 @@ const ServerList: React.FC = () => {
         </Row>
       )}
 
-      {/* Bottom Sheet for Add/Edit */}
+      {/* Side Sheet for Add/Edit */}
       <Drawer
         title={editingServer ? t('server.edit') : t('server.add')}
-        placement="bottom"
-        height="70vh"
+        placement="right"
+        width={480}
         onClose={handleCloseDrawer}
         open={drawerVisible}
         destroyOnClose

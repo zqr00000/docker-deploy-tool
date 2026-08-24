@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react'
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import {
   Card,
   Table,
@@ -18,7 +18,8 @@ import {
   List,
   Empty,
   Drawer,
-  Descriptions
+  Descriptions,
+  Tooltip
 } from 'antd'
 import {
   PlusOutlined,
@@ -32,11 +33,14 @@ import {
   ReloadOutlined,
   CodeOutlined,
   CheckCircleOutlined,
-  CloseCircleOutlined
+  CloseCircleOutlined,
+  RobotOutlined,
+  FullscreenOutlined
 } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import type { ColumnsType } from 'antd/es/table'
 import Editor from '@monaco-editor/react'
+import type { editor as MonacoEditor } from 'monaco-editor'
 import type {
   ShellScript,
   ShellScriptVersion,
@@ -450,7 +454,7 @@ const ShellScripts: React.FC = () => {
     {
       title: t('shellScript.actions'),
       key: 'actions',
-      width: 320,
+      width: 460,
       render: (_, record) => (
         <Space size={4} wrap>
           <Button
@@ -1137,6 +1141,39 @@ const ShellScriptEditorModal: React.FC<EditorModalProps> = ({ open, script, savi
   const isEdit = !!script
   const [content, setContent] = useState('')
   const [extractedVars, setExtractedVars] = useState<string[]>([])
+  const editorRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null)
+  // 记录每个参数标签当前跳转到第几次出现
+  const jumpCounterRef = useRef<Map<string, number>>(new Map())
+
+  // 在脚本内容中查找变量第 n 次出现的位置，跳转到编辑器对应行列
+  const handleJumpToVar = useCallback((varName: string) => {
+    const editor = editorRef.current
+    if (!editor) return
+    // 兼容 `${name}`、`${name:-default}`、`${name?err}`、`${name-DEF}` 等写法
+    const escaped = varName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const re = new RegExp('\\$\\{' + escaped + '(:[-+?]?[^}]*)?\\}', 'g')
+    const occurrences: number[] = []
+    let m: RegExpExecArray | null
+    while ((m = re.exec(content)) !== null) {
+      occurrences.push(m.index)
+    }
+    if (occurrences.length === 0) return
+    const counter = jumpCounterRef.current
+    const current = counter.get(varName) || 0
+    const target = occurrences[current % occurrences.length]
+    counter.set(varName, current + 1)
+
+    const before = content.slice(0, target)
+    const lines = before.split('\n')
+    const position = {
+      lineNumber: lines.length,
+      column: lines[lines.length - 1].length + 1
+    }
+    editor.setPosition(position)
+    editor.revealPositionInCenter(position)
+    editor.focus()
+    message.info(`${varName}：第 ${(current % occurrences.length) + 1} / ${occurrences.length} 处`)
+  }, [content])
 
   useEffect(() => {
     if (open) {
@@ -1185,8 +1222,106 @@ const ShellScriptEditorModal: React.FC<EditorModalProps> = ({ open, script, savi
     }
   }, [form, content, onSave, t])
 
+  // ========== AI 编写脚本 ==========
+  const [aiPrompt, setAiPrompt] = useState('')
+  const [aiLoading, setAiLoading] = useState(false)
+  // AI 编写会话记忆（多轮）：记录历次 用户需求 / AI 输出
+  const aiConvoRef = useRef<Array<{ role: 'user' | 'assistant'; content: string }>>([])
+  // 编辑区全屏编辑层开关
+  const [fullscreenEdit, setFullscreenEdit] = useState(false)
+
+  // 从已保存的模型配置（AI 运维终端共享）中取出当前激活的提供商档案
+  const getActiveModelConfig = useCallback(async (): Promise<{ success: boolean; cfg?: any; error?: string }> => {
+    try {
+      const raw = localStorage.getItem('agentOpsModelConfig')
+      if (!raw) return { success: false, error: '尚未配置 AI 模型，请先在「自动化运维 → AI 运维终端」中完成模型配置' }
+      const modelConfig = JSON.parse(raw)
+      const profiles = modelConfig?.providerProfiles || []
+      const active = profiles.find((p: any) => p.id === modelConfig?.activeProfileId) || profiles[0]
+      if (!active || !active.provider || !active.model) {
+        return { success: false, error: '尚未配置 AI 模型，请先在「自动化运维 → AI 运维终端」中完成模型配置' }
+      }
+      let apiKey = active.apiKey || ''
+      if (apiKey.startsWith('enc:')) {
+        const dec = await window.electronAPI.secure.decrypt(apiKey.slice(4))
+        apiKey = dec.success ? (dec.data || '') : ''
+      }
+      if (!apiKey && active.provider !== 'ollama') {
+        return { success: false, error: '模型 API Key 未配置或无法解密' }
+      }
+      return {
+        success: true,
+        cfg: {
+          provider: active.provider,
+          apiKey,
+          model: active.model,
+          baseUrl: active.baseUrl,
+          extraParams: active.extraParams || {}
+        }
+      }
+    } catch (e) {
+      return { success: false, error: `读取模型配置失败: ${(e as Error).message}` }
+    }
+  }, [])
+
+  const runAiGenerate = useCallback(async () => {
+    const prompt = aiPrompt.trim()
+    if (!prompt) {
+      message.warning('请先描述你需要的脚本功能')
+      return
+    }
+    const cfgRes = await getActiveModelConfig()
+    if (!cfgRes.success) {
+      message.warning(cfgRes.error || '模型配置异常')
+      return
+    }
+    setAiLoading(true)
+    try {
+      // 带上当前脚本内容作为上下文
+      const scriptBlock = content.trim()
+        ? `### 当前脚本内容\n\`\`\`bash\n${content}\n\`\`\`\n`
+        : ''
+      // 多轮会话记忆：历次 用户需求 / AI 输出
+      const historyBlock = aiConvoRef.current.length
+        ? '### 之前的多轮会话\n' + aiConvoRef.current
+          .map(m => (m.role === 'user' ? `用户需求：\n${m.content}` : `AI 已给出的脚本：\n\`\`\`bash\n${m.content}\n\`\`\``))
+          .join('\n\n') + '\n'
+        : ''
+      // 拼出完整提示词，交给模型（模型只输出最终脚本）
+      const fullPrompt = [
+        '你是 Shell 脚本专家。请根据需求与已给上下文，输出完整、健壮、带中文注释的 Shell 脚本。',
+        scriptBlock,
+        historyBlock,
+        `### 本次需求\n${prompt}`,
+        '注意：在整个会话中脚本应保持一致连贯；本次请基于现有脚本在此基础上修改。只输出脚本代码本身，不要解释、不要 markdown 代码块包裹。'
+      ].filter(Boolean).join('\n\n')
+
+      const res = await window.electronAPI.ai.generateScript(cfgRes.cfg, fullPrompt)
+      if (res.success && res.text) {
+        // 去除可能的 ```bash 代码块包裹
+        const script = res.text.replace(/^\s*```[a-zA-Z]*\s*\n?/, '').replace(/\n?\s*```\s*$/, '').trim()
+        // 记录本次会话
+        aiConvoRef.current = [
+          ...aiConvoRef.current.slice(-10),
+          { role: 'user', content: prompt },
+          { role: 'assistant', content: script }
+        ]
+        setContent(script)
+        setExtractedVars(extractVariables(script))
+        message.success(aiConvoRef.current.length > 2 ? '已基于上一版本继续生成' : '脚本已生成，可编辑后保存')
+      } else {
+        message.error(res.error || '生成失败')
+      }
+    } catch (e) {
+      message.error(`生成失败: ${(e as Error).message}`)
+    } finally {
+      setAiLoading(false)
+    }
+  }, [aiPrompt, getActiveModelConfig, content])
+
   return (
-    <Modal
+    <>
+      <Modal
       open={open}
       title={isEdit ? t('shellScript.editTitle') : t('shellScript.createTitle')}
       onCancel={onCancel}
@@ -1237,9 +1372,41 @@ const ShellScriptEditorModal: React.FC<EditorModalProps> = ({ open, script, savi
           showIcon
           style={{ marginBottom: 8 }}
           message={t('shellScript.detectedParams')}
-          description={extractedVars.map(v => <Tag key={v} style={{ marginRight: 6 }}>{v}</Tag>)}
+          description={
+            <Space wrap size={4}>
+              {extractedVars.map(v => (
+                <Tag
+                  key={v}
+                  className="jump-var-tag"
+                  color="blue"
+                  style={{ cursor: 'pointer', marginRight: 0 }}
+                  onClick={() => handleJumpToVar(v)}
+                  title={t('shellScript.jumpToVar') || '点击可跳转到编辑器中对应位置（多次点击逐处切换）'}
+                >
+                  {v}
+                </Tag>
+              ))}
+            </Space>
+          }
         />
       )}
+
+      {/* AI 编写 + 全屏编辑 工具条（紧贴编辑器上方） */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: 'rgba(10,132,255,0.06)', border: '1px solid rgba(10,132,255,0.25)', borderBottom: 'none', borderRadius: '8px 8px 0 0' }}>
+        <Input.TextArea
+          placeholder="用一句话描述你需要 AI 编写的脚本，例如：定期清理 7 天前的 Docker 容器日志"
+          value={aiPrompt}
+          onChange={e => setAiPrompt(e.target.value)}
+          autoSize={{ minRows: 1, maxRows: 2 }}
+          style={{ resize: 'none', background: '#000000', border: '1px solid #3a3a3c', color: '#f5f5f7' }}
+        />
+        <Button type="primary" icon={<RobotOutlined />} loading={aiLoading} onClick={runAiGenerate} style={{ flexShrink: 0 }}>
+          {aiLoading ? 'AI 编写中…' : 'AI 编写'}
+        </Button>
+        <Tooltip title="全屏编辑">
+          <Button icon={<FullscreenOutlined />} onClick={() => setFullscreenEdit(true)} style={{ flexShrink: 0 }} />
+        </Tooltip>
+      </div>
 
       <Editor
         height={360}
@@ -1247,6 +1414,7 @@ const ShellScriptEditorModal: React.FC<EditorModalProps> = ({ open, script, savi
         theme="vs-dark"
         value={content}
         onChange={handleContentChange}
+        onMount={(editor) => { editorRef.current = editor }}
         options={{
           minimap: { enabled: false },
           fontSize: 13,
@@ -1256,21 +1424,72 @@ const ShellScriptEditorModal: React.FC<EditorModalProps> = ({ open, script, savi
         }}
       />
     </Modal>
+
+      {/* ========== 全屏编辑层 ========== */}
+      <Modal
+        open={fullscreenEdit}
+        onCancel={() => setFullscreenEdit(false)}
+        footer={null}
+        closable
+        width="100vw"
+        style={{ top: 0, padding: 0, maxWidth: '100vw', height: '100vh' }}
+        title={isEdit ? t('shellScript.editTitle') : t('shellScript.createTitle')}
+        styles={{ body: { height: 'calc(100vh - 55px)', padding: 0, background: '#1e1e1e' } }}
+      >
+        <Editor
+          height="100%"
+          language="shell"
+          theme="vs-dark"
+          value={content}
+          onChange={handleContentChange}
+          options={{
+            minimap: { enabled: false },
+            fontSize: 14,
+            automaticLayout: true,
+            scrollBeyondLastLine: false,
+            tabSize: 2
+          }}
+        />
+      </Modal>
+    </>
   )
 }
 
 function extractVariables(content: string): string[] {
   const pattern = /\$\{([^}]+)\}/g
   const matches = content.match(pattern) || []
+  const internal = getInternallyDefinedVars(content)
   const variables = new Set<string>()
   for (const match of matches) {
     const raw = match.replace(/\$\{|\}/g, '')
-    const name = raw.includes(':-') ? raw.split(':-')[0] : raw
-    if (name && /^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+    // 取变量名：兼容 `${NAME}`、`${NAME:-default}`、`${NAME-DEF}`、`${NAME?err}` 等
+    const nameMatch = raw.match(/^[A-Za-z_][A-Za-z0-9_]*/)
+    const name = nameMatch ? nameMatch[0] : ''
+    // 只保留需外部传入的参数，脚本内部已赋值/定义的变量不计入
+    if (name && /^[A-Za-z_][A-Za-z0-9_]*$/.test(name) && !internal.has(name)) {
       variables.add(name)
     }
   }
   return Array.from(variables)
+}
+
+// 识别脚本内部已定义的变量（赋值、local/export/readonly、for 循环变量等）
+function getInternallyDefinedVars(content: string): Set<string> {
+  const defined = new Set<string>()
+  // 先剥离注释（# 到行尾），注释里的 NAME=value / for NAME 不作为内部定义
+  const code = content.replace(/#[^\n]*/g, ' ')
+  // `NAME=`、`local NAME=`、`readonly NAME=`、`export NAME=`、`declare -x NAME=`
+  const assignRe = /(?:\blocal\s+|\breadonly\s+|\bexport\s+|\bdeclare\s+-\w+\s+|\btypeset\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/g
+  let m: RegExpExecArray | null
+  while ((m = assignRe.exec(code)) !== null) {
+    defined.add(m[1])
+  }
+  // `for NAME in ...` 循环变量也属于内部
+  const forRe = /\bfor\s+([A-Za-z_][A-Za-z0-9_]*)\s+in\b/g
+  while ((m = forRe.exec(code)) !== null) {
+    defined.add(m[1])
+  }
+  return defined
 }
 
 export default ShellScripts

@@ -86,7 +86,8 @@ const SecurityScan: React.FC = () => {
   const [loading, setLoading] = useState(false)
   const [servers, setServers] = useState<Server[]>([])
   const [selectedServer, setSelectedServer] = useState<string | undefined>(undefined)
-  const [images, setImages] = useState<Array<{ id: string; name: string; size: string; created: string; key: string }>>([])
+  const [images, setImages] = useState<Array<{ id: string; name: string; tags: string[]; size: string; created: string; key: string }>>([])
+  const [imagesLoading, setImagesLoading] = useState(false)
 
   // 格式化镜像创建时间（后端返回 UTC ISO，按本机时区显示）
   const formatImageTime = (created: string): string => {
@@ -116,28 +117,50 @@ const SecurityScan: React.FC = () => {
   }, [])
 
   // 加载镜像列表
-  const loadImages = useCallback(async () => {
-    if (!selectedServer) {
+  const loadImages = useCallback(async (serverId?: string) => {
+    const sid = serverId ?? selectedServer
+    if (!sid) {
       setImages([])
       return
     }
 
+    setImagesLoading(true)
     try {
-      const data = await window.electronAPI.image.getAll(selectedServer)
-      setImages(data.map(img => {
-        // 同一镜像多个 tag 时 ID 相同，用 ID+名称 作为唯一 key
-        const name = img.tag === '<none>' ? img.id.substring(0, 12) : `${img.repository}:${img.tag}`
-        return {
-          id: img.id,
-          name,
-          size: img.size,
-          created: img.created,
-          key: `${img.id}-${name}`
+      const data = await window.electronAPI.image.getAll(sid)
+      // 与镜像列表一致：按镜像 ID 聚合，同一镜像多个 tag 合并展示
+      const map = new Map<string, { id: string; name: string; tags: string[]; size: string; created: string; key: string }>()
+      for (const img of data) {
+        const name = img.repository === '<none>' ? '' : `${img.repository}:${img.tag}`
+        const existing = map.get(img.id)
+        if (existing) {
+          if (name && !existing.tags.includes(name)) existing.tags.push(name)
+          if (!existing.size || (img.size && img.size > existing.size)) existing.size = img.size
+          if (!existing.created || new Date(img.created) > new Date(existing.created)) existing.created = img.created
+        } else {
+          map.set(img.id, {
+            id: img.id,
+            // 主名取首个有效 tag；悬空镜像用 ID 前缀
+            name: name || img.id.substring(0, 12),
+            tags: name ? [name] : [],
+            size: img.size,
+            created: img.created,
+            key: img.id
+          })
         }
-      }))
+      }
+      const aggregated = Array.from(map.values())
+      // 确保主名与 tags 一致（主名为 tag 列表首项）
+      for (const agg of aggregated) {
+        if (agg.tags.length > 0 && agg.tags[0] !== agg.name) {
+          agg.tags = [agg.name, ...agg.tags.filter(t => t !== agg.name)]
+        }
+      }
+      setImages(aggregated)
     } catch (error) {
       console.error('Failed to load images:', error)
       setImages([])
+    } finally {
+      setImagesLoading(false)
     }
   }, [selectedServer])
 
@@ -596,6 +619,7 @@ const SecurityScan: React.FC = () => {
                 onChange={(value) => {
                   setSelectedServer(value)
                   setSelectedImage(undefined)
+                  loadImages(value)
                 }}
                 options={servers.map(s => ({
                   value: s.id,
@@ -617,14 +641,26 @@ const SecurityScan: React.FC = () => {
                 value={selectedImage}
                 onChange={setSelectedImage}
                 disabled={!selectedServer}
+                loading={imagesLoading}
                 options={images.map(img => ({
                   value: img.key,
                   label: (
-                    <Space size={4} style={{ justifyContent: 'space-between', width: '100%' }}>
-                      <span>{img.name}</span>
-                      <Text type="secondary" style={{ fontSize: 12 }}>{img.size}</Text>
-                      <Text type="secondary" style={{ fontSize: 12 }}>{formatImageTime(img.created)}</Text>
-                    </Space>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                      <Space size={4} style={{ justifyContent: 'space-between', width: '100%' }}>
+                        <span style={{ fontWeight: 500 }}>{img.name}</span>
+                        <Space size={6}>
+                          <Text type="secondary" style={{ fontSize: 12 }}>{img.size}</Text>
+                          <Text type="secondary" style={{ fontSize: 12 }}>{formatImageTime(img.created)}</Text>
+                        </Space>
+                      </Space>
+                      {img.tags.length > 1 && (
+                        <span style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                          {img.tags.map(tag => (
+                            <Tag key={tag} style={{ fontSize: 10, lineHeight: '16px', marginInlineEnd: 0 }}>{tag}</Tag>
+                          ))}
+                        </span>
+                      )}
+                    </div>
                   )
                 }))}
               />

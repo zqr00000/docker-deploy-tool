@@ -26,6 +26,7 @@
 
     "deployHistory": "Deploy History",
     "auditLogs": "Audit Logs",
+    "aiModelConfig": "Model Config",
     "alerts": "Alerts",
     "healthCheck": "Health Check",
     "scheduledTasks": "Scheduled Tasks",
@@ -1190,7 +1191,8 @@
     "back": "Back",
     "details": "Details",
     "status": "Status",
-    "totalCount": "Total {{count}} records"
+    "totalCount": "Total {{count}} records",
+    "items": "items"
   },
   "scheduledTasks": {
     "title": "Scheduled Tasks",

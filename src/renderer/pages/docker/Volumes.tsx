@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
   Table,
   Card,
@@ -78,15 +78,20 @@ const Volumes: React.FC = () => {
       const data = await window.electronAPI.volume.getAll(selectedServerId)
       setVolumes(data)
 
-      // 加载每个卷的大小
+      // 并发加载每个卷的大小（串行会导致卷越多越慢）
+      const sizePairs = await Promise.all(
+        data.map(async vol => {
+          try {
+            const size = await window.electronAPI.volume.getSize(selectedServerId, vol.name)
+            return [vol.name, size] as [string, string]
+          } catch {
+            return [vol.name, '-'] as [string, string]
+          }
+        })
+      )
       const sizes: VolumeSizeMap = {}
-      for (const vol of data) {
-        try {
-          const size = await window.electronAPI.volume.getSize(selectedServerId, vol.name)
-          sizes[vol.name] = size
-        } catch {
-          sizes[vol.name] = '-'
-        }
+      for (const [name, size] of sizePairs) {
+        sizes[name] = size
       }
       setVolumeSizes(sizes)
     } catch (error) {
@@ -201,11 +206,15 @@ const Volumes: React.FC = () => {
       title: t('volume.name'),
       dataIndex: 'name',
       key: 'name',
+      width: 220,
+      ellipsis: true,
       render: (text: string) => (
-        <Space>
-          <DatabaseOutlined />
-          <strong>{text}</strong>
-        </Space>
+        <Tooltip title={text}>
+          <Space>
+            <DatabaseOutlined />
+            <strong>{text}</strong>
+          </Space>
+        </Tooltip>
       )
     },
     {

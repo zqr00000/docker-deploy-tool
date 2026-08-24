@@ -1,4 +1,4 @@
-﻿import log from 'electron-log'
+import log from 'electron-log'
 import { sshService } from '../ssh'
 
 export interface VolumeInfo {
@@ -73,26 +73,7 @@ class DockerVolumesService {
         }
       }
 
-      // 尝试获取每个卷的大小信息
-      for (const volume of volumes) {
-        try {
-          const sizeResult = await sshService.executeCommand(
-            serverId,
-            `docker system df -v --format "{{json .}}" 2>/dev/null | grep -v "^$" || echo "{}"`
-          )
-          // 大小获取可能不可用，使用 du 作为备选
-          const duResult = await sshService.executeCommand(
-            serverId,
-            `docker run --rm -v ${volume.name}:/vol alpine:3.18 du -sh /vol 2>/dev/null | cut -f1 || echo "-"`
-          )
-          if (duResult.success && duResult.stdout.trim()) {
-            volume.size = duResult.stdout.trim()
-          }
-        } catch {
-          // 忽略大小获取错误
-        }
-      }
-
+      // 大小不再在此逐个查询（docker run 起容器极慢），统一交给 getVolumeSize 按需查询
       return volumes
     } catch (error) {
       log.error('getVolumes error:', error)
@@ -283,9 +264,10 @@ class DockerVolumesService {
    */
   async getVolumeSize(serverId: string, name: string): Promise<string> {
     try {
+      // 直接对挂载点执行 du（单条快速命令，不起容器）；无权限时返回 '-'
       const result = await sshService.executeCommand(
         serverId,
-        `docker run --rm -v ${name}:/vol alpine:3.18 du -sh /vol 2>/dev/null | cut -f1`
+        `du -sh "$(docker volume inspect -f '{{.Mountpoint}}' ${name} 2>/dev/null)" 2>/dev/null | cut -f1`
       )
       if (result.success && result.stdout.trim()) {
         return result.stdout.trim()

@@ -368,6 +368,25 @@ async function createOpsTools(): Promise<Record<string, any>> {
       execute: async ({ serverId, path }) => exec(serverId, `cat "${path}"`, 15000)
     }),
 
+    // 文件内容搜索（grep）
+    grep_search: mk({
+      id: 'grep_search',
+      description: '在服务器文件或目录中按关键词（支持正则）搜索，返回带行号的匹配行。适合查找日志关键词、配置文件项、报错信息等。',
+      inputSchema: srv({
+        pattern: z.string().describe('要搜索的关键词或正则表达式'),
+        path: z.string().describe('要搜索的文件路径或目录路径'),
+        caseInsensitive: z.boolean().optional().describe('是否忽略大小写，默认 false'),
+        maxResults: z.number().optional().describe('最多返回行数，默认 50')
+      }),
+      execute: async ({ serverId, pattern, path, caseInsensitive, maxResults }) => {
+        const ic = caseInsensitive ? 'i' : ''
+        const limit = Math.max(1, Math.min((maxResults || 50), 500))
+        const sq = (s: string) => `'${s.replace(/'/g, "'\\''")}'`
+        const cmd = `grep -r${ic}n ${sq(pattern)} ${sq(path)} 2>/dev/null | head -n ${limit}`
+        return exec(serverId, cmd, 15000)
+      }
+    }),
+
     // 端口占用排查
     port_check: mk({
       id: 'port_check',

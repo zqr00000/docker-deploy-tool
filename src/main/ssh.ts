@@ -358,7 +358,16 @@ class SSHService {
     retryDelay = 1000,
     timeout = 30000
   ): Promise<{ success: boolean; stdout: string; stderr: string; exitCode: number }> {
-    const entry = this.connections.get(serverId)
+    let entry = this.connections.get(serverId)
+    if (!entry || !entry.authenticated) {
+      // 连接可能正处于"断开→自动重连"的空窗，短暂等待其就绪，避免对在线服务器误报未连接
+      const deadline = Date.now() + 2500
+      while (Date.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve, 150))
+        entry = this.connections.get(serverId)
+        if (entry && entry.authenticated) break
+      }
+    }
     if (!entry || !entry.authenticated) {
       return {
         success: false,

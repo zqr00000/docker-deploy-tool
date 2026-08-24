@@ -26,6 +26,7 @@
 
     "deployHistory": "部署历史",
     "auditLogs": "审计日志",
+    "aiModelConfig": "模型配置",
     "alerts": "告警管理",
     "healthCheck": "健康检查",
     "scheduledTasks": "定时任务",
@@ -1205,7 +1206,8 @@
     "back": "返回",
     "details": "详情",
     "status": "状态",
-    "totalCount": "共 {{count}} 条记录"
+    "totalCount": "共 {{count}} 条记录",
+    "items": "项"
   },
   "scheduledTasks": {
     "title": "定时任务管理",

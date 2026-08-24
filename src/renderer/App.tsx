@@ -22,6 +22,7 @@ const Volumes = lazy(() => import('./pages/docker/Volumes'))
 const Networks = lazy(() => import('./pages/docker/Networks'))
 
 const Settings = lazy(() => import('./pages/system/Settings'))
+const ModelConfig = lazy(() => import('./pages/system/ModelConfig'))
 const AuditLog = lazy(() => import('./pages/system/AuditLog'))
 const Alerts = lazy(() => import('./pages/monitor/Alerts'))
 const DeployHistory = lazy(() => import('./pages/deploy/DeployHistory'))
@@ -207,6 +208,7 @@ const App: React.FC = () => {
                       <Route path="/compose-editor" element={<ComposeEditor />} />
                       <Route path="/shell-scripts" element={<ShellScripts />} />
                       <Route path="/settings" element={<Settings />} />
+                      <Route path="/ai-model-config" element={<ModelConfig />} />
                     </Routes>
                   </PageTransition>
                 </Suspense>

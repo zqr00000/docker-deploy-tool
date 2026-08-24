@@ -861,6 +861,7 @@ export interface ElectronAPI {
   }
   ai: {
     getModels: (provider: string, apiKey: string, baseUrl?: string) => Promise<{ success: boolean; data?: any[]; error?: string }>
+    generateScript: (cfg: any, prompt: string) => Promise<{ success: boolean; text?: string; error?: string }>
   }
   secure: {
     encrypt: (text: string) => Promise<{ success: boolean; data?: string; error?: string }>
@@ -1158,7 +1159,8 @@ const electronAPI: ElectronAPI = {
     getActiveAlerts: (): Promise<AlertHistoryEntry[]> => ipcRenderer.invoke('alertHistory:getActive')
   },
   ai: {
-    getModels: (provider: string, apiKey: string, baseUrl?: string): Promise<{ success: boolean; data?: any[]; error?: string }> => ipcRenderer.invoke('ai:getModels', provider, apiKey, baseUrl)
+    getModels: (provider: string, apiKey: string, baseUrl?: string): Promise<{ success: boolean; data?: any[]; error?: string }> => ipcRenderer.invoke('ai:getModels', provider, apiKey, baseUrl),
+    generateScript: (cfg: any, prompt: string): Promise<{ success: boolean; text?: string; error?: string }> => ipcRenderer.invoke('ai:generateScript', cfg, prompt)
   },
   secure: {
     encrypt: (text: string): Promise<{ success: boolean; data?: string; error?: string }> => ipcRenderer.invoke('secure:encrypt', text),

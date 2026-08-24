@@ -1,5 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
+// Monaco 本地化（必须在首次创建 Monaco 编辑器前配置，避免从 CDN 加载导致编辑器一直 loading）
+import './components/monaco-setup'
 import { ConfigProvider, theme } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
 import enUS from 'antd/locale/en_US'
