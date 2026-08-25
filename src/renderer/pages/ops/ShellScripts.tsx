@@ -35,7 +35,9 @@ import {
   CheckCircleOutlined,
   CloseCircleOutlined,
   RobotOutlined,
-  FullscreenOutlined
+  FullscreenOutlined,
+  UndoOutlined,
+  CheckOutlined
 } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import type { ColumnsType } from 'antd/es/table'
@@ -1227,6 +1229,8 @@ const ShellScriptEditorModal: React.FC<EditorModalProps> = ({ open, script, savi
   const [aiLoading, setAiLoading] = useState(false)
   // AI 编写会话记忆（多轮）：记录历次 用户需求 / AI 输出
   const aiConvoRef = useRef<Array<{ role: 'user' | 'assistant'; content: string }>>([])
+  // AI 生成历史（历次生成脚本，可用于回退），最新在前
+  const [aiVersions, setAiVersions] = useState<string[]>([])
   // 编辑区全屏编辑层开关
   const [fullscreenEdit, setFullscreenEdit] = useState(false)
 
@@ -1306,6 +1310,7 @@ const ShellScriptEditorModal: React.FC<EditorModalProps> = ({ open, script, savi
           { role: 'user', content: prompt },
           { role: 'assistant', content: script }
         ]
+        setAiVersions(prev => [script, ...prev.filter(v => v !== script)].slice(0, 10))
         setContent(script)
         setExtractedVars(extractVariables(script))
         message.success(aiConvoRef.current.length > 2 ? '已基于上一版本继续生成' : '脚本已生成，可编辑后保存')
@@ -1407,6 +1412,32 @@ const ShellScriptEditorModal: React.FC<EditorModalProps> = ({ open, script, savi
           <Button icon={<FullscreenOutlined />} onClick={() => setFullscreenEdit(true)} style={{ flexShrink: 0 }} />
         </Tooltip>
       </div>
+
+      {/* 生成历史（回退） */}
+      {aiVersions.length > 1 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', padding: '6px 8px', background: 'rgba(48,209,88,0.06)', border: '1px solid rgba(48,209,88,0.25)', borderBottom: 'none', borderRadius: '8px 8px 0 0' }}>
+          <span style={{ fontSize: 11, color: '#8e8e93' }}>生成历史（{aiVersions.length}）：</span>
+          {aiVersions.map((v, i) => {
+            const active = v === content
+            return (
+              <Tooltip key={i} title={v.slice(0, 60).replace(/\n/g, ' ')}>
+                <Button
+                  size="small"
+                  type={active ? 'primary' : 'default'}
+                  style={active ? { fontSize: 11, borderRadius: 999 } : { fontSize: 11, borderRadius: 999, borderColor: 'rgba(48,209,88,0.5)', color: '#30D158' }}
+                  onClick={() => {
+                    setContent(v)
+                    setExtractedVars(extractVariables(v))
+                  }}
+                  icon={active ? <CheckOutlined /> : <UndoOutlined />}
+                >
+                  {active ? '已回退' : `v${aiVersions.length - i}`}
+                </Button>
+              </Tooltip>
+            )
+          })}
+        </div>
+      )}
 
       <Editor
         height={360}

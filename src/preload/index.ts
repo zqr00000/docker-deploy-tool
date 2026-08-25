@@ -874,6 +874,7 @@ export interface ElectronAPI {
     cancel: (requestId: string) => Promise<{ success: boolean; error?: string }>
     approval: (id: string, approved: boolean) => Promise<{ success: boolean }>
     onChunk: (callback: (payload: { requestId: string; delta: string }) => void) => () => void
+    onReasoning: (callback: (payload: { requestId: string; delta: string }) => void) => () => void
     onToolCall: (callback: (payload: { requestId: string; toolName: string; args: any }) => void) => () => void
     onToolResult: (callback: (payload: { requestId: string; toolName: string; success: boolean; output: any }) => void) => () => void
     onError: (callback: (payload: { requestId: string; error: string }) => void) => () => void
@@ -1176,6 +1177,11 @@ const electronAPI: ElectronAPI = {
       const listener = (_e: any, payload: { requestId: string; delta: string }) => callback(payload)
       ipcRenderer.on('opsAgent:chunk', listener)
       return () => { ipcRenderer.removeListener('opsAgent:chunk', listener) }
+    },
+    onReasoning: (callback: (payload: { requestId: string; delta: string }) => void): (() => void) => {
+      const listener = (_e: any, payload: { requestId: string; delta: string }) => callback(payload)
+      ipcRenderer.on('opsAgent:reasoning', listener)
+      return () => { ipcRenderer.removeListener('opsAgent:reasoning', listener) }
     },
     onToolCall: (callback: (payload: { requestId: string; toolName: string; args: any; toolCallId?: string }) => void): (() => void) => {
       const listener = (_e: any, payload: { requestId: string; toolName: string; args: any; toolCallId?: string }) => callback(payload)

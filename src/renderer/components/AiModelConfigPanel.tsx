@@ -156,7 +156,8 @@ const AiModelConfigPanel: React.FC<AiModelConfigPanelProps> = ({ selectedServer 
       ...modelConfig,
       activeProfileId: id,
       provider: p.provider, apiKey: p.apiKey, model: p.model, baseUrl: p.baseUrl,
-      azureEndpoint: p.azureEndpoint, azureDeployment: p.azureDeployment
+      azureEndpoint: p.azureEndpoint, azureDeployment: p.azureDeployment,
+      maxTokens: p.maxTokens ?? modelConfig.maxTokens
     })
   }
 
@@ -172,6 +173,7 @@ const AiModelConfigPanel: React.FC<AiModelConfigPanelProps> = ({ selectedServer 
       if (patch.baseUrl !== undefined) next.baseUrl = patch.baseUrl
       if (patch.azureEndpoint !== undefined) next.azureEndpoint = patch.azureEndpoint
       if (patch.azureDeployment !== undefined) next.azureDeployment = patch.azureDeployment
+      if (patch.maxTokens !== undefined) next.maxTokens = patch.maxTokens
       return next
     })
   }
@@ -482,6 +484,22 @@ const AiModelConfigPanel: React.FC<AiModelConfigPanelProps> = ({ selectedServer 
                         <Button size="small" icon={<ReloadOutlined />} loading={loadingModels} onClick={loadModels} title="获取模型列表"
                           style={{ background: 'var(--app-hover-bg)', borderColor: 'var(--app-border-color)', color: '#0A84FF' }} />
                       </Space.Compact>
+
+                      {/* 单模型：最大输出 / 上下文窗口 */}
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 12 }}>
+                        <div>
+                          <span className="field-label">最大输出（tokens）</span>
+                          <InputNumber value={activeProfile?.maxTokens ?? modelConfig.maxTokens}
+                            onChange={v => updateProfile({ maxTokens: (v as number) ?? modelConfig.maxTokens })}
+                            min={100} max={64000} step={100} size="small" style={{ width: '100%', marginTop: 6 }} />
+                        </div>
+                        <div>
+                          <span className="field-label">上下文窗口（tokens）</span>
+                          <InputNumber value={activeProfile?.contextWindow ?? 32768}
+                            onChange={v => updateProfile({ contextWindow: (v as number) || undefined })}
+                            min={1024} max={1048576} step={1024} size="small" style={{ width: '100%', marginTop: 6 }} />
+                        </div>
+                      </div>
                     </div>
                   </div>
                 )}

@@ -2451,6 +2451,7 @@ function registerIpcHandlers(): void {
         signal: controller.signal,
         callbacks: {
           onDelta: (delta) => sendEvent('opsAgent:chunk', { requestId, delta }),
+          onReasoning: (delta) => sendEvent('opsAgent:reasoning', { requestId, delta }),
           onToolCall: (toolName, args, toolCallId) => sendEvent('opsAgent:toolCall', { requestId, toolName, args, toolCallId }),
           onToolResult: (toolName, success, output, toolCallId) => sendEvent('opsAgent:toolResult', { requestId, toolName, success, output, toolCallId }),
           onError: (error) => sendEvent('opsAgent:error', { requestId, error }),

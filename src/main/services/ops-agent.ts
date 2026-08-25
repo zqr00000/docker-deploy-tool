@@ -44,6 +44,8 @@ export interface ChatCallbacks {
   onDone?: () => void
   /** 路由通知：本次对话实际使用的路由档位（execution/thinking/critique/vision） */
   onRoute?: (route: string) => void
+  /** 思维过程（reasoning）增量文本，供前端折叠展示 */
+  onReasoning?: (delta: string) => void
 }
 
 // ==================== Mastra 动态加载 ====================
@@ -766,6 +768,12 @@ export async function chatWithAgent(params: {
         case 'text-delta':
           callbacks.onDelta?.(chunk.payload?.text || '')
           break
+        case 'reasoning':
+        case 'reasoning-delta': {
+          const rt = chunk.payload?.text || chunk.payload?.reasoning || chunk.payload?.textDelta || chunk.payload?.content
+          if (rt) callbacks.onReasoning?.(String(rt))
+          break
+        }
         case 'tool-call':
           callbacks.onToolCall?.(chunk.payload?.toolName, chunk.payload?.args, chunk.payload?.toolCallId)
           break

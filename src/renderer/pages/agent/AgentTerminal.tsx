@@ -62,7 +62,8 @@ import {
   FilterOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
-  StarOutlined
+  StarOutlined,
+  SearchOutlined
 } from '@ant-design/icons'
 import { Terminal } from 'xterm'
 import { FitAddon } from 'xterm-addon-fit'
@@ -357,6 +358,7 @@ const AgentTerminalPage: React.FC = () => {
 
   // Session state
   const [sessions, setSessions] = useState<ChatSession[]>([])
+  const [sessionSearch, setSessionSearch] = useState('')
   const [activeSessionId, setActiveSessionId] = useState<string | undefined>(undefined)
   // 会话重命名
   const [renameTarget, setRenameTarget] = useState<ChatSession | null>(null)
@@ -569,6 +571,33 @@ const AgentTerminalPage: React.FC = () => {
     await loadSessions()
   }
 
+  // 跨会话复制：深拷贝会话为新会话
+  const duplicateSession = async (sessionId: string) => {
+    const src = sessions.find(s => s.id === sessionId)
+    if (!src) return
+    const copy: ChatSession = {
+      id: `session-${Date.now()}`,
+      name: `${src.name} 副本`,
+      messages: JSON.parse(JSON.stringify(src.messages)),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    }
+    await persistenceManager.saveSession(copy)
+    await loadSessions()
+    setActiveSessionId(copy.id)
+    message.success('会话已复制')
+  }
+
+  // 会话搜索过滤（按标题或消息内容）
+  const filteredSessions = useMemo(() => {
+    const q = sessionSearch.trim().toLowerCase()
+    if (!q) return sessions
+    return sessions.filter(s =>
+      s.name.toLowerCase().includes(q) ||
+      s.messages.some(m => (m.content || '').toLowerCase().includes(q))
+    )
+  }, [sessions, sessionSearch])
+
   const renameSession = async () => {
     if (!renameTarget || !renameName.trim()) return
     await persistenceManager.saveSession({
@@ -758,6 +787,16 @@ const AgentTerminalPage: React.FC = () => {
         })
       : () => {}
 
+    // 思维过程（reasoning）流式累积，展示为"思考过程"折叠块
+    let reasoningBuf = ''
+    const removeReasoning = window.electronAPI.opsAgent.onReasoning
+      ? window.electronAPI.opsAgent.onReasoning(({ requestId: rid, delta }) => {
+          if (rid !== requestId) return
+          reasoningBuf += delta
+          setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, reasoning: reasoningBuf } : m))
+        })
+      : () => {}
+
     const removeError = window.electronAPI.opsAgent.onError(({ requestId: rid, error }) => {
       if (rid !== requestId) return
       const cancelled = error === 'cancelled'
@@ -802,6 +841,7 @@ const AgentTerminalPage: React.FC = () => {
       if (currentRequestIdRef.current === requestId) currentRequestIdRef.current = null
       toolCallStartTimes.clear()
       removeChunk()
+      removeReasoning()
       removeToolCall()
       removeToolResult()
       removeRoute()
@@ -1318,8 +1358,12 @@ const AgentTerminalPage: React.FC = () => {
                 </Space>
                 <Button size="small" type="text" icon={<PlusOutlined />} onClick={createSession} title="新建对话" style={{ color: '#0A84FF', padding: 0, width: 24, height: 24 }} />
               </div>
+              <div style={{ padding: '6px 8px' }}>
+                <Input size="small" prefix={<SearchOutlined />} allowClear placeholder="搜索会话…" value={sessionSearch} onChange={e => setSessionSearch(e.target.value)}
+                  style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid #3a3a3c', color: '#f5f5f7', fontSize: 11 }} />
+              </div>
               <div style={{ flex: 1, overflow: 'auto', padding: '0 6px 8px' }}>
-                {sessions.map(s => (
+                {filteredSessions.map(s => (
                   <div key={s.id} className={`agent-sidebar-item ${activeSessionId === s.id ? 'active' : ''}`} onClick={() => setActiveSessionId(s.id)}
                     style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 8px', borderRadius: 8, cursor: 'pointer' }}>
                     <MessageOutlined style={{ color: activeSessionId === s.id ? '#0A84FF' : '#8e8e93', fontSize: 12, flexShrink: 0 }} />
@@ -1328,6 +1372,8 @@ const AgentTerminalPage: React.FC = () => {
                       <div style={{ fontSize: 10, color: '#8e8e93' }}>{s.messages.length} 条消息</div>
                     </div>
                     <Space size={2} className="agent-sidebar-actions">
+                      <Button size="small" type="text" icon={<CopyOutlined />} title="复制会话" style={{ color: '#aeaeb2', padding: 0, width: 20, height: 20 }}
+                        onClick={(e) => { e.stopPropagation(); duplicateSession(s.id) }} />
                       <Button size="small" type="text" icon={<EditOutlined />} title="重命名" style={{ color: '#aeaeb2', padding: 0, width: 20, height: 20 }}
                         onClick={(e) => { e.stopPropagation(); setRenameTarget(s); setRenameName(s.name) }} />
                       <Button size="small" type="text" danger icon={<DeleteOutlined />} title="删除" style={{ padding: 0, width: 20, height: 20 }}
@@ -1335,9 +1381,9 @@ const AgentTerminalPage: React.FC = () => {
                     </Space>
                   </div>
                 ))}
-                {sessions.length === 0 && (
+                {filteredSessions.length === 0 && (
                   <div style={{ textAlign: 'center', padding: '24px 0' }}>
-                    <Text style={{ fontSize: 11, color: '#8e8e93' }}>暂无会话，点击 + 新建</Text>
+                    <Text style={{ fontSize: 11, color: '#8e8e93' }}>{sessionSearch ? '未找到匹配会话' : '暂无会话，点击 + 新建'}</Text>
                   </div>
                 )}
               </div>
@@ -1512,6 +1558,18 @@ const AgentTerminalPage: React.FC = () => {
                         <div className="ai-avatar"><RobotOutlined style={{ color: '#fff', fontSize: 13 }} /></div>
                         <div style={{ flex: 1, minWidth: 0 }}>
                         <div className="ai-msg-bubble" style={{ padding: msg.status === 'running' ? '10px 14px' : '12px 14px' }}>
+                          {/* 思维过程（reasoning）折叠展示 */}
+                          {!!msg.reasoning && msg.reasoning.trim().length > 0 && (
+                            <Collapse
+                              size="small"
+                              style={{ marginBottom: 8, background: 'rgba(0,0,0,0.45)' }}
+                              items={[{
+                                key: 'reasoning',
+                                label: <span style={{ fontSize: 11, color: '#8e8e93' }}>💭 思考过程</span>,
+                                children: <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: 12, color: '#aeaeb2' }}>{msg.reasoning}</pre>
+                              }]}
+                            />
+                          )}
                           {/* 分段内容：文本 / 工具调用 按真实执行顺序交错 */}
                           {msg.segments && msg.segments.length > 0 ? (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

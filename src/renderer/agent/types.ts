@@ -25,6 +25,10 @@ export interface ProviderProfile {
   baseUrl: string
   azureEndpoint?: string
   azureDeployment?: string
+  /** 单模型最大输出（tokens） */
+  maxTokens?: number
+  /** 单模型上下文窗口（tokens） */
+  contextWindow?: number
 }
 
 export interface ModelConfig {
@@ -105,6 +109,8 @@ export interface ChatMessage {
   metadata?: MessageMetadata
   // 按真实执行顺序交错存储文本与工具调用（渲染优先）
   segments?: MessageSegment[]
+  /** 思维过程（reasoning）全文，可折叠展示 */
+  reasoning?: string
 }
 
 // 消息分段：文本或工具调用，渲染时按数组顺序展示
