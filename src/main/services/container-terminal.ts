@@ -5,6 +5,7 @@ import { randomUUID } from 'crypto'
 import { sshService } from '../ssh'
 import type { SSHServerConfig } from '../ssh'
 import { serverQueries } from '../database'
+import { validateDockerRef } from '../utils/shell'
 
 interface TerminalSession {
   sessionId: string
@@ -55,6 +56,14 @@ class ContainerTerminalService {
       const connected = await this.ensureConnected(serverId)
       if (!connected) {
         return { success: false, message: 'SSH connection not established' }
+      }
+    }
+
+    // containerId 拼入 docker exec 命令前必须校验（防命令注入）
+    if (containerId !== '__server__') {
+      const invalid = validateDockerRef(containerId, '容器ID')
+      if (invalid) {
+        return { success: false, message: invalid }
       }
     }
 

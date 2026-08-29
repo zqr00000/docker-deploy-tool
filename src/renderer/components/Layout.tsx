@@ -152,7 +152,6 @@ const LayoutComponent: React.FC<LayoutProps> = memo(({ children }) => {
   const screens = useBreakpoint()
 
   const [selectedKey, setSelectedKey] = useState('servers')
-  const [collapsed, setCollapsed] = useState(false)
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false)
   const [searchVisible, setSearchVisible] = useState(false)
   const [onboardingVisible, setOnboardingVisible] = useState(false)
@@ -229,8 +228,6 @@ const LayoutComponent: React.FC<LayoutProps> = memo(({ children }) => {
   const isLg = !!screens.lg
   const isXl = !!screens.xl
   const isMobile = isXs || (!isMd && isSm)
-  const isTablet = isMd && !isLg
-  const isDesktop = isLg || isXl
 
   // 首次访问时显示引导
   useEffect(() => {
@@ -255,19 +252,6 @@ const LayoutComponent: React.FC<LayoutProps> = memo(({ children }) => {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [])
-
-  // 根据屏幕尺寸自动折叠侧边栏
-  useEffect(() => {
-    if (isXs) {
-      setCollapsed(true)
-    } else if (isSm && !isMd) {
-      setCollapsed(true)
-    } else if (isMd && !isLg) {
-      setCollapsed(true)
-    } else {
-      setCollapsed(false)
-    }
-  }, [isXs, isSm, isMd, isLg])
 
   useEffect(() => {
     const path = location.pathname.replace('/', '')
@@ -298,21 +282,23 @@ const LayoutComponent: React.FC<LayoutProps> = memo(({ children }) => {
   const handleMenuClick = useCallback(({ key }: { key: string }) => {
     setSelectedKey(key)
     navigate(`/${key}`)
+    // 顶部导航：点击跳转后收起下拉面板
+    setTopnavOpenKeys([])
     if (isMobile) {
       setMobileDrawerOpen(false)
     }
   }, [navigate, isMobile])
 
-  const handleToggleSidebar = useCallback(() => {
-    if (isMobile) {
-      setMobileDrawerOpen(prev => !prev)
-    } else {
-      setCollapsed(prev => !prev)
-    }
-  }, [isMobile])
+  // 顶部水平导航：受控 openKeys，强制同时只展开一个分组下拉
+  // （规避 rc-menu hover 切换时旧面板偶发不关闭的竞态问题）
+  const [topnavOpenKeys, setTopnavOpenKeys] = useState<string[]>([])
+  const handleTopnavOpenChange = useCallback((keys: string[]) => {
+    setTopnavOpenKeys(keys.slice(-1))
+  }, [])
 
-  // 响应式侧边栏宽度
-  const sidebarWidth = collapsed ? (isMobile ? 0 : 60) : (isMobile ? 240 : 220)
+  const handleToggleMobileNav = useCallback(() => {
+    setMobileDrawerOpen(prev => !prev)
+  }, [])
 
   const isDark = document.documentElement.getAttribute('data-theme') === 'dark'
 
@@ -324,16 +310,6 @@ const LayoutComponent: React.FC<LayoutProps> = memo(({ children }) => {
     borderBottom: `1px solid ${isDark ? '#38383a' : '#e5e5ea'}`,
     padding: isXs ? '0 12px' : isSm ? '0 16px' : '0 24px'
   }), [isDark, isXs, isSm])
-
-  const sidebarStyle = useMemo(() => ({
-    width: sidebarWidth,
-    background: isDark ? 'rgba(28,28,30,0.72)' : 'rgba(242,242,247,0.72)',
-    backdropFilter: 'blur(20px) saturate(180%)',
-    WebkitBackdropFilter: 'blur(20px) saturate(180%)',
-    borderRight: `1px solid ${isDark ? '#38383a' : '#e5e5ea'}`,
-    flex: `0 0 ${sidebarWidth}px`,
-    transition: 'flex 0.28s cubic-bezier(0.32,0.72,0,1), width 0.28s cubic-bezier(0.32,0.72,0,1)'
-  }), [sidebarWidth, isDark])
 
   // 响应式内容区域样式
   const contentStyle = useMemo(() => ({
@@ -370,7 +346,7 @@ const LayoutComponent: React.FC<LayoutProps> = memo(({ children }) => {
             <Button
               type="text"
               icon={mobileDrawerOpen ? <MenuFoldOutlined /> : <MenuUnfoldOutlined />}
-              onClick={handleToggleSidebar}
+              onClick={handleToggleMobileNav}
               style={{ fontSize: 16 }}
             />
             <Logo size={isXs ? 24 : 28} />
@@ -432,32 +408,41 @@ const LayoutComponent: React.FC<LayoutProps> = memo(({ children }) => {
     )
   }
 
-  // 桌面端布局（含平板）
+  // 桌面端/平板布局：固定顶部水平导航（分组悬停展开下拉）
   return (
     <div className="app-layout">
-      {/* Header */}
-      <header className="app-header" style={headerStyle}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <Button
-            type="text"
-            icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-            onClick={handleToggleSidebar}
-            style={{ fontSize: 16, marginRight: isMd ? 4 : 8 }}
-          />
-          <Logo size={isMd ? 28 : 32} />
-          {!collapsed && (
-            <Title level={isMd ? 5 : 4} style={{ margin: 0, color: '#007AFF', fontWeight: 700 }}>
+      {/* 顶部导航栏 — 固定于页面顶部，内容区滚动时保持可见 */}
+      <header className="app-header app-header-topnav" style={headerStyle}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+          <Logo size={isMd ? 26 : 30} />
+          {isXl && (
+            <Title level={4} style={{ margin: 0, color: '#007AFF', fontWeight: 700, whiteSpace: 'nowrap' }}>
               {t('app.title')}
             </Title>
           )}
         </div>
-        <Space size={isMd ? 8 : 12}>
+
+        {/* 顶部水平导航菜单：支持键盘导航与 aria 标注 */}
+        <nav className="app-topnav" aria-label={t('menu.mainNav')}>
+          <Menu
+            mode="horizontal"
+            selectedKeys={[selectedKey]}
+            openKeys={topnavOpenKeys}
+            onOpenChange={handleTopnavOpenChange}
+            items={menuItems}
+            onClick={handleMenuClick}
+            style={{ flex: 1, minWidth: 0, justifyContent: 'center', background: 'transparent', borderBottom: 'none' }}
+          />
+        </nav>
+
+        <Space size={isMd ? 4 : 8} style={{ flexShrink: 0 }}>
           {/* 平板显示搜索按钮，桌面显示搜索框 */}
           {isMd ? (
             <Button
               type="text"
               icon={<SearchOutlined />}
               onClick={() => setSearchVisible(true)}
+              aria-label={t('globalSearch.triggerPlaceholder')}
             />
           ) : (
             <Input
@@ -474,39 +459,19 @@ const LayoutComponent: React.FC<LayoutProps> = memo(({ children }) => {
             icon={<QuestionCircleOutlined />}
             onClick={() => setOnboardingVisible(true)}
             title={t('onboarding.helpButton')}
+            aria-label={t('onboarding.helpButton')}
           />
           <LanguageSwitcher />
         </Space>
       </header>
 
-      {/* Body */}
-      <div className="app-body">
-        {/* Sidebar */}
-        <aside className={`app-sider ${collapsed ? 'collapsed' : ''}`} style={sidebarStyle}>
-          <Menu
-            mode="inline"
-            selectedKeys={[selectedKey]}
-            openKeys={openKeys}
-            onOpenChange={setOpenKeys}
-            items={menuItems}
-            onClick={handleMenuClick}
-            style={{
-              height: '100%',
-              borderRight: 0,
-              paddingTop: 8
-            }}
-            inlineCollapsed={collapsed}
-          />
-        </aside>
-
-        {/* Content */}
-        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-          {tabBar}
-          <div className={`app-content-wrapper ${location.pathname === '/agent-terminal' ? 'no-scroll' : ''}`}>
-            <main className="app-content" style={{ ...contentStyle, ...(location.pathname === '/agent-terminal' ? { padding: 0, height: '100%', overflow: 'hidden' } : {}) }}>
-              {children}
-            </main>
-          </div>
+      {/* 内容区域 */}
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+        {tabBar}
+        <div className={`app-content-wrapper ${location.pathname === '/agent-terminal' ? 'no-scroll' : ''}`}>
+          <main className="app-content" style={{ ...contentStyle, ...(location.pathname === '/agent-terminal' ? { padding: 0, height: '100%', overflow: 'hidden' } : {}) }}>
+            {children}
+          </main>
         </div>
       </div>
 

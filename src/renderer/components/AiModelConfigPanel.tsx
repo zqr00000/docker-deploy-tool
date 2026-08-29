@@ -606,7 +606,7 @@ const AiModelConfigPanel: React.FC<AiModelConfigPanelProps> = ({ selectedServer 
                       </div>
                       {modelConfig.enableRouting && (
                         <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                          {(['thinking', 'critique', 'vision'] as string[]).map(route => {
+                          {(['thinking', 'critique', 'vision'] as const).map(route => {
                             const meta = ROUTE_META[route]
                             const r = (modelConfig.routing || {})[route]
                             return (
@@ -693,7 +693,7 @@ const AiModelConfigPanel: React.FC<AiModelConfigPanelProps> = ({ selectedServer 
           <Button type="primary" icon={<SaveOutlined />} onClick={saveConfig}
             style={{ background: 'linear-gradient(135deg, #0A84FF 0%, #0051D5 100%)', borderColor: 'transparent', borderRadius: 8, boxShadow: '0 4px 14px rgba(10,132,255,0.35)' }}>保存配置</Button>
           {configSaved && (
-            <Tag success icon={<CheckCircleOutlined />} style={{ borderRadius: 999, fontSize: 11, margin: 0 }}>已保存</Tag>
+            <Tag icon={<CheckCircleOutlined />} style={{ borderRadius: 999, fontSize: 11, margin: 0 }}>已保存</Tag>
           )}
         </Space>
         <Text type="secondary" style={{ fontSize: 11, flexShrink: 0 }}>

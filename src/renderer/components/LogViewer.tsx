@@ -190,12 +190,15 @@ const LogViewer: React.FC<LogViewerProps> = ({
       }
     }
 
-    window.electronAPI.logs.onData(handleData)
-    window.electronAPI.logs.onError(handleError)
-    window.electronAPI.logs.onClose(handleClose)
+    const unsubData = window.electronAPI.logs.onData(handleData)
+    const unsubError = window.electronAPI.logs.onError(handleError)
+    const unsubClose = window.electronAPI.logs.onClose(handleClose)
 
     return () => {
-      // 清理函数
+      // 组件卸载时移除监听器（此前为空清理，反复挂载会累积泄漏）
+      unsubData()
+      unsubError()
+      unsubClose()
     }
   }, [])
 

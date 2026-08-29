@@ -1,4 +1,4 @@
-﻿import log from 'electron-log'
+import log from 'electron-log'
 import { sshService } from '../ssh'
 
 export interface InstallResult {
@@ -150,10 +150,11 @@ class InstallService {
 
     let success = true
     
-    success = await this.executeCommand(serverId, 'sudo apt-get install -y docker-compose 2>/dev/null || sudo yum install -y docker-compose 2>/dev/null || true', '尝试系统包安装', steps) && success
+    // 注意：不能加 || true 兜底——失败必须向后传递，否则 pip/V2 回退分支永远不会生效
+    success = await this.executeCommand(serverId, 'sudo apt-get install -y docker-compose 2>/dev/null || sudo yum install -y docker-compose 2>/dev/null', '尝试系统包安装', steps) && success
     
     if (!success) {
-      success = await this.executeCommand(serverId, 'pip3 install docker-compose 2>/dev/null || pip install docker-compose 2>/dev/null || true', '尝试pip安装', steps) && success
+      success = await this.executeCommand(serverId, 'pip3 install docker-compose 2>/dev/null || pip install docker-compose 2>/dev/null', '尝试pip安装', steps) && success
     }
 
     if (!success) {
@@ -258,10 +259,15 @@ class InstallService {
     log.info(`Uploading offline package: ${fileName} to server ${serverId}`)
     
     try {
+      // 文件名白名单校验，防止路径穿越与命令注入
+      if (!/^[a-zA-Z0-9._-]+$/.test(fileName) || fileName.includes('..')) {
+        return { success: false, message: `非法的文件名: ${fileName}` }
+      }
       const content = Buffer.from(base64Content, 'base64')
       const remotePath = `/tmp/${fileName}`
-      
-      const result = await sshService.uploadContent(serverId, content.toString('binary'), remotePath)
+
+      // 直接传 Buffer，保持二进制完整性（此前 toString('binary') + utf8 回编码会损坏安装包）
+      const result = await sshService.uploadContent(serverId, content, remotePath)
       
       if (result.success) {
         const fileExtension = fileName.split('.').pop()?.toLowerCase()

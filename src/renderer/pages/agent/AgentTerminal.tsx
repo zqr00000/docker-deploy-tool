@@ -70,10 +70,10 @@ import 'xterm/css/xterm.css'
 
 // 导入会话持久化与类型（会话存储为纯前端 localStorage，非 agent 逻辑）
 import { persistenceManager } from '../../agent/persistence-manager'
-import type { 
-  ChatMessage, 
-  ChatSession, 
-  ModelConfig, 
+import type {
+  ChatMessage,
+  ChatSession,
+  ModelConfig,
   ProviderProfile,
   MessageSegment,
   ExecutedCommand,
@@ -81,10 +81,13 @@ import type {
   DiagnosticResult,
   ContainerOption,
   TerminalTab,
-  ToolCallRecord
+  ToolCallRecord,
+  RiskLevel
 } from '../../agent/types'
 import { DEFAULT_MODEL_CONFIG } from '../../agent/types'
 import type { Server } from '../../types/server'
+import { useTranslation } from 'react-i18next'
+import i18n from '../../i18n'
 
 const { Text, Title } = Typography
 const { TextArea } = Input
@@ -100,10 +103,11 @@ const SUMMARY_PER_MSG_MAX = 300 // 被压缩的早期消息，单条摘要上限
 const SUMMARY_TOTAL_MAX = 4000  // 摘要总长度上限（字符）
 const DEFAULT_CONTEXT_WINDOW = 8192 // 未配置 contextWindow 时的兜底估算窗口（tokens）
 
-// 粗略估算 token 数（中英混合约 2 字符 ≈ 1 token，标注"估算"）
-const estimateTokens = (text: string): number => {
-  if (!text) return 0
-  return Math.ceil(text.length / 2)
+// 粗略估算 token 数（中英混合约 2 字符 ≈ 1 token，标注"估算"；参数为字符串或字符数）
+const estimateTokens = (chars: string | number): number => {
+  const len = typeof chars === 'string' ? chars.length : chars
+  if (!len) return 0
+  return Math.ceil(len / 2)
 }
 
 // token 数值可读化：1K / 1M / 1G（二进制 M = 1024*1024）
@@ -164,8 +168,8 @@ const getRiskColor = (level: string) => {
 const buildCommandList = (
   text: string,
   toolCalls?: Array<{ params?: any }>
-): Array<{ command: string; riskLevel: string }> => {
-  const out: Array<{ command: string; riskLevel: string }> = []
+): Array<{ command: string; riskLevel: RiskLevel }> => {
+  const out: Array<{ command: string; riskLevel: RiskLevel }> = []
   const push = (cmd: string) => {
     const c = cmd.trim()
     if (!c) return
@@ -220,9 +224,9 @@ const renderRichSegment = (
         <div key={i} className="inline-cmd" style={{ margin: '6px 0' }}>
           <pre style={{ margin: 0, padding: 10, borderRadius: 6, background: '#000000', border: '1px solid #3a3a3c', fontSize: 12, color: '#30D158', overflow: 'auto', fontFamily: 'Consolas, monospace', whiteSpace: 'pre-wrap' }}>{cmd}</pre>
           <div style={{ display: 'flex', gap: 4, marginTop: 6 }}>
-            <Button size="small" type="text" icon={<CopyOutlined />} onClick={() => onCopy && onCopy(cmd)} style={{ color: '#aeaeb2' }}>复制</Button>
+            <Button size="small" type="text" icon={<CopyOutlined />} onClick={() => onCopy && onCopy(cmd)} style={{ color: '#aeaeb2' }}>{i18n.t('agent.copy')}</Button>
             {onExecute && (
-              <Button size="small" type="text" icon={<PlayCircleOutlined />} disabled={!canExecute} onClick={() => onExecute(cmd)} style={{ color: '#0A84FF' }}>在终端执行</Button>
+              <Button size="small" type="text" icon={<PlayCircleOutlined />} disabled={!canExecute} onClick={() => onExecute(cmd)} style={{ color: '#0A84FF' }}>{i18n.t('agent.execInTerminal')}</Button>
             )}
           </div>
         </div>
@@ -247,7 +251,7 @@ const ToolCallCard: React.FC<{ tc: ToolCallRecord }> = ({ tc }) => {
   const isRunning = tc.status === 'running'
   const icon = isRunning ? <Spin size="small" /> : tc.status === 'success' ? <CheckCircleOutlined style={{ color: '#30D158' }} /> : <CloseCircleOutlined style={{ color: '#FF453A' }} />
   const tagColor = tc.status === 'success' ? 'green' : tc.status === 'error' ? 'red' : 'blue'
-  const tagText = isRunning ? '执行中' : tc.status === 'success' ? '成功' : '失败'
+  const tagText = isRunning ? i18n.t('agent.tagRunning') : tc.status === 'success' ? i18n.t('agent.tagSuccess') : i18n.t('agent.tagFail')
   // 可收藏的命令（工具参数中含 command 的命令类工具）
   const favCommand = typeof tc.params?.command === 'string' ? tc.params.command : undefined
   const [favorited, setFavorited] = useState(() => favCommand ? isFavoriteCommand(favCommand) : false)
@@ -259,7 +263,7 @@ const ToolCallCard: React.FC<{ tc: ToolCallRecord }> = ({ tc }) => {
         <Text style={{ color: '#0A84FF', fontSize: 12, flex: 1, fontFamily: 'SF Mono, Consolas, monospace' }}>{tc.name}</Text>
         {tc.duration !== undefined && !isRunning && <Text type="secondary" style={{ fontSize: 11 }}>{tc.duration}ms</Text>}
         {favCommand && (
-          <Tooltip title={favorited ? '取消收藏' : '收藏此命令'}>
+          <Tooltip title={favorited ? i18n.t('agent.unfavorite') : i18n.t('agent.favoriteCmd')}>
             <Button size="small" type="text" icon={<StarOutlined style={{ color: favorited ? '#FF9500' : '#636366' }} />}
               style={{ padding: 0, width: 20, height: 20 }}
               onClick={() => { const f = toggleFavoriteCommand(favCommand!, tc.name); setFavorited(f) }} />
@@ -329,7 +333,7 @@ const parseResourceMetrics = (text: string): { label: string; value: number }[] 
     const raw = m[1]
     const v = parseFloat(m[2])
     if (isNaN(v) || v < 0 || v > 100) continue
-    const label = /^mem|^内存$/i.test(raw) ? '内存' : /^disk|^磁盘$/i.test(raw) ? '磁盘' : 'CPU'
+    const label = /^mem|^内存$/i.test(raw) ? i18n.t('agent.metricMem') : /^disk|^磁盘$/i.test(raw) ? i18n.t('agent.metricDisk') : i18n.t('agent.metricCpu')
     if (!metrics.some(r => r.label === label)) metrics.push({ label, value: v })
   }
   return metrics.slice(0, 4)
@@ -353,18 +357,18 @@ const ResourceBars: React.FC<{ text: string }> = ({ text }) => {
   )
 }
 
-// 路由档位展示文案与颜色（多模型路由）
-const ROUTE_META: Record<string, { label: string; color: string; hint: string }> = {
-  thinking: { label: '分析模型', color: 'purple', hint: '分析/诊断/排查' },
-  critique: { label: '审查模型', color: 'geekblue', hint: '检查/复核/验证' },
-  vision: { label: '视觉模型', color: 'cyan', hint: '截图/图片' },
-  execution: { label: '默认模型', color: 'default', hint: '日常命令' }
+// 路由档位展示文案与颜色（多模型路由）；labelKey/hintKey 为 i18n 键，渲染时经 i18n.t 解析
+const ROUTE_META: Record<string, { labelKey: string; label: string; color: string; hintKey: string }> = {
+  thinking: { labelKey: 'agent.route.thinking', label: 'thinking', color: 'purple', hintKey: 'agent.route.thinkingHint' },
+  critique: { labelKey: 'agent.route.critique', label: 'critique', color: 'geekblue', hintKey: 'agent.route.critiqueHint' },
+  vision: { labelKey: 'agent.route.vision', label: 'vision', color: 'cyan', hintKey: 'agent.route.visionHint' },
+  execution: { labelKey: 'agent.route.execution', label: 'execution', color: 'default', hintKey: 'agent.route.executionHint' }
 }
 
 // 终端配色主题（参考 Netcatty 主题系统：可切换多套终端配色）
 const TERMINAL_THEMES: Record<string, { name: string; theme: any }> = {
   'github-dark': {
-    name: 'Apple 暗色',
+    name: 'Apple Dark',
     theme: { background: '#000000', foreground: '#f5f5f7', cursor: '#0A84FF', black: '#000000', red: '#FF453A', green: '#30D158', yellow: '#FF9500', blue: '#0A84FF', magenta: '#BF5AF2', cyan: '#64D2FF', white: '#f5f5f7' }
   },
   dracula: {
@@ -372,7 +376,7 @@ const TERMINAL_THEMES: Record<string, { name: string; theme: any }> = {
     theme: { background: '#282a36', foreground: '#f8f8f2', cursor: '#f8f8f2', black: '#21222c', red: '#ff5555', green: '#50fa7b', yellow: '#f1fa8c', blue: '#bd93f9', magenta: '#ff79c6', cyan: '#8be9fd', white: '#f8f8f2' }
   },
   'solarized-dark': {
-    name: 'Solarized 暗色',
+    name: 'Solarized Dark',
     theme: { background: '#002b36', foreground: '#839496', cursor: '#0A84FF', black: '#073642', red: '#dc322f', green: '#859900', yellow: '#b58900', blue: '#268bd2', magenta: '#d33682', cyan: '#2aa198', white: '#eee8d5' }
   }
 }
@@ -382,7 +386,7 @@ function ensureProfiles(cfg: ModelConfig): ModelConfig {
   if (cfg.providerProfiles && cfg.providerProfiles.length > 0) return cfg
   const base: ProviderProfile = {
     id: 'profile-default',
-    name: cfg.provider === 'openai' ? '默认配置' : cfg.provider,
+    name: cfg.provider === 'openai' ? i18n.t('agent.defaultProfile') : cfg.provider,
     provider: cfg.provider,
     apiKey: cfg.apiKey || '',
     model: cfg.model || '',
@@ -418,6 +422,8 @@ const AgentTerminalPage: React.FC = () => {
   const [sessions, setSessions] = useState<ChatSession[]>([])
   const [sessionSearch, setSessionSearch] = useState('')
   const [activeSessionId, setActiveSessionId] = useState<string | undefined>(undefined)
+  const { t } = useTranslation()
+
   // 会话重命名
   const [renameTarget, setRenameTarget] = useState<ChatSession | null>(null)
   const [renameName, setRenameName] = useState('')
@@ -574,7 +580,7 @@ const AgentTerminalPage: React.FC = () => {
       }
       setContainers(allContainers)
     } catch {
-      message.error('加载容器失败')
+      message.error(t('agent.loadContainersFailed'))
     } finally {
       setLoadingContainers(false)
     }
@@ -597,11 +603,11 @@ const AgentTerminalPage: React.FC = () => {
         const result = await window.electronAPI.server.connect(server)
         setConnected(result.success)
         if (!result.success) {
-          message.warning(`服务器连接失败: ${result.message}`)
+          message.warning(t('agent.serverConnectFailed', { msg: result.message }))
         }
       } catch (error) {
         setConnected(false)
-        message.warning(`服务器连接失败: ${(error as Error).message}`)
+        message.warning(t('agent.serverConnectFailed', { msg: (error as Error).message }))
       }
     }
     loadContainers(serverId)
@@ -612,7 +618,7 @@ const AgentTerminalPage: React.FC = () => {
   const createSession = async () => {
     const session: ChatSession = {
       id: `session-${Date.now()}`,
-      name: `对话 ${new Date().toLocaleString()}`,
+      name: t('agent.defaultSessionName', { time: new Date().toLocaleString() }),
       messages: [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
@@ -639,7 +645,7 @@ const AgentTerminalPage: React.FC = () => {
     if (!src) return
     const copy: ChatSession = {
       id: `session-${Date.now()}`,
-      name: `${src.name} 副本`,
+      name: t('agent.sessionCopyName', { name: src.name }),
       messages: JSON.parse(JSON.stringify(src.messages)),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
@@ -647,7 +653,7 @@ const AgentTerminalPage: React.FC = () => {
     await persistenceManager.saveSession(copy)
     await loadSessions()
     setActiveSessionId(copy.id)
-    message.success('会话已复制')
+    message.success(t('agent.sessionCopied'))
   }
 
   // 会话搜索过滤（按标题或消息内容）
@@ -669,7 +675,7 @@ const AgentTerminalPage: React.FC = () => {
     })
     await loadSessions()
     setRenameTarget(null)
-    message.success('会话已重命名')
+    message.success(t('agent.sessionRenamed'))
   }
 
   // 会话切换时加载消息（仅依赖 activeSessionId；sessions 变化如自动标题/持久化不应覆盖当前消息）
@@ -685,7 +691,7 @@ const AgentTerminalPage: React.FC = () => {
     if (!activeSessionId) return
     persistenceManager.saveSession({
       id: activeSessionId,
-      name: sessions.find(s => s.id === activeSessionId)?.name || `对话 ${new Date().toLocaleString()}`,
+      name: sessions.find(s => s.id === activeSessionId)?.name || t('agent.defaultSessionName', { time: new Date().toLocaleString() }),
       messages: msgs,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
@@ -728,13 +734,13 @@ const AgentTerminalPage: React.FC = () => {
   const clearMessages = () => {
     setMessages([])
     setSavePending(true)
-    message.success('对话已清空')
+    message.success(t('agent.chatCleared'))
   }
 
   const sendMessage = async () => {
     if (!inputText.trim() || loading) return
     if (!modelConfig.apiKey || !modelConfig.model) {
-      message.warning('请先在「系统管理 → AI 模型配置」中配置模型')
+      message.warning(t('agent.needModelConfig'))
       return
     }
     const userInput = inputText.trim()
@@ -747,7 +753,7 @@ const AgentTerminalPage: React.FC = () => {
   // 流式发送消息（走主进程 Mastra Agent，支持工具调用与审批）
   const doSendMessage = async (userInput: string) => {
     if (!modelConfig.apiKey || !modelConfig.model) {
-      message.warning('请先在「系统管理 → AI 模型配置」中配置模型')
+      message.warning(t('agent.needModelConfig'))
       return
     }
 
@@ -797,8 +803,18 @@ const AgentTerminalPage: React.FC = () => {
     }
 
     // 注册一次性流式事件监听
-    const removeChunk = window.electronAPI.opsAgent.onChunk(({ requestId: rid, delta }) => {
-      if (rid !== requestId) return
+    // 流式节流：chunk 以高频到达，逐字 setMessages 会导致全列表重渲染（长回复卡顿主因）。
+    // 合并增量后每 50ms 批量刷新一次；onDone/清理前强制 flush，保证最终文本完整。
+    let pendingDelta = ''
+    let flushTimer: ReturnType<typeof setTimeout> | null = null
+    const flushPendingDelta = () => {
+      if (flushTimer) {
+        clearTimeout(flushTimer)
+        flushTimer = null
+      }
+      if (!pendingDelta) return
+      const delta = pendingDelta
+      pendingDelta = ''
       // 追加到最后一个文本分段；若最后一段是工具调用则新建文本分段（保持执行顺序）
       const last = segments[segments.length - 1]
       if (last && last.type === 'text') {
@@ -809,12 +825,20 @@ const AgentTerminalPage: React.FC = () => {
       setMessages(prev => prev.map(m =>
         m.id === assistantId ? { ...m, content: m.content + delta, segments: [...segments] } : m
       ))
+    }
+
+    const removeChunk = window.electronAPI.opsAgent.onChunk(({ requestId: rid, delta }) => {
+      if (rid !== requestId) return
+      pendingDelta += delta
+      if (!flushTimer) {
+        flushTimer = setTimeout(flushPendingDelta, 50)
+      }
     })
 
     const removeToolCall = window.electronAPI.opsAgent.onToolCall(({ requestId: rid, toolName, args, toolCallId }) => {
       if (rid !== requestId) return
       if (toolCallId) toolCallStartTimes.set(toolCallId, Date.now())
-      segments.push({ type: 'tool', toolCall: { toolCallId, name: toolName, params: args, result: '执行中...', status: 'running' } })
+      segments.push({ type: 'tool', toolCall: { toolCallId, name: toolName, params: args, result: t('agent.toolRunning'), status: 'running' } })
       syncSegments()
     })
 
@@ -822,7 +846,7 @@ const AgentTerminalPage: React.FC = () => {
       if (rid !== requestId) return
       // 截断超长结果，避免渲染大段文本
       const raw = typeof output === 'string' ? output : JSON.stringify(output, null, 2)
-      const summary = raw.length > 2000 ? `${raw.slice(0, 2000)}\n... (已截断 ${raw.length - 2000} 字符)` : raw
+      const summary = raw.length > 2000 ? `${raw.slice(0, 2000)}\n... t('agent.truncatedChars', { count: raw.length - 2000 })` : raw
       const now = Date.now()
       // 按 toolCallId 精确配对（无 id 时回退"同名且执行中"），更新对应分段
       for (const seg of segments) {
@@ -874,14 +898,14 @@ const AgentTerminalPage: React.FC = () => {
       const cancelled = error === 'cancelled'
       if (cancelled) {
         const last = segments[segments.length - 1]
-        if (last && last.type === 'text') last.text += '\n\n> ⏹ 已取消生成'
-        else segments.push({ type: 'text', text: '> ⏹ 已取消生成' })
+        if (last && last.type === 'text') last.text += '\n\n> ⏹ ' + t('agent.genCancelled')
+        else segments.push({ type: 'text', text: '> ⏹ ' + t('agent.genCancelled') })
       }
       setMessages(prev => prev.map(m =>
         m.id === assistantId
           ? cancelled
-            ? { ...m, status: 'success' as const, content: m.content ? `${m.content}\n\n> ⏹ 已取消生成` : '已取消生成', segments: [...segments] }
-            : { ...m, status: 'error', content: `错误: ${error}`, segments: [...segments] }
+            ? { ...m, status: 'success' as const, content: m.content ? `${m.content}\n\n> ⏹ ${t('agent.genCancelled')}` : t('agent.genCancelled'), segments: [...segments] }
+            : { ...m, status: 'error', content: t('agent.errorWithMsg', { msg: error }), segments: [...segments] }
           : m
       ))
       setSavePending(true)
@@ -889,7 +913,8 @@ const AgentTerminalPage: React.FC = () => {
 
     const removeDone = window.electronAPI.opsAgent.onDone(({ requestId: rid }) => {
       if (rid !== requestId) return
-      // 完成：提取工具调用记录（兼容历史字段），持久化交给 savePending effect
+      // 完成：先 flush 节流缓冲，确保 segments 含全部增量，再提取工具调用记录
+      flushPendingDelta()
       const toolCalls = segments.filter(s => s.type === 'tool').map(s => s.toolCall)
       const fullText = segments.filter(s => s.type === 'text').map(s => s.text).join('')
       const commands = buildCommandList(fullText, toolCalls)
@@ -900,7 +925,9 @@ const AgentTerminalPage: React.FC = () => {
               status: 'success' as const,
               segments: [...segments],
               toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
-              commands: commands.length > 0 ? commands : undefined
+              commands: commands.length > 0
+                ? commands.map(c => ({ ...c, output: '', status: 'success' as const }))
+                : undefined
             }
           : m
       ))
@@ -911,6 +938,8 @@ const AgentTerminalPage: React.FC = () => {
 
     const cleanup = () => {
       if (currentRequestIdRef.current === requestId) currentRequestIdRef.current = null
+      // 清理前 flush 节流缓冲，避免中断路径丢失末尾增量
+      flushPendingDelta()
       toolCallStartTimes.clear()
       removeChunk()
       removeReasoning()
@@ -929,13 +958,13 @@ const AgentTerminalPage: React.FC = () => {
       const older = messages.slice(0, messages.length - HISTORY_KEEP)
       const parts: string[] = []
       for (const m of older) {
-        const role = m.role === 'user' ? '用户' : m.role === 'system' ? '系统' : '助手'
+        const role = m.role === 'user' ? t('agent.roleUser') : m.role === 'system' ? t('agent.roleSystem') : t('agent.roleAssistant')
         const content = (m.content || '').replace(/\s+/g, ' ').trim().slice(0, SUMMARY_PER_MSG_MAX)
         if (content) parts.push(`${role}: ${content}`)
       }
       historySummary = parts.join('\n')
       if (historySummary.length > SUMMARY_TOTAL_MAX) {
-        historySummary = `${historySummary.slice(0, SUMMARY_TOTAL_MAX)}\n...（更早的对话内容已省略）`
+        historySummary = `${historySummary.slice(0, SUMMARY_TOTAL_MAX)}\n... t('agent.historyOmitted')`
       }
     }
 
@@ -950,7 +979,7 @@ const AgentTerminalPage: React.FC = () => {
       })
       if (!result.success) {
         setMessages(prev => prev.map(m =>
-          m.id === assistantId ? { ...m, status: 'error', content: `错误: ${result.error}` } : m
+          m.id === assistantId ? { ...m, status: 'error', content: t('agent.errorWithMsg', { msg: result.error }) } : m
         ))
         setSavePending(true)
         setLoading(false)
@@ -962,8 +991,8 @@ const AgentTerminalPage: React.FC = () => {
       setMessages(prev => prev.map(m =>
         m.id === assistantId
           ? cancelled
-            ? { ...m, status: 'success' as const, content: m.content ? `${m.content}\n\n> ⏹ 已取消生成` : '已取消生成' }
-            : { ...m, status: 'error', content: `错误: ${errMsg}` }
+            ? { ...m, status: 'success' as const, content: m.content ? `${m.content}\n\n> ⏹ ${t('agent.genCancelled')}` : t('agent.genCancelled') }
+            : { ...m, status: 'error', content: t('agent.errorWithMsg', { msg: errMsg }) }
           : m
       ))
       setSavePending(true)
@@ -976,7 +1005,14 @@ const AgentTerminalPage: React.FC = () => {
 
   const executeCommand = async (command: string, riskLevel?: 'low' | 'medium' | 'high') => {
     if (!selectedServer) {
-      message.warning('请先选择服务器')
+      message.warning(t('agent.selectServerFirst'))
+      return null
+    }
+    // AI 建议命令：执行前必须通过风控门禁（黑名单直接拒绝，高危命令走统一审批）
+    const gate = await window.electronAPI.opsAgent.approveCommand(command, riskLevel)
+    if (!gate.approved) {
+      if (gate.blocked) message.error(t('agent.cmdBlocked'))
+      else message.warning(t('agent.cmdNotApproved'))
       return null
     }
     const startTime = Date.now()
@@ -1021,24 +1057,31 @@ const AgentTerminalPage: React.FC = () => {
     const term = activeTerminalTab ? terminalInstancesRef.current.get(activeTerminalTab) : undefined
     const sel = term?.getSelection?.() || ''
     if (!sel.trim()) {
-      message.info('请先在终端中选中文本')
+      message.info(t('agent.selectTextFirst'))
       return
     }
     if (!modelConfig.apiKey || !modelConfig.model) {
-      message.warning('请先在「系统管理 → AI 模型配置」中配置模型')
+      message.warning(t('agent.needModelConfig'))
       return
     }
-    doSendMessage(`请分析下面这段终端输出，说明它的含义、关键信息，以及是否需要处理：\n\`\`\`\n${sel.slice(0, 3000)}\n\`\`\``)
+    doSendMessage(t('agent.analyzeSelectionPrompt', { output: sel.slice(0, 3000) }))
   }
 
   // 在终端中执行命令
   const executeCommandInTerminal = async (command: string) => {
     if (!selectedServer) {
-      message.warning('请先选择服务器')
+      message.warning(t('agent.selectServerFirst'))
       return
     }
     if (!activeTerminalTab) {
-      message.warning('请先打开终端')
+      message.warning(t('agent.openTerminalFirst'))
+      return
+    }
+    // AI 建议命令：写入终端前必须通过风控门禁（黑名单直接拒绝，高危命令走统一审批）
+    const gate = await window.electronAPI.opsAgent.approveCommand(command)
+    if (!gate.approved) {
+      if (gate.blocked) message.error(t('agent.cmdBlocked'))
+      else message.warning(t('agent.cmdNotApproved'))
       return
     }
     try {
@@ -1052,15 +1095,15 @@ const AgentTerminalPage: React.FC = () => {
           await new Promise(r => setTimeout(r, 150))
         }
         if (!terminalReadyRef.current.get(activeTerminalTab)) {
-          message.warning('终端尚未就绪，已取消发送。请确认终端已连接后重试')
+          message.warning(t('agent.terminalNotReady'))
           return
         }
       }
       // 发送命令到终端（添加换行符执行）
       await window.electronAPI.terminal.write(activeTerminalTab, command + '\n')
-      message.success('命令已发送到终端')
+      message.success(t('agent.cmdSent'))
     } catch (error) {
-      message.error(`发送失败: ${(error as Error).message}`)
+      message.error(t('agent.sendFailed', { msg: (error as Error).message }))
     }
   }
 
@@ -1085,29 +1128,29 @@ const AgentTerminalPage: React.FC = () => {
 
         switch (diag.type) {
           case 'cpu':
-            if (value > 90) { status = 'critical'; diagMessage = 'CPU使用率过高'; suggestion = '建议检查高负载进程' }
-            else if (value > 70) { status = 'warning'; diagMessage = 'CPU使用率较高' }
-            else diagMessage = 'CPU使用率正常'
+            if (value > 90) { status = 'critical'; diagMessage = t('agent.diag.cpuHigh'); suggestion = t('agent.diag.cpuHighTip') }
+            else if (value > 70) { status = 'warning'; diagMessage = t('agent.diag.cpuWarn') }
+            else diagMessage = t('agent.diag.cpuOk')
             break
           case 'memory':
-            if (value > 90) { status = 'critical'; diagMessage = '内存使用率过高'; suggestion = '建议释放内存或增加内存' }
-            else if (value > 70) { status = 'warning'; diagMessage = '内存使用率较高' }
-            else diagMessage = '内存使用率正常'
+            if (value > 90) { status = 'critical'; diagMessage = t('agent.diag.memHigh'); suggestion = t('agent.diag.memHighTip') }
+            else if (value > 70) { status = 'warning'; diagMessage = t('agent.diag.memWarn') }
+            else diagMessage = t('agent.diag.memOk')
             break
           case 'disk':
-            if (value > 90) { status = 'critical'; diagMessage = '磁盘空间不足'; suggestion = '建议清理磁盘空间' }
-            else if (value > 70) { status = 'warning'; diagMessage = '磁盘空间较少' }
-            else diagMessage = '磁盘空间充足'
+            if (value > 90) { status = 'critical'; diagMessage = t('agent.diag.diskHigh'); suggestion = t('agent.diag.diskHighTip') }
+            else if (value > 70) { status = 'warning'; diagMessage = t('agent.diag.diskWarn') }
+            else diagMessage = t('agent.diag.diskOk')
             break
           case 'docker':
-            diagMessage = `运行 ${value} 个容器`
+            diagMessage = t('agent.diag.containers', { value })
             break
           default:
             break
         }
         return { type: diag.type, status, value, message: diagMessage, suggestion, timestamp: new Date().toISOString() }
       } catch {
-        return { type: diag.type, status: 'critical', value: 0, message: '诊断失败', timestamp: new Date().toISOString() }
+        return { type: diag.type, status: 'critical', value: 0, message: t('agent.diag.failed'), timestamp: new Date().toISOString() }
       }
     }))
     return results
@@ -1115,7 +1158,7 @@ const AgentTerminalPage: React.FC = () => {
 
   const runDiagnostics = async () => {
     if (!selectedServer) {
-      message.warning('请先选择服务器')
+      message.warning(t('agent.selectServerFirst'))
       return
     }
 
@@ -1125,7 +1168,7 @@ const AgentTerminalPage: React.FC = () => {
       setDiagnostics(results)
       setShowDiagnostics(true)
     } catch {
-      message.error('诊断失败')
+      message.error(t('agent.diagFailed'))
     } finally {
       setRunningDiagnostics(false)
     }
@@ -1134,11 +1177,11 @@ const AgentTerminalPage: React.FC = () => {
   // 诊断报告中的"AI 深入分析并修复"：基于已采集的检测结果交给 AI 分析
   const runAIAnalysis = async () => {
     if (!selectedServer) {
-      message.warning('请先选择服务器')
+      message.warning(t('agent.selectServerFirst'))
       return
     }
     if (!modelConfig.apiKey || !modelConfig.model) {
-      message.warning('请先在「系统管理 → AI 模型配置」中配置模型')
+      message.warning(t('agent.needModelConfig'))
       return
     }
     if (loading) return
@@ -1149,20 +1192,20 @@ const AgentTerminalPage: React.FC = () => {
       // 复用诊断报告里已有的结果，若无则先采集一次
       const results = diagnostics.length ? diagnostics : await collectDiagnostics(selectedServer)
       if (results.length === 0) {
-        message.warning('未获取到诊断数据')
+        message.warning(t('agent.noDiagData'))
         return
       }
 
       const diagText = results.map(d => {
         const pct = (d.type === 'cpu' || d.type === 'memory' || d.type === 'disk') ? ` (${d.value}%)` : ''
-        return `[${d.type}] ${d.status}${pct}: ${d.message}${d.suggestion ? ` (建议: ${d.suggestion})` : ''}`
+        return `[${d.type}] ${d.status}${pct}: ${d.message}${d.suggestion ? ` (t('agent.suggestion'): ${d.suggestion})` : ''}`
       }).join('\n')
 
       await doSendMessage(
-        `请针对当前服务器执行一次智能诊断分析并给出处理方案。\n\n检测结果如下：\n${diagText}\n\n请使用工具进行深入检查（如查看容器状态、日志、资源占用等），定位问题根因并给出可执行的修复步骤。高风险操作需要经过我的确认。`
+        t('agent.smartDiagPrompt', { diagText })
       )
     } catch {
-      message.error('智能诊断失败')
+      message.error(t('agent.smartDiagFailed'))
     } finally {
       setRunningDiagnostics(false)
     }
@@ -1235,7 +1278,7 @@ const AgentTerminalPage: React.FC = () => {
         if (currentApproval?.id) {
           window.electronAPI.opsAgent.approval(currentApproval.id, false)
         }
-        message.warning('审批超时，操作已自动拒绝')
+        message.warning(t('agent.approvalTimeout'))
         setApprovalQueue(q => q.slice(1))
       }
     }, 1000)
@@ -1265,12 +1308,12 @@ const AgentTerminalPage: React.FC = () => {
         }
         setTerminalTabs(prev => [...prev, newTab])
         setActiveTerminalTab(sessionId)
-        message.success('终端已打开')
+        message.success(t('agent.terminalOpened'))
       } else {
-        message.error(result.message || '打开终端失败')
+        message.error(result.message || t('agent.terminalOpenFailed'))
       }
     } catch (error) {
-      message.error(`错误: ${(error as Error).message}`)
+      message.error(t('agent.errorWithMsg', { msg: (error as Error).message }))
     }
   }
 
@@ -1416,7 +1459,7 @@ const AgentTerminalPage: React.FC = () => {
             <Space size="small">
               <CloudOutlined style={{ color: '#aeaeb2' }} />
               <Select value={selectedServer} onChange={handleServerChange} style={{ minWidth: 180 }} 
-                placeholder="选择服务器" allowClear size="small"
+                placeholder={t('agent.selectServer')} allowClear size="small"
                 options={servers.map(s => ({ 
                   value: s.id, 
                   label: <Space>
@@ -1425,7 +1468,7 @@ const AgentTerminalPage: React.FC = () => {
                     <Text type="secondary">({s.host})</Text>
                   </Space> 
                 }))} />
-              {connected && <Tag color="success" icon={<LinkOutlined />} style={{ border: '1px solid rgba(63,185,80,0.4)', background: 'rgba(63,185,80,0.1)' }}>已连接</Tag>}
+              {connected && <Tag color="success" icon={<LinkOutlined />} style={{ border: '1px solid rgba(63,185,80,0.4)', background: 'rgba(63,185,80,0.1)' }}>{t('agent.connected')}</Tag>}
             </Space>
           </Space>
           
@@ -1434,19 +1477,19 @@ const AgentTerminalPage: React.FC = () => {
             <Space size={6} style={{ padding: '4px 12px', background: 'rgba(44,44,46,0.8)', borderRadius: 999, border: '1px solid #3a3a3c' }}>
               <DashboardOutlined style={{ color: '#0A84FF', fontSize: 11 }} />
               <Text style={{ color: '#aeaeb2', fontSize: 11 }}>
-                <Text strong style={{ color: '#f5f5f7', fontSize: 11 }}>{stats.totalCommands}</Text> 命令
+                <Text strong style={{ color: '#f5f5f7', fontSize: 11 }}>{stats.totalCommands}</Text> {t('agent.unitCommands')}
                 <span style={{ margin: '0 6px', color: '#48484a' }}>|</span>
-                <Text strong style={{ color: stats.successRate >= 90 ? '#30D158' : stats.successRate >= 60 ? '#FF9500' : '#FF453A', fontSize: 11 }}>{stats.successRate}%</Text> 成功
+                <Text strong style={{ color: stats.successRate >= 90 ? '#30D158' : stats.successRate >= 60 ? '#FF9500' : '#FF453A', fontSize: 11 }}>{stats.successRate}%</Text> {t('agent.unitSuccessRate')}
               </Text>
             </Space>
             
             <Tag color={modelConfig.apiKey && modelConfig.model ? 'success' : 'default'} icon={<ApiOutlined />} style={{ border: '1px solid rgba(63,185,80,0.35)', background: 'rgba(63,185,80,0.08)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {modelConfig.model || '未配置'}
+              {modelConfig.model || t('agent.notConfigured')}
             </Tag>
-            <Tooltip title="模型配置已移至 系统管理">
+            <Tooltip title={t('agent.modelConfigMoved')}>
               <Button size="small" icon={<SettingOutlined />} disabled />
             </Tooltip>
-            <Tooltip title={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}>
+            <Tooltip title={sidebarCollapsed ? t('agent.expandSidebar') : t('agent.collapseSidebar')}>
               <Button size="small" icon={sidebarCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />} onClick={() => setSidebarCollapsed(!sidebarCollapsed)} />
             </Tooltip>
           </Space>
@@ -1463,12 +1506,12 @@ const AgentTerminalPage: React.FC = () => {
                   <div style={{ width: 26, height: 26, borderRadius: 7, background: 'rgba(10,132,255,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(10,132,255,0.25)' }}>
                     <MessageOutlined style={{ color: '#0A84FF', fontSize: 13 }} />
                   </div>
-                  <Text strong style={{ color: '#f5f5f7', fontSize: 12 }}>对话 ({sessions.length})</Text>
+                  <Text strong style={{ color: '#f5f5f7', fontSize: 12 }}>{t('agent.sessionsTitle', { count: sessions.length })}</Text>
                 </Space>
-                <Button size="small" type="text" icon={<PlusOutlined />} onClick={createSession} title="新建对话" style={{ color: '#0A84FF', padding: 0, width: 24, height: 24 }} />
+                <Button size="small" type="text" icon={<PlusOutlined />} onClick={createSession} title={t('agent.newSession')} style={{ color: '#0A84FF', padding: 0, width: 24, height: 24 }} />
               </div>
               <div style={{ padding: '6px 8px' }}>
-                <Input size="small" prefix={<SearchOutlined />} allowClear placeholder="搜索会话…" value={sessionSearch} onChange={e => setSessionSearch(e.target.value)}
+                <Input size="small" prefix={<SearchOutlined />} allowClear placeholder={t('agent.searchSessions')} value={sessionSearch} onChange={e => setSessionSearch(e.target.value)}
                   style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid #3a3a3c', color: '#f5f5f7', fontSize: 11 }} />
               </div>
               <div style={{ flex: 1, overflow: 'auto', padding: '0 6px 8px' }}>
@@ -1478,45 +1521,45 @@ const AgentTerminalPage: React.FC = () => {
                     <MessageOutlined style={{ color: activeSessionId === s.id ? '#0A84FF' : '#8e8e93', fontSize: 12, flexShrink: 0 }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 12, color: activeSessionId === s.id ? '#f5f5f7' : '#aeaeb2', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</div>
-                      <div style={{ fontSize: 10, color: '#8e8e93' }}>{s.messages.length} 条消息</div>
+                      <div style={{ fontSize: 10, color: '#8e8e93' }}>{s.messages.length} t('agent.unitMessages')</div>
                     </div>
                     <Space size={2} className="agent-sidebar-actions">
-                      <Button size="small" type="text" icon={<CopyOutlined />} title="复制会话" style={{ color: '#aeaeb2', padding: 0, width: 20, height: 20 }}
+                      <Button size="small" type="text" icon={<CopyOutlined />} title={t('agent.copySession')} style={{ color: '#aeaeb2', padding: 0, width: 20, height: 20 }}
                         onClick={(e) => { e.stopPropagation(); duplicateSession(s.id) }} />
-                      <Button size="small" type="text" icon={<EditOutlined />} title="重命名" style={{ color: '#aeaeb2', padding: 0, width: 20, height: 20 }}
+                      <Button size="small" type="text" icon={<EditOutlined />} title={t('agent.rename')} style={{ color: '#aeaeb2', padding: 0, width: 20, height: 20 }}
                         onClick={(e) => { e.stopPropagation(); setRenameTarget(s); setRenameName(s.name) }} />
-                      <Button size="small" type="text" danger icon={<DeleteOutlined />} title="删除" style={{ padding: 0, width: 20, height: 20 }}
+                      <Button size="small" type="text" danger icon={<DeleteOutlined />} title={t('agent.delete')} style={{ padding: 0, width: 20, height: 20 }}
                         onClick={(e) => { e.stopPropagation(); deleteSession(s.id) }} />
                     </Space>
                   </div>
                 ))}
                 {filteredSessions.length === 0 && (
                   <div style={{ textAlign: 'center', padding: '24px 0' }}>
-                    <Text style={{ fontSize: 11, color: '#8e8e93' }}>{sessionSearch ? '未找到匹配会话' : '暂无会话，点击 + 新建'}</Text>
+                    <Text style={{ fontSize: 11, color: '#8e8e93' }}>{sessionSearch ? t('agent.noMatchedSession') : t('agent.noSessions')}</Text>
                   </div>
                 )}
               </div>
 
               {/* 收藏命令 */}
               <div style={{ padding: '10px 12px', borderTop: '1px solid rgba(72,72,74,0.8)' }}>
-                <Text style={{ fontSize: 10, color: '#aeaeb2', letterSpacing: 1.2 }}>收藏命令</Text>
+                <Text style={{ fontSize: 10, color: '#aeaeb2', letterSpacing: 1.2 }}>{t('agent.favoriteCommands')}</Text>
                 <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
                   {favorites.map(f => (
                     <div key={f.command} className="agent-sidebar-item" onClick={() => setInputText(f.command)}
                       style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 8, cursor: 'pointer' }}>
                       <StarOutlined style={{ color: '#FF9500', fontSize: 11, flexShrink: 0 }} />
                       <div style={{ flex: 1, minWidth: 0, fontSize: 11, color: '#aeaeb2', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'Consolas, monospace' }}>{f.command}</div>
-                      <Button size="small" type="text" icon={<CloseOutlined />} title="取消收藏" style={{ padding: 0, width: 16, height: 16, color: '#8e8e93' }}
+                      <Button size="small" type="text" icon={<CloseOutlined />} title={i18n.t('agent.unfavorite')} style={{ padding: 0, width: 16, height: 16, color: '#8e8e93' }}
                         onClick={(e) => { e.stopPropagation(); toggleFavoriteCommand(f.command, f.name) }} />
                     </div>
                   ))}
-                  {favorites.length === 0 && <Text style={{ fontSize: 11, color: '#8e8e93', padding: '4px 8px' }}>暂无收藏，点击工具卡片星标添加</Text>}
+                  {favorites.length === 0 && <Text style={{ fontSize: 11, color: '#8e8e93', padding: '4px 8px' }}>{t('agent.noFavorites')}</Text>}
                 </div>
               </div>
 
               {/* 服务器列表 */}
               <div style={{ padding: '10px 12px', borderTop: '1px solid rgba(72,72,74,0.8)' }}>
-                <Text style={{ fontSize: 10, color: '#aeaeb2', letterSpacing: 1.2 }}>服务器</Text>
+                <Text style={{ fontSize: 10, color: '#aeaeb2', letterSpacing: 1.2 }}>{t('agent.servers')}</Text>
                 <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
                   {servers.map(s => (
                     <div key={s.id} className={`agent-sidebar-item ${selectedServer === s.id ? 'active' : ''}`} onClick={() => handleServerChange(s.id)}
@@ -1529,7 +1572,7 @@ const AgentTerminalPage: React.FC = () => {
                       {selectedServer === s.id && <LinkOutlined style={{ color: '#0A84FF', fontSize: 11 }} />}
                     </div>
                   ))}
-                  {servers.length === 0 && <Text style={{ fontSize: 11, color: '#8e8e93', padding: '4px 8px' }}>暂无在线服务器</Text>}
+                  {servers.length === 0 && <Text style={{ fontSize: 11, color: '#8e8e93', padding: '4px 8px' }}>{t('agent.noServers')}</Text>}
                 </div>
               </div>
             </div>
@@ -1542,30 +1585,30 @@ const AgentTerminalPage: React.FC = () => {
                 <div style={{ width: 26, height: 26, borderRadius: 7, background: 'rgba(10,132,255,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(10,132,255,0.25)' }}>
                   <LaptopOutlined style={{ color: '#0A84FF', fontSize: 13 }} />
                 </div>
-                <Text strong style={{ color: '#f5f5f7', fontSize: 12 }}>终端</Text>
+                <Text strong style={{ color: '#f5f5f7', fontSize: 12 }}>{t('agent.terminal')}</Text>
                 <div style={{ display: 'flex', gap: 4, marginLeft: 8, background: '#000000', borderRadius: 6, padding: 2, border: '1px solid #3a3a3c' }}>
-                  <Button size="small" type="text" onClick={() => setTerminalMode('server')} style={terminalMode === 'server' ? { background: '#3a3a3c', color: '#0A84FF', borderRadius: 4, fontSize: 11 } : { color: '#aeaeb2', fontSize: 11, borderRadius: 4 }}>服务器</Button>
-                  <Button size="small" type="text" onClick={() => setTerminalMode('container')} style={terminalMode === 'container' ? { background: '#3a3a3c', color: '#0A84FF', borderRadius: 4, fontSize: 11 } : { color: '#aeaeb2', fontSize: 11, borderRadius: 4 }}>容器</Button>
+                  <Button size="small" type="text" onClick={() => setTerminalMode('server')} style={terminalMode === 'server' ? { background: '#3a3a3c', color: '#0A84FF', borderRadius: 4, fontSize: 11 } : { color: '#aeaeb2', fontSize: 11, borderRadius: 4 }}>t('agent.serverTab')</Button>
+                  <Button size="small" type="text" onClick={() => setTerminalMode('container')} style={terminalMode === 'container' ? { background: '#3a3a3c', color: '#0A84FF', borderRadius: 4, fontSize: 11 } : { color: '#aeaeb2', fontSize: 11, borderRadius: 4 }}>t('agent.containerTab')</Button>
                 </div>
               </Space>
               <Space size="small">
-                <Tooltip title="AI 分析终端选中内容">
+                <Tooltip title={t('agent.aiAnalyzeSelection')}>
                   <Button size="small" icon={<RobotOutlined />} onClick={analyzeTerminalSelection}
                     style={{ borderColor: '#48484a', color: '#0A84FF' }} />
                 </Tooltip>
-                {terminalMode === 'container' && <Button size="small" icon={<ReloadOutlined />} onClick={() => selectedServer && loadContainers(selectedServer)} disabled={!selectedServer}>刷新</Button>}
+                {terminalMode === 'container' && <Button size="small" icon={<ReloadOutlined />} onClick={() => selectedServer && loadContainers(selectedServer)} disabled={!selectedServer}>{t('agent.refresh')}</Button>}
                 <Button size="small" type="primary" icon={<PlusOutlined />}
                   onClick={() => {
-                    if (!selectedServer) { message.warning('请先选择服务器'); return }
+                    if (!selectedServer) { message.warning(t('agent.selectServerFirst')); return }
                     if (terminalMode === 'container') {
-                      if (containers.length === 0) { message.warning('没有可用容器'); return }
+                      if (containers.length === 0) { message.warning(t('agent.noContainers')); return }
                       setSelectedContainerId(undefined); setOpenNewModal(true)
                     } else {
-                      openNewTerminal('server', '服务器终端', 'server')
+                      openNewTerminal('server', t('agent.serverTerminal'), 'server')
                     }
                   }}
                   disabled={!selectedServer || (terminalMode === 'container' && containers.length === 0)}
-                  style={{ background: 'linear-gradient(135deg, #0A84FF 0%, #0051D5 100%)', borderColor: 'transparent', boxShadow: '0 2px 10px rgba(10,132,255,0.3)' }}>新建终端</Button>
+                  style={{ background: 'linear-gradient(135deg, #0A84FF 0%, #0051D5 100%)', borderColor: 'transparent', boxShadow: '0 2px 10px rgba(10,132,255,0.3)' }}>t('agent.newTerminal')</Button>
               </Space>
             </div>
             
@@ -1573,7 +1616,7 @@ const AgentTerminalPage: React.FC = () => {
               <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent' }}>
                 <Empty
                   image={<LaptopOutlined style={{ fontSize: 44, color: '#636366' }} />}
-                  description={<span style={{ color: '#aeaeb2' }}>选择 {terminalMode === 'server' ? '服务器' : '容器'} 打开终端</span>} />
+                  description={<span style={{ color: '#aeaeb2' }}>{t('agent.selectToOpen', { type: terminalMode === 'server' ? t('agent.server') : t('agent.container') })}</span>} />
               </div>
             ) : (
               <>
@@ -1619,13 +1662,13 @@ const AgentTerminalPage: React.FC = () => {
                 <Select value={modelConfig.activeProfileId} onChange={v => activateProfile(v)} size="small" variant="borderless"
                   style={{ minWidth: 96, fontSize: 11, color: '#aeaeb2' }}
                   suffixIcon={<ThunderboltOutlined style={{ color: '#0A84FF', fontSize: 10 }} />}
-                  options={(modelConfig.providerProfiles || []).map(p => ({ value: p.id, label: `${p.name} · ${p.model || '未选模型'}` }))} />
+                  options={(modelConfig.providerProfiles || []).map(p => ({ value: p.id, label: `${p.name} · ${p.model || i18n.t('agent.noModelSelected')}` }))} />
               </Space>
               <Space size={2}>
-                <Tooltip title="系统诊断"><Button size="small" type="text" icon={<ScanOutlined />} onClick={runDiagnostics} loading={runningDiagnostics} style={{ color: '#aeaeb2' }} /></Tooltip>
-                <Tooltip title="命令历史"><Button size="small" type="text" icon={<HistoryOutlined />} onClick={() => setShowHistory(true)} style={{ color: '#aeaeb2' }} /></Tooltip>
-                <Tooltip title="新建对话"><Button size="small" type="text" icon={<PlusOutlined />} onClick={createSession} style={{ color: '#aeaeb2' }} /></Tooltip>
-                <Tooltip title="清空对话"><Button size="small" type="text" icon={<ClearOutlined />} onClick={clearMessages} disabled={messages.length === 0} /></Tooltip>
+                <Tooltip title={t('agent.sysDiagnosis')}><Button size="small" type="text" icon={<ScanOutlined />} onClick={runDiagnostics} loading={runningDiagnostics} style={{ color: '#aeaeb2' }} /></Tooltip>
+                <Tooltip title={t('agent.commandHistory')}><Button size="small" type="text" icon={<HistoryOutlined />} onClick={() => setShowHistory(true)} style={{ color: '#aeaeb2' }} /></Tooltip>
+                <Tooltip title={t('agent.newSession')}><Button size="small" type="text" icon={<PlusOutlined />} onClick={createSession} style={{ color: '#aeaeb2' }} /></Tooltip>
+                <Tooltip title={t('agent.clearChat')}><Button size="small" type="text" icon={<ClearOutlined />} onClick={clearMessages} disabled={messages.length === 0} /></Tooltip>
               </Space>
             </div>
 
@@ -1633,21 +1676,21 @@ const AgentTerminalPage: React.FC = () => {
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 14px', background: 'rgba(28,28,30,0.45)', borderBottom: '1px solid #48484a', flexShrink: 0 }}>
               <Tooltip
                 title={<div style={{ fontSize: 11, lineHeight: 1.8 }}>
-                  <div style={{ fontWeight: 600, marginBottom: 4 }}>上下文压缩策略</div>
-                  <div>• 保留最近 {HISTORY_KEEP} 条消息完整传递</div>
-                  <div>• 更早消息压缩为摘要：单条 ≤ {SUMMARY_PER_MSG_MAX} 字，摘要总长 ≤ {SUMMARY_TOTAL_MAX} 字</div>
-                  <div>• 当前：完整 {ctxState.keptFull} 条（≈{fmtTokens(ctxState.fullTokens)}）+ 已压缩 {ctxState.compressedCount} 条（≈{fmtTokens(ctxState.summaryTokens)}）</div>
-                  <div style={{ color: '#8e8e93', marginTop: 4 }}>窗口：{fmtTokens(contextWindow)}（可于「系统管理 → AI 模型配置 → 单模型」中调整），占比按估算。</div>
+                  <div style={{ fontWeight: 600, marginBottom: 4 }}>{t('agent.ctxPolicyTitle')}</div>
+                  <div>• {t('agent.ctxPolicyKeep', { n: HISTORY_KEEP })}</div>
+                  <div>• {t('agent.ctxPolicySummary', { per: SUMMARY_PER_MSG_MAX, total: SUMMARY_TOTAL_MAX })}</div>
+                  <div>• {t('agent.ctxPolicyCurrent', { kept: ctxState.keptFull, full: fmtTokens(ctxState.fullTokens), compressed: ctxState.compressedCount, summary: fmtTokens(ctxState.summaryTokens) })}</div>
+                  <div style={{ color: '#8e8e93', marginTop: 4 }}>{t('agent.ctxPolicyWindow', { window: fmtTokens(contextWindow) })}</div>
                 </div>}
                 placement="bottom"
               >
                 <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3, cursor: 'help' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, lineHeight: '12px', whiteSpace: 'nowrap', gap: 8 }}>
                     <span style={{ color: '#aeaeb2', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      上下文 <span style={{ color: ctxColor, fontWeight: 600 }}>≈{fmtTokens(ctxUsage)}</span>/{fmtTokens(contextWindow)} · <span style={{ color: ctxColor }}>{ctxPct}%</span>
+                      {t('agent.context')} <span style={{ color: ctxColor, fontWeight: 600 }}>≈{fmtTokens(ctxUsage)}</span>/{fmtTokens(contextWindow)} · <span style={{ color: ctxColor }}>{ctxPct}%</span>
                     </span>
                     <span style={{ color: ctxState.compressedCount > 0 ? '#FF9500' : '#6e6e73', flexShrink: 0 }}>
-                      {ctxState.compressedCount > 0 ? `已压缩 ${ctxState.compressedCount} 条` : `完整 ${ctxState.total} 条`}
+                      {ctxState.compressedCount > 0 ? t('agent.ctxCompressed', { n: ctxState.compressedCount }) : t('agent.ctxFull', { n: ctxState.total })}
                     </span>
                   </div>
                   <div style={{ height: 3, borderRadius: 2, background: '#3a3a3c', overflow: 'hidden' }}>
@@ -1663,15 +1706,15 @@ const AgentTerminalPage: React.FC = () => {
                   <div style={{ width: 76, height: 76, margin: '0 auto 20px', borderRadius: 20, background: 'radial-gradient(circle at 30% 30%, rgba(10,132,255,0.25), rgba(88,166,255,0.08) 70%)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(10,132,255,0.2)', animation: 'glow-pulse 3.2s ease-in-out infinite' }}>
                     <RobotOutlined style={{ fontSize: 32, color: '#0A84FF' }} />
                   </div>
-                  <Text style={{ color: '#f5f5f7', fontSize: 15, fontWeight: 600, display: 'block' }}>开始与 AI 对话，管理你的服务器</Text>
-                  <Text type="secondary" style={{ color: '#8e8e93', fontSize: 12, display: 'block', marginTop: 6 }}>支持工具调用 · 智能诊断 · 风险审批</Text>
+                  <Text style={{ color: '#f5f5f7', fontSize: 15, fontWeight: 600, display: 'block' }}>{t('agent.emptyTitle')}</Text>
+                  <Text type="secondary" style={{ color: '#8e8e93', fontSize: 12, display: 'block', marginTop: 6 }}>{t('agent.emptySubtitle')}</Text>
                   <div style={{ marginTop: 28 }}>
-                    <Text style={{ color: '#aeaeb2', fontSize: 11, marginBottom: 12, display: 'block', letterSpacing: 1 }}>快捷命令</Text>
+                    <Text style={{ color: '#aeaeb2', fontSize: 11, marginBottom: 12, display: 'block', letterSpacing: 1 }}>{t('agent.quickCommands')}</Text>
                     <Space wrap size={[8, 8]} style={{ width: '100%' }}>
                       {(modelConfig.quickMessages && modelConfig.quickMessages.length > 0 ? modelConfig.quickMessages : [
-                        '请对当前服务器做一次综合健康检查',
-                        '列出当前服务器上运行的所有 Docker 容器',
-                        '查看服务器 CPU、内存、磁盘使用率'
+                        t('agent.quickTip1'),
+                        t('agent.quickTip2'),
+                        t('agent.quickTip3')
                       ]).map((tip, i) => (
                         <Tag key={i} className="quick-tip" onClick={() => setInputText(tip)} style={{ maxWidth: '100%', whiteSpace: 'normal', height: 'auto', lineHeight: '20px', padding: '4px 12px', textAlign: 'left' }}>{tip.slice(0, 20)}{tip.length > 20 ? '…' : ''}</Tag>
                       ))}
@@ -1702,7 +1745,7 @@ const AgentTerminalPage: React.FC = () => {
                               style={{ marginBottom: 8, background: 'rgba(0,0,0,0.45)' }}
                               items={[{
                                 key: 'reasoning',
-                                label: <span style={{ fontSize: 11, color: '#8e8e93' }}>💭 思考过程</span>,
+                                label: <span style={{ fontSize: 11, color: '#8e8e93' }}>💭 {t('agent.reasoning')}</span>,
                                 children: <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: 12, color: '#aeaeb2' }}>{msg.reasoning}</pre>
                               }]}
                             />
@@ -1714,7 +1757,7 @@ const AgentTerminalPage: React.FC = () => {
                                 <div key={idx}>
                                   {seg.type === 'text' ? (
                                     <div style={{ fontSize: 13, lineHeight: 1.65, color: '#f5f5f7' }}>
-                                        {renderRichSegment(seg.text, (cmd) => { navigator.clipboard.writeText(cmd); message.success('已复制') }, executeCommandInTerminal, !!activeTerminalTab)}
+                                        {renderRichSegment(seg.text, (cmd) => { navigator.clipboard.writeText(cmd); message.success(t('agent.copied')) }, executeCommandInTerminal, !!activeTerminalTab)}
                                       </div>
                                   ) : (
                                     <ToolCallCard tc={seg.toolCall} />
@@ -1729,7 +1772,7 @@ const AgentTerminalPage: React.FC = () => {
                               <div style={{ display: 'flex', alignItems: 'flex-start' }}>
                                 <div style={{ flex: 1 }}>
                                   <Text style={{ color: '#f5f5f7', fontSize: 13, whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
-                                    {msg.content || '思考中'}
+                                    {msg.content || t('agent.thinking')}
                                     {msg.status === 'running' && <span className="typing-dots"><i /><i /><i /></span>}
                                   </Text>
                                 </div>
@@ -1747,17 +1790,17 @@ const AgentTerminalPage: React.FC = () => {
                             {new Date(msg.timestamp).toLocaleTimeString()}
                             {msg.metadata?.executionTime && <span>⏱ {msg.metadata.executionTime}ms</span>}
                             {msg.metadata?.usage && !!(msg.metadata.usage.input + msg.metadata.usage.output) && (
-                              <span style={{ color: '#6e6e73' }} title="本次回复的模型 token 用量">↑{msg.metadata.usage.input} · ↓{msg.metadata.usage.output}</span>
+                              <span style={{ color: '#6e6e73' }} title={t('agent.tokenUsageTip')}>↑{msg.metadata.usage.input} · ↓{msg.metadata.usage.output}</span>
                             )}
                             {msg.metadata?.route && msg.metadata.route !== 'execution' && (
                               <Tag color={ROUTE_META[msg.metadata.route]?.color || 'default'} style={{ fontSize: 10, margin: 0, borderRadius: 999 }}>
-                                {ROUTE_META[msg.metadata.route]?.label || msg.metadata.route}
+                                {ROUTE_META[msg.metadata.route]?.labelKey ? i18n.t(ROUTE_META[msg.metadata.route].labelKey) : msg.metadata.route}
                               </Tag>
                             )}
                             <span style={{ flex: 1 }} />
-                            <Tooltip title="复制回复">
+                            <Tooltip title={t('agent.copyReply')}>
                               <Button size="small" type="text" icon={<CopyOutlined />} style={{ color: '#8e8e93', padding: 0, width: 20, height: 20 }}
-                                onClick={() => { navigator.clipboard.writeText(msg.content); message.success('已复制') }} />
+                                onClick={() => { navigator.clipboard.writeText(msg.content); message.success(t('agent.copied')) }} />
                             </Tooltip>
                           </div>
                         </div>
@@ -1775,7 +1818,7 @@ const AgentTerminalPage: React.FC = () => {
                 <TextArea
                   ref={inputRef}
                   autoFocus
-                  placeholder={modelConfig.apiKey && modelConfig.model ? "输入你的问题，例如：检查服务器状态" : "请先配置 AI 模型"}
+                  placeholder={modelConfig.apiKey && modelConfig.model ? t('agent.inputPlaceholder') : t('agent.needConfigPlaceholder')}
                   value={inputText}
                   onChange={e => setInputText(e.target.value)}
                   onPressEnter={e => { if (!e.shiftKey) { e.preventDefault(); sendMessage() } }}
@@ -1783,7 +1826,7 @@ const AgentTerminalPage: React.FC = () => {
                   disabled={loading || !modelConfig.apiKey || !modelConfig.model}
                   style={{ flex: 1, background: '#000000', border: '1px solid #48484a', color: '#f5f5f7', borderRadius: '8px 0 0 8px', resize: 'none' }} />
                 {loading && (
-                  <Tooltip title="停止生成">
+                  <Tooltip title={t('agent.stopGenerating')}>
                     <Button icon={<CloseOutlined />} onClick={() => {
                       if (currentRequestIdRef.current) {
                         window.electronAPI.opsAgent.cancel(currentRequestIdRef.current)
@@ -1797,7 +1840,7 @@ const AgentTerminalPage: React.FC = () => {
                   style={{ background: 'linear-gradient(135deg, #0A84FF 0%, #0051D5 100%)', borderColor: 'transparent', borderRadius: '0 8px 8px 0', boxShadow: '0 2px 10px rgba(10,132,255,0.2)', flexShrink: 0, display: 'flex', alignItems: 'center' }} />
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6, padding: '0 2px', gap: 8 }}>
-                <Text style={{ fontSize: 10, color: '#8e8e93', flexShrink: 0 }}>Enter 发送 · Shift+Enter 换行</Text>
+                <Text style={{ fontSize: 10, color: '#8e8e93', flexShrink: 0 }}>t('agent.enterToSend')</Text>
                 <div style={{ flex: 1, minWidth: 0, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, overflow: 'hidden' }}>
                   {/* 会话级温度覆盖：仅影响当前会话，不写回全局配置 */}
                   <Select
@@ -1807,16 +1850,16 @@ const AgentTerminalPage: React.FC = () => {
                     popupMatchSelectWidth={false}
                     style={{ minWidth: 92, fontSize: 10, color: sessionTemp === undefined ? '#8e8e93' : '#0A84FF', flexShrink: 0 }}
                     options={[
-                      { value: 'global', label: '温度：全局' },
-                      ...[0.1, 0.3, 0.5, 0.7, 1.0, 1.5].map(t => ({ value: String(t), label: `温度：${t.toFixed(1)}` }))
+                      { value: 'global', label: t('agent.tempGlobal') },
+                      ...[0.1, 0.3, 0.5, 0.7, 1.0, 1.5].map(v => ({ value: String(v), label: t('agent.tempValue', { v: v.toFixed(1) }) }))
                     ]}
                   />
                   {sessionTotalUsage.input + sessionTotalUsage.output > 0 && (
-                    <span style={{ fontSize: 10, color: '#6e6e73', whiteSpace: 'nowrap', flexShrink: 0 }} title="本会话累计 token 用量">
-                      累计 ↑{sessionTotalUsage.input} · ↓{sessionTotalUsage.output}
+                    <span style={{ fontSize: 10, color: '#6e6e73', whiteSpace: 'nowrap', flexShrink: 0 }} title={t('agent.sessionUsageTip')}>
+                      {t('agent.sessionUsage', { input: sessionTotalUsage.input, output: sessionTotalUsage.output })}
                     </span>
                   )}
-                  {selectedServer && <Text style={{ fontSize: 10, color: '#30D158', flexShrink: 0 }} ellipsis><LinkOutlined style={{ marginRight: 3 }} />已连接 {servers.find(s => s.id === selectedServer)?.name}</Text>}
+                  {selectedServer && <Text style={{ fontSize: 10, color: '#30D158', flexShrink: 0 }} ellipsis><LinkOutlined style={{ marginRight: 3 }} />{t('agent.connectedTo', { name: servers.find(s => s.id === selectedServer)?.name })}</Text>}
                 </div>
               </div>
             </div>
@@ -1826,17 +1869,17 @@ const AgentTerminalPage: React.FC = () => {
         {/* ========== 模态框 ========== */}
         
         {/* 容器选择 */}
-        <Modal title={<Space><LaptopOutlined style={{ color: '#0A84FF' }} /><span style={{ color: '#f5f5f7' }}>打开容器终端</span></Space>} open={openNewModal} 
+        <Modal title={<Space><LaptopOutlined style={{ color: '#0A84FF' }} /><span style={{ color: '#f5f5f7' }}>{t('agent.openContainerTerminal')}</span></Space>} open={openNewModal} 
           onOk={() => { if (selectedContainerId) { const c = containers.find(x => x.id === selectedContainerId); if (c) openNewTerminal(c.id, c.name, 'container') } setOpenNewModal(false) }} 
           onCancel={() => setOpenNewModal(false)} okButtonProps={{ disabled: !selectedContainerId }}
           styles={{ body: { background: '#1c1c1e' }, content: { background: '#1c1c1e', border: '1px solid #48484a' }, header: { background: '#1c1c1e', borderBottom: '1px solid #3a3a3c' } }}>
-          <Select style={{ width: '100%' }} placeholder="请选择容器" value={selectedContainerId} onChange={setSelectedContainerId}
+          <Select style={{ width: '100%' }} placeholder={t('agent.selectContainer')} value={selectedContainerId} onChange={setSelectedContainerId}
             options={containers.map(c => ({ value: c.id, label: <Space><span style={{ color: '#f5f5f7' }}>{c.name}</span><Tag color="blue" style={{ borderRadius: 999 }}>{c.image}</Tag><Tag color={c.status.includes('running') ? 'green' : 'default'} style={{ borderRadius: 999 }}>{c.status}</Tag></Space> }))} />
         </Modal>
 
         {/* 诊断报告 */}
-        <Modal title={<Space><ScanOutlined style={{ color: '#0A84FF' }} /><span style={{ color: '#f5f5f7' }}>系统诊断报告</span></Space>} open={showDiagnostics} onCancel={() => setShowDiagnostics(false)} width={600}
-          footer={<Button type="primary" icon={<ThunderboltFilled />} loading={runningDiagnostics} onClick={runAIAnalysis} style={{ background: 'linear-gradient(135deg, #0A84FF 0%, #0051D5 100%)', borderColor: 'transparent' }}>AI 深入分析并修复</Button>}
+        <Modal title={<Space><ScanOutlined style={{ color: '#0A84FF' }} /><span style={{ color: '#f5f5f7' }}>{t('agent.diagReportTitle')}</span></Space>} open={showDiagnostics} onCancel={() => setShowDiagnostics(false)} width={600}
+          footer={<Button type="primary" icon={<ThunderboltFilled />} loading={runningDiagnostics} onClick={runAIAnalysis} style={{ background: 'linear-gradient(135deg, #0A84FF 0%, #0051D5 100%)', borderColor: 'transparent' }}>{t('agent.aiDeepAnalysis')}</Button>}
           styles={{ body: { background: '#1c1c1e' }, content: { background: '#1c1c1e', border: '1px solid #48484a' }, header: { background: '#1c1c1e', borderBottom: '1px solid #3a3a3c' } }}>
           <Space direction="vertical" style={{ width: '100%' }} size="middle">
             {diagnostics.map((d, i) => (
@@ -1860,7 +1903,7 @@ const AgentTerminalPage: React.FC = () => {
         </Modal>
 
         {/* 命令历史 */}
-        <Modal title={<Space><HistoryOutlined style={{ color: '#0A84FF' }} /><span style={{ color: '#f5f5f7' }}>命令历史</span></Space>} open={showHistory} onCancel={() => setShowHistory(false)} footer={null} width={700}
+        <Modal title={<Space><HistoryOutlined style={{ color: '#0A84FF' }} /><span style={{ color: '#f5f5f7' }}>{t('agent.commandHistory')}</span></Space>} open={showHistory} onCancel={() => setShowHistory(false)} footer={null} width={700}
           styles={{ body: { background: '#1c1c1e', maxHeight: 500, overflow: 'auto' }, content: { background: '#1c1c1e', border: '1px solid #48484a' }, header: { background: '#1c1c1e', borderBottom: '1px solid #3a3a3c' } }}>
           <List dataSource={commandHistory.slice(0, 50)} renderItem={item => (
             <List.Item style={{ borderBottom: '1px solid #3a3a3c', padding: '8px 0' }}>
@@ -1879,28 +1922,28 @@ const AgentTerminalPage: React.FC = () => {
         </Modal>
 
         {/* 安全审批 */}
-        <Modal title={<Space><SafetyOutlined style={{ color: '#FF9500' }} /><span style={{ color: '#f5f5f7' }}>安全审批</span>
-          {approvalQueue.length > 1 && <Tag color="orange" style={{ fontSize: 10, margin: 0 }}>队列 {approvalQueue.length} 项</Tag>}</Space>} 
+        <Modal title={<Space><SafetyOutlined style={{ color: '#FF9500' }} /><span style={{ color: '#f5f5f7' }}>{t('agent.safetyApproval')}</span>
+          {approvalQueue.length > 1 && <Tag color="orange" style={{ fontSize: 10, margin: 0 }}>{t('agent.queueCount', { count: approvalQueue.length })}</Tag>}</Space>} 
           open={!!currentApproval} onCancel={() => handleApproval(false)} onOk={() => handleApproval(true)} 
-          okText="确认执行" cancelText="取消" okButtonProps={{ danger: currentApproval?.riskLevel === 'high' }}
+          okText={t('agent.confirmExec')} cancelText={t('agent.cancel')} okButtonProps={{ danger: currentApproval?.riskLevel === 'high' }}
           styles={{ body: { background: '#1c1c1e' }, content: { background: '#1c1c1e', border: '1px solid #48484a' }, header: { background: '#1c1c1e', borderBottom: '1px solid #3a3a3c' } }}>
           {currentApproval && (
             <div>
-              <Alert message={`风险等级: ${currentApproval.riskLevel === 'high' ? '高风险' : '中风险'}`} 
+              <Alert message={t('agent.riskLevel', { level: currentApproval.riskLevel === 'high' ? t('agent.riskHigh') : t('agent.riskMedium') })} 
                 type={currentApproval.riskLevel === 'high' ? 'error' : 'warning'} showIcon style={{ marginBottom: 16, borderRadius: 8 }}
                 action={<span style={{ color: approvalCountdown <= 10 ? '#FF453A' : '#aeaeb2', fontSize: 12, fontWeight: 600 }}>{approvalCountdown}s</span>} />
-              <Text style={{ color: '#aeaeb2', fontSize: 11, display: 'block', marginBottom: 6 }}>执行命令</Text>
+              <Text style={{ color: '#aeaeb2', fontSize: 11, display: 'block', marginBottom: 6 }}>{t('agent.execCommand')}</Text>
               <pre style={{ background: 'rgba(0,0,0,0.85)', padding: 12, borderRadius: 8, color: '#FF453A', border: '1px solid rgba(255,123,114,0.3)', fontFamily: 'Consolas, monospace', fontSize: 12, whiteSpace: 'pre-wrap' }}>{currentApproval.action}</pre>
             </div>
           )}
         </Modal>
 
         {/* 会话重命名 */}
-        <Modal title={<Space><EditOutlined style={{ color: '#0A84FF' }} /><span style={{ color: '#f5f5f7' }}>重命名会话</span></Space>}
+        <Modal title={<Space><EditOutlined style={{ color: '#0A84FF' }} /><span style={{ color: '#f5f5f7' }}>{t('agent.renameSessionTitle')}</span></Space>}
           open={!!renameTarget} onOk={renameSession} onCancel={() => setRenameTarget(null)}
-          okText="保存" cancelText="取消"
+          okText={t('agent.save')} cancelText={t('agent.cancel')}
           styles={{ body: { background: '#1c1c1e' }, content: { background: '#1c1c1e', border: '1px solid #48484a' }, header: { background: '#1c1c1e', borderBottom: '1px solid #3a3a3c' } }}>
-          <Input value={renameName} onChange={e => setRenameName(e.target.value)} placeholder="输入新的会话名称"
+          <Input value={renameName} onChange={e => setRenameName(e.target.value)} placeholder={t('agent.newSessionNamePlaceholder')}
             onPressEnter={renameSession} size="small" style={{ background: '#000000', border: '1px solid #48484a', color: '#f5f5f7' }} />
         </Modal>
       </div>

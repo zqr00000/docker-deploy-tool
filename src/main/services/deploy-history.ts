@@ -1,7 +1,8 @@
-﻿import log from 'electron-log'
+import log from 'electron-log'
 import { deploymentHistoryQueries, DeploymentHistoryRow, serverQueries, appQueries } from '../database'
 import { sshService } from '../ssh'
 import { appDeployService, normalizeComposeContent } from './app-deploy'
+import { shQuote } from '../utils/shell'
 
 export interface DeployHistoryRecord {
   id: string
@@ -107,6 +108,29 @@ class DeployHistoryService {
     try {
       // 更新应用状态为部署中
       appQueries.update(appId, { status: 'deploying' })
+
+      // 回滚前自动记录当前线上 compose 为新版本（提供"回滚的回滚"能力）
+      try {
+        const currentComposeResult = await sshService.executeCommand(
+          serverId,
+          `cat ${shQuote(`${appInfo.projectPath}/docker-compose.yml`)} 2>/dev/null`
+        )
+        if (currentComposeResult.success && currentComposeResult.stdout.trim()) {
+          this.recordDeployment({
+            appId,
+            appName,
+            serverId,
+            dockerCompose: currentComposeResult.stdout,
+            status: 'pre-rollback'
+          })
+          log.info(`Recorded pre-rollback version for app=${appName}`)
+        } else {
+          log.warn(`Could not read current compose before rollback for app=${appName}; skipping pre-rollback record`)
+        }
+      } catch (recordError) {
+        // 记录失败不阻断回滚流程
+        log.warn('Failed to record pre-rollback version:', recordError)
+      }
 
       // 上传历史版本的 docker-compose.yml（按 Compose 版本规范化）
       const projectPath = appInfo.projectPath

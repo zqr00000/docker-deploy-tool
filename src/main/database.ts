@@ -1,5 +1,5 @@
-﻿import Database from 'better-sqlite3'
-import { app } from 'electron'
+import Database from 'better-sqlite3'
+import { app, safeStorage } from 'electron'
 import { join } from 'path'
 import { existsSync, mkdirSync } from 'fs'
 import log from 'electron-log'
@@ -7,12 +7,75 @@ import { randomUUID } from 'crypto'
 
 let db: Database.Database | null = null
 
+// ==================== 凭据透明加解密（safeStorage / OS 级密钥） ====================
+// 服务器密码与私钥此前明文落库（WAL 文件同样明文），现统一在数据库读写层加解密：
+// 写入时加密（前缀 enc:），读取时解密，消费方（SSH 连接/渲染层）无需感知。
+// safeStorage 不可用（如部分 Linux 环境）时回退明文存储，保持行为兼容。
+const SECRET_PREFIX = 'enc:'
+
+function encryptSecret(plain: string | null | undefined): string | null {
+  if (!plain) return null
+  try {
+    if (safeStorage.isEncryptionAvailable()) {
+      return SECRET_PREFIX + safeStorage.encryptString(plain).toString('base64')
+    }
+    log.warn('[db] safeStorage unavailable, storing secret in plain text')
+  } catch (err) {
+    log.warn('[db] failed to encrypt secret, falling back to plain text:', err)
+  }
+  return plain
+}
+
+function decryptSecret(stored: string | null | undefined): string | null {
+  if (!stored) return null
+  if (!stored.startsWith(SECRET_PREFIX)) return stored // 兼容历史明文数据
+  try {
+    return safeStorage.decryptString(Buffer.from(stored.slice(SECRET_PREFIX.length), 'base64'))
+  } catch (err) {
+    log.warn('[db] failed to decrypt secret (key changed?), returning null')
+    return null
+  }
+}
+
+function decryptServerRow<T extends { password?: string | null; privateKey?: string | null }>(row: T): T {
+  return { ...row, password: decryptSecret(row.password), privateKey: decryptSecret(row.privateKey) }
+}
+
 export function getDatabase(): Database.Database {
   if (!db) {
     throw new Error('Database not initialized. Call initDatabase first.')
   }
   return db
 }
+
+// ==================== 安全更新辅助 ====================
+// 动态列名拼接存在 SQL 注入面（列名来自渲染层透传的 updates key），
+// 统一通过各表白名单过滤后再构造 SET 子句
+const UPDATABLE_COLUMNS = {
+  servers: ['name', 'host', 'port', 'username', 'authType', 'password', 'privateKey', 'status'],
+  templates: ['name', 'description', 'category', 'dockerCompose', 'isBuiltIn', 'envSchema'],
+  apps: ['name', 'templateId', 'serverId', 'projectPath', 'status', 'containerIds'],
+  alert_rules: ['name', 'ruleType', 'serverId', 'appId', 'threshold', 'enabled', 'notifyChannels', 'silenceMinutes'],
+  scheduled_tasks: ['name', 'description', 'taskType', 'cronExpression', 'serverId', 'appId', 'enabled'],
+  health_check_configs: ['autoRestart', 'maxRestarts', 'restartWindow', 'notifyOnRestart'],
+  server_groups: ['name', 'description'],
+  shell_scripts: ['name', 'description', 'category', 'content', 'version', 'timeout', 'isBuiltIn']
+} as const
+
+function buildSafeUpdate(
+  allowedColumns: readonly string[],
+  updates: Record<string, unknown>
+): { fields: string; params: Record<string, unknown> } {
+  const fields: string[] = []
+  const params: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(updates)) {
+    if (!(allowedColumns as readonly string[]).includes(key)) continue
+    fields.push(`\`${key}\` = @${key}`)
+    params[key] = value
+  }
+  return { fields: fields.join(', '), params }
+}
+
 
 export function initDatabase(): Database.Database {
   if (db) {
@@ -32,6 +95,8 @@ export function initDatabase(): Database.Database {
 
   db = new Database(dbPath)
   db.pragma('journal_mode = WAL')
+  // 启用外键约束（SQLite 默认关闭），否则所有 ON DELETE CASCADE 均不生效，产生孤儿数据
+  db.pragma('foreign_keys = ON')
 
   createTables()
 
@@ -327,6 +392,7 @@ function createTables(): void {
 
   migrateAppsTable()
   migrateTemplatesTable()
+  migrateAlertRulesTable()
 
   // templates 表索引（需在迁移后创建，确保列存在）
   db.exec(`
@@ -380,6 +446,24 @@ function migrateTemplatesTable(): void {
     log.info('Templates table migration completed')
   } catch (error) {
     log.error('Templates table migration error:', error)
+  }
+}
+
+function migrateAlertRulesTable(): void {
+  if (!db) return
+
+  try {
+    const columns = db.prepare('PRAGMA table_info(alert_rules)').all() as { name: string }[]
+    const columnNames = columns.map(c => c.name)
+
+    // 规则级静默窗口（分钟）：同一目标在窗口内不重复触发，0 表示每轮都触发
+    if (!columnNames.includes('silenceMinutes')) {
+      db.exec('ALTER TABLE alert_rules ADD COLUMN silenceMinutes INTEGER DEFAULT 5')
+    }
+
+    log.info('Alert rules table migration completed')
+  } catch (error) {
+    log.error('Alert rules table migration error:', error)
   }
 }
 
@@ -725,12 +809,13 @@ export interface AppRow {
 export const serverQueries = {
   getAll: (): ServerRow[] => {
     const db = getDatabase()
-    return db.prepare('SELECT * FROM servers ORDER BY createdAt DESC').all() as ServerRow[]
+    return (db.prepare('SELECT * FROM servers ORDER BY createdAt DESC').all() as ServerRow[]).map(decryptServerRow)
   },
 
   getById: (id: string): ServerRow | undefined => {
     const db = getDatabase()
-    return db.prepare('SELECT * FROM servers WHERE id = ?').get(id) as ServerRow | undefined
+    const row = db.prepare('SELECT * FROM servers WHERE id = ?').get(id) as ServerRow | undefined
+    return row ? decryptServerRow(row) : undefined
   },
 
   insert: (server: Omit<ServerRow, 'createdAt' | 'updatedAt'>): void => {
@@ -741,8 +826,8 @@ export const serverQueries = {
       VALUES (@id, @name, @host, @port, @username, @authType, @password, @privateKey, @status, @createdAt, @updatedAt)
     `).run({
       ...server,
-      password: server.password || null,
-      privateKey: server.privateKey || null,
+      password: encryptSecret(server.password || null),
+      privateKey: encryptSecret(server.privateKey || null),
       createdAt: now,
       updatedAt: now
     })
@@ -751,14 +836,15 @@ export const serverQueries = {
   update: (id: string, updates: Partial<ServerRow>): void => {
     const db = getDatabase()
     const now = new Date().toISOString()
-    const fields = Object.keys(updates)
-      .filter(key => key !== 'id' && key !== 'createdAt')
-      .map(key => `${key} = @${key}`)
-      .join(', ')
-    
+    // 凭据字段写入前加密（其余字段原样）
+    const prepared: Record<string, unknown> = { ...(updates as Record<string, unknown>) }
+    if ('password' in prepared) prepared.password = encryptSecret(prepared.password as string | null)
+    if ('privateKey' in prepared) prepared.privateKey = encryptSecret(prepared.privateKey as string | null)
+    const { fields, params } = buildSafeUpdate(UPDATABLE_COLUMNS.servers, prepared)
+
     if (fields) {
       db.prepare(`UPDATE servers SET ${fields}, updatedAt = @updatedAt WHERE id = @id`)
-        .run({ ...updates, id, updatedAt: now })
+        .run({ ...params, id, updatedAt: now })
     }
   },
 
@@ -798,14 +884,11 @@ export const templateQueries = {
   update: (id: string, updates: Partial<TemplateRow>): void => {
     const db = getDatabase()
     const now = new Date().toISOString()
-    const fields = Object.keys(updates)
-      .filter(key => key !== 'id' && key !== 'createdAt')
-      .map(key => `${key} = @${key}`)
-      .join(', ')
-    
+    const { fields, params } = buildSafeUpdate(UPDATABLE_COLUMNS.templates, updates as Record<string, unknown>)
+
     if (fields) {
       db.prepare(`UPDATE templates SET ${fields}, updatedAt = @updatedAt WHERE id = @id`)
-        .run({ ...updates, id, updatedAt: now })
+        .run({ ...params, id, updatedAt: now })
     }
   },
 
@@ -843,14 +926,11 @@ export const appQueries = {
   update: (id: string, updates: Partial<AppRow>): void => {
     const db = getDatabase()
     const now = new Date().toISOString()
-    const fields = Object.keys(updates)
-      .filter(key => key !== 'id' && key !== 'createdAt')
-      .map(key => `${key} = @${key}`)
-      .join(', ')
-    
+    const { fields, params } = buildSafeUpdate(UPDATABLE_COLUMNS.apps, updates as Record<string, unknown>)
+
     if (fields) {
       db.prepare(`UPDATE apps SET ${fields}, updatedAt = @updatedAt WHERE id = @id`)
-        .run({ ...updates, id, updatedAt: now })
+        .run({ ...params, id, updatedAt: now })
     }
   },
 
@@ -1087,12 +1167,20 @@ export const configQueries = {
         if (!server.id || !server.name || !server.host) continue
         const existing = db.prepare('SELECT id FROM servers WHERE id = ?').get(server.id)
         if (existing) {
+          // 显式字段映射：导出文件整行 spread 会携带未声明的命名参数，better-sqlite3 会抛 RangeError
           db.prepare(`
             UPDATE servers SET name = @name, host = @host, port = @port, username = @username,
             authType = @authType, password = @password, privateKey = @privateKey, updatedAt = @updatedAt
             WHERE id = @id
           `).run({
-            ...server,
+            id: server.id,
+            name: server.name,
+            host: server.host,
+            port: server.port ?? 22,
+            username: server.username,
+            authType: server.authType ?? 'password',
+            password: encryptSecret(server.password ?? null),
+            privateKey: encryptSecret(server.privateKey ?? null),
             updatedAt: new Date().toISOString()
           })
         } else {
@@ -1100,8 +1188,16 @@ export const configQueries = {
             INSERT INTO servers (id, name, host, port, username, authType, password, privateKey, status, createdAt, updatedAt)
             VALUES (@id, @name, @host, @port, @username, @authType, @password, @privateKey, @status, @createdAt, @updatedAt)
           `).run({
-            ...server,
+            id: server.id,
+            name: server.name,
+            host: server.host,
+            port: server.port ?? 22,
+            username: server.username,
+            authType: server.authType ?? 'password',
+            password: encryptSecret(server.password ?? null),
+            privateKey: encryptSecret(server.privateKey ?? null),
             status: 'offline',
+            createdAt: server.createdAt ?? new Date().toISOString(),
             updatedAt: new Date().toISOString()
           })
         }
@@ -1119,8 +1215,12 @@ export const configQueries = {
             dockerCompose = @dockerCompose, envSchema = @envSchema, updatedAt = @updatedAt
             WHERE id = @id
           `).run({
-            ...template,
-            isBuiltIn: existing.isBuiltIn || 0,
+            id: template.id,
+            name: template.name,
+            description: template.description ?? null,
+            category: template.category ?? 'app',
+            dockerCompose: template.dockerCompose,
+            envSchema: template.envSchema ?? '[]',
             updatedAt: new Date().toISOString()
           })
         } else {
@@ -1128,8 +1228,14 @@ export const configQueries = {
             INSERT INTO templates (id, name, description, category, dockerCompose, isBuiltIn, envSchema, createdAt, updatedAt)
             VALUES (@id, @name, @description, @category, @dockerCompose, @isBuiltIn, @envSchema, @createdAt, @updatedAt)
           `).run({
-            ...template,
+            id: template.id,
+            name: template.name,
+            description: template.description ?? null,
+            category: template.category ?? 'app',
+            dockerCompose: template.dockerCompose,
             isBuiltIn: 0,
+            envSchema: template.envSchema ?? '[]',
+            createdAt: template.createdAt ?? new Date().toISOString(),
             updatedAt: new Date().toISOString()
           })
         }
@@ -1146,8 +1252,12 @@ export const configQueries = {
             projectPath = @projectPath, containerIds = @containerIds, updatedAt = @updatedAt
             WHERE id = @id
           `).run({
-            ...app,
-            status: 'stopped',
+            id: app.id,
+            name: app.name,
+            templateId: app.templateId,
+            serverId: app.serverId,
+            projectPath: app.projectPath ?? '',
+            containerIds: app.containerIds ?? '[]',
             updatedAt: new Date().toISOString()
           })
         } else {
@@ -1155,8 +1265,14 @@ export const configQueries = {
             INSERT INTO apps (id, name, templateId, serverId, projectPath, status, containerIds, createdAt, updatedAt)
             VALUES (@id, @name, @templateId, @serverId, @projectPath, @status, @containerIds, @createdAt, @updatedAt)
           `).run({
-            ...app,
+            id: app.id,
+            name: app.name,
+            templateId: app.templateId,
+            serverId: app.serverId,
+            projectPath: app.projectPath ?? '',
             status: 'stopped',
+            containerIds: app.containerIds ?? '[]',
+            createdAt: app.createdAt ?? new Date().toISOString(),
             updatedAt: new Date().toISOString()
           })
         }
@@ -1194,6 +1310,8 @@ export interface AlertRuleRow {
   threshold: number | null
   enabled: number
   notifyChannels: string
+  /** 规则级静默窗口（分钟）：同一目标在窗口内不重复触发，0 表示每轮都触发 */
+  silenceMinutes?: number | null
   createdAt: string
   updatedAt: string
 }
@@ -1238,14 +1356,11 @@ export const alertRuleQueries = {
   update: (id: string, updates: Partial<AlertRuleRow>): void => {
     const db = getDatabase()
     const now = new Date().toISOString()
-    const fields = Object.keys(updates)
-      .filter(key => key !== 'id' && key !== 'createdAt')
-      .map(key => `${key} = @${key}`)
-      .join(', ')
-    
+    const { fields, params } = buildSafeUpdate(UPDATABLE_COLUMNS.alert_rules, updates as Record<string, unknown>)
+
     if (fields) {
       db.prepare(`UPDATE alert_rules SET ${fields}, updatedAt = @updatedAt WHERE id = @id`)
-        .run({ ...updates, id, updatedAt: now })
+        .run({ ...params, id, updatedAt: now })
     }
   },
 
@@ -1359,14 +1474,11 @@ export const scheduledTaskQueries = {
   update: (id: string, updates: Partial<ScheduledTaskRow>): void => {
     const db = getDatabase()
     const now = new Date().toISOString()
-    const fields = Object.keys(updates)
-      .filter(key => key !== 'id' && key !== 'createdAt')
-      .map(key => `${key} = @${key}`)
-      .join(', ')
-    
+    const { fields, params } = buildSafeUpdate(UPDATABLE_COLUMNS.scheduled_tasks, updates as Record<string, unknown>)
+
     if (fields) {
       db.prepare(`UPDATE scheduled_tasks SET ${fields}, updatedAt = @updatedAt WHERE id = @id`)
-        .run({ ...updates, id, updatedAt: now })
+        .run({ ...params, id, updatedAt: now })
     }
   },
 
@@ -1432,13 +1544,11 @@ export const healthCheckConfigQueries = {
   update: (appId: string, updates: Partial<Omit<HealthCheckConfigRow, 'id' | 'appId' | 'createdAt'>>): void => {
     const db = getDatabase()
     const now = new Date().toISOString()
-    const fields = Object.keys(updates)
-      .map(key => `${key} = @${key}`)
-      .join(', ')
-    
+    const { fields, params } = buildSafeUpdate(UPDATABLE_COLUMNS.health_check_configs, updates as Record<string, unknown>)
+
     if (fields) {
       db.prepare(`UPDATE health_check_configs SET ${fields}, updatedAt = @updatedAt WHERE appId = @appId`)
-        .run({ ...updates, appId, updatedAt: now })
+        .run({ ...params, appId, updatedAt: now })
     }
   },
 
@@ -1738,14 +1848,11 @@ export const serverGroupQueries = {
   update: (id: string, updates: Partial<ServerGroupRow>): void => {
     const db = getDatabase()
     const now = new Date().toISOString()
-    const fields = Object.keys(updates)
-      .filter(key => key !== 'id' && key !== 'createdAt')
-      .map(key => `${key} = @${key}`)
-      .join(', ')
+    const { fields, params } = buildSafeUpdate(UPDATABLE_COLUMNS.server_groups, updates as Record<string, unknown>)
 
     if (fields) {
       db.prepare(`UPDATE server_groups SET ${fields}, updatedAt = @updatedAt WHERE id = @id`)
-        .run({ ...updates, id, updatedAt: now })
+        .run({ ...params, id, updatedAt: now })
     }
   },
 
@@ -1756,12 +1863,12 @@ export const serverGroupQueries = {
 
   getServersByGroupId: (groupId: string): ServerRow[] => {
     const db = getDatabase()
-    return db.prepare(`
+    return (db.prepare(`
       SELECT s.* FROM servers s
       INNER JOIN server_group_members sgm ON s.id = sgm.serverId
       WHERE sgm.groupId = ?
       ORDER BY s.createdAt DESC
-    `).all(groupId) as ServerRow[]
+    `).all(groupId) as ServerRow[]).map(decryptServerRow)
   },
 
   addServerToGroup: (groupId: string, serverId: string): void => {
@@ -1850,14 +1957,11 @@ export const shellScriptQueries = {
   update: (id: string, updates: Partial<ShellScriptRow>): void => {
     const db = getDatabase()
     const now = new Date().toISOString()
-    const fields = Object.keys(updates)
-      .filter(key => key !== 'id' && key !== 'createdAt')
-      .map(key => `${key} = @${key}`)
-      .join(', ')
+    const { fields, params } = buildSafeUpdate(UPDATABLE_COLUMNS.shell_scripts, updates as Record<string, unknown>)
 
     if (fields) {
       db.prepare(`UPDATE shell_scripts SET ${fields}, updatedAt = @updatedAt WHERE id = @id`)
-        .run({ ...updates, id, updatedAt: now })
+        .run({ ...params, id, updatedAt: now })
     }
   },
 

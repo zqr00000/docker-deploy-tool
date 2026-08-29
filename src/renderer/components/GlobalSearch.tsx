@@ -139,6 +139,7 @@ const GlobalSearch: React.FC<GlobalSearchProps> = ({ visible, onClose }) => {
       })
 
       // 搜索容器
+      const serverNameMap = new Map(servers.map(s => [s.id, s.name]))
       for (const app of apps) {
         if (app.containerIds) {
           try {
@@ -149,7 +150,7 @@ const GlobalSearch: React.FC<GlobalSearchProps> = ({ visible, onClose }) => {
                   id: containerId,
                   type: 'container',
                   title: `${app.name} - ${containerId.substring(0, 12)}`,
-                  subtitle: app.serverName,
+                  subtitle: serverNameMap.get(app.serverId),
                   path: `/apps/${app.id}`,
                   icon: <ContainerOutlined />,
                   color: 'cyan'
@@ -168,13 +169,16 @@ const GlobalSearch: React.FC<GlobalSearchProps> = ({ visible, onClose }) => {
         try {
           const images = await window.electronAPI.image.getAll(server.id)
           images.forEach(image => {
-            const imageName = image.repoTags?.[0] || image.id.substring(0, 12)
+            // DockerImage 形态：{ repository, tag, size(人类可读字符串), created }
+            const imageName = image.repository
+              ? `${image.repository}:${image.tag}`
+              : image.id.substring(0, 12)
             if (imageName.toLowerCase().includes(lowerQuery)) {
               searchResults.push({
                 id: image.id,
                 type: 'image',
                 title: imageName,
-                subtitle: `${server.name} - ${(image.size / 1024 / 1024).toFixed(1)} MB`,
+                subtitle: `${server.name} - ${image.size}`,
                 path: `/images`,
                 icon: <HddOutlined />,
                 color: 'geekblue'

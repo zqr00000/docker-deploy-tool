@@ -1,5 +1,5 @@
 import React, { useEffect, Suspense, lazy } from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { ConfigProvider, App as AntApp, theme, Spin } from 'antd'
 import { useTranslation } from 'react-i18next'
 import LayoutComponent from './components/Layout'
@@ -186,7 +186,8 @@ const App: React.FC = () => {
       <AntApp>
         <ErrorBoundary>
           <ServerProvider>
-            <BrowserRouter>
+            {/* Electron 生产环境经 loadFile 加载（file:// 协议），History API 路由不可靠，必须使用 Hash 路由 */}
+            <HashRouter>
               <LayoutComponent>
                 <Suspense fallback={<PageLoading />}>
                   <PageTransition>
@@ -226,7 +227,7 @@ const App: React.FC = () => {
                   </PageTransition>
                 </Suspense>
               </LayoutComponent>
-            </BrowserRouter>
+            </HashRouter>
           </ServerProvider>
         </ErrorBoundary>
       </AntApp>

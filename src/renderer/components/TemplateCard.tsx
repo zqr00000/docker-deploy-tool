@@ -26,6 +26,7 @@ import {
 import { useTranslation } from 'react-i18next'
 import type { Template } from '../types/template'
 import { CATEGORY_LABELS, CATEGORY_COLORS } from '../types/template'
+import type { TemplateCategory } from '../types/template'
 import TemplateEditor from './TemplateEditor'
 
 const { Text, Paragraph } = Typography
@@ -52,8 +53,9 @@ const TemplateCard: React.FC<TemplateCardProps> = memo(({
 
   const isBuiltIn = template.isBuiltIn
   const isStack = template.category === 'stack'
-  const categoryLabel = CATEGORY_LABELS[template.category]?.[i18n.language === 'zh-CN' ? 'zh' : 'en'] || template.category
-  const categoryColor = CATEGORY_COLORS[template.category] || 'default'
+  // category 在 DB 中为自由文本，标签/颜色表仅覆盖已知枚举，未知分类回退为原文本
+  const categoryLabel = CATEGORY_LABELS[template.category as TemplateCategory]?.[i18n.language === 'zh-CN' ? 'zh' : 'en'] || template.category
+  const categoryColor = CATEGORY_COLORS[template.category as TemplateCategory] || 'default'
 
   const handleUseTemplate = useCallback(() => {
     if (onUseTemplate) {

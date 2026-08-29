@@ -268,10 +268,12 @@ const ResourceReports: React.FC = () => {
       }
 
       try {
+        // 传入 appId：按应用维度聚合的报表依赖该字段（此前始终为 null，导致应用维度无数据）
         await window.electronAPI.resourceReport.startPeriodicCollection(
           selectedServer,
           containerIds,
-          collectInterval * 1000
+          collectInterval * 1000,
+          selectedApp || null
         )
         const count = await window.electronAPI.resourceReport.getActiveCollectionCount()
         setActiveCollectionCount(count)

@@ -1,4 +1,4 @@
-﻿import log from 'electron-log'
+import log from 'electron-log'
 import { sshService } from '../ssh'
 import { resourceMetricQueries, ResourceMetricRow, MetricsSummary } from '../database'
 import { randomUUID } from 'crypto'
@@ -249,26 +249,61 @@ class ResourceReportsService {
     return deleted
   }
 
+  private cleanupTimer: NodeJS.Timeout | null = null
+
+  /**
+   * 定时自动清理指标数据（60秒/容器/条的写入速率下会无限膨胀，此前仅能手动触发）。
+   * 启动时立即执行一次。
+   */
+  startAutoCleanup(retentionDays?: number, intervalHours = 24): void {
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer)
+    }
+
+    const run = () => {
+      try {
+        this.cleanupOldData(retentionDays)
+      } catch (error) {
+        log.error('Resource metrics auto cleanup failed:', error)
+      }
+    }
+
+    run()
+    this.cleanupTimer = setInterval(run, intervalHours * 60 * 60 * 1000)
+    log.info(`Resource metrics auto cleanup started: retention ${retentionDays || this.DEFAULT_RETENTION_DAYS} days`)
+  }
+
   /**
    * Start periodic metrics collection for a server
    */
-  startPeriodicCollection(serverId: string, containerIds: string[], interval?: number): void {
-    const key = `${serverId}:${containerIds.join(',')}`
+  startPeriodicCollection(serverId: string, containerIds: string[], interval?: number, appId?: string | null): void {
+    // 先停掉同服务器的既有采集任务：key 含 containerIds，容器列表一变即生成新 key，
+    // 若不清理旧任务会导致同一容器被多个残留 timer 重复采集（定时器泄漏）
+    this.stopPeriodicCollection(serverId)
 
+    const key = `${serverId}:${containerIds.join(',')}`
     if (this.collectionIntervals.has(key)) {
       log.warn(`Periodic collection already running for ${key}`)
       return
     }
 
     const intervalMs = interval || this.DEFAULT_INTERVAL
+    let collecting = false
 
     const collectAll = async () => {
-      for (const containerId of containerIds) {
-        try {
-          await this.collectAndSaveMetrics({ serverId, containerId })
-        } catch (error) {
-          log.error(`Error in periodic collection for container ${containerId}:`, error)
+      // 重入保护：上一轮未结束时跳过本轮，避免容器多时轮次重叠、重复插库
+      if (collecting) return
+      collecting = true
+      try {
+        for (const containerId of containerIds) {
+          try {
+            await this.collectAndSaveMetrics({ serverId, appId: appId ?? undefined, containerId })
+          } catch (error) {
+            log.error(`Error in periodic collection for container ${containerId}:`, error)
+          }
         }
+      } finally {
+        collecting = false
       }
     }
 

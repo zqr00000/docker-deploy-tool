@@ -1,16 +1,9 @@
-export type AppStatus = 'stopped' | 'running' | 'deploying' | 'error'
+import type { App } from './electron-api'
 
-export interface App {
-  id: string
-  name: string
-  serverId: string
-  templateId: string
-  projectPath: string
-  status: AppStatus
-  containerIds: string[]
-  createdAt: string
-  updatedAt: string
-}
+// App 的规范定义在 ./electron-api（与 preload 共享的单一来源），此处仅 re-export
+export type { App } from './electron-api'
+
+export type AppStatus = 'stopped' | 'running' | 'deploying' | 'error'
 
 export interface AppFormData {
   name: string

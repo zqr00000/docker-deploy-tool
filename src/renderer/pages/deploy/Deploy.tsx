@@ -1,10 +1,12 @@
-﻿import React, { useState, useEffect } from 'react'
-import { Spin, Row, Col } from 'antd'
+import React, { useState, useEffect } from 'react'
+import { Spin, Row, Col, Card, Progress, Typography } from 'antd'
 import { useNavigate, useLocation } from 'react-router-dom'
 import DeployForm from '../../components/DeployForm'
 import type { Server } from '../../types/server'
 import type { Template } from '../../types/template'
 import type { EnvVariableSchema } from '../../types/template'
+
+const { Text } = Typography
 
 const Deploy: React.FC = () => {
   const navigate = useNavigate()
@@ -13,7 +15,15 @@ const Deploy: React.FC = () => {
   const [templates, setTemplates] = useState<Template[]>([])
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null)
   const [loading, setLoading] = useState(true)
+  // 部署实时进度（app:deploy 执行期间由主进程分阶段推送，替代此前的黑盒等待）
+  const [deployProgress, setDeployProgress] = useState<{ percent: number; message: string } | null>(null)
   const preselectedTemplateId = (location.state as { templateId?: string })?.templateId
+
+  useEffect(() => {
+    return window.electronAPI.app.onDeployProgress(({ percent, message }) => {
+      setDeployProgress({ percent, message })
+    })
+  }, [])
 
   useEffect(() => {
     const loadData = async () => {
@@ -58,16 +68,19 @@ const Deploy: React.FC = () => {
     projectPath: string
     envVariables: { name: string; value: string }[]
   }) => {
-    const result = await window.electronAPI.app.deploy({
-      serverId: values.serverId,
-      appName: values.appName,
-      dockerCompose: values.dockerCompose,
-      projectPath: values.projectPath || `/opt/docker-apps/${values.appName}`,
-      templateId: values.templateId,
-      envVariables: values.envVariables
-    })
-
-    return result
+    setDeployProgress({ percent: 5, message: '开始部署' })
+    try {
+      return await window.electronAPI.app.deploy({
+        serverId: values.serverId,
+        appName: values.appName,
+        dockerCompose: values.dockerCompose,
+        projectPath: values.projectPath || `/opt/docker-apps/${values.appName}`,
+        templateId: values.templateId,
+        envVariables: values.envVariables
+      })
+    } finally {
+      setDeployProgress(null)
+    }
   }
 
   if (loading) {
@@ -79,14 +92,22 @@ const Deploy: React.FC = () => {
   }
 
   return (
-    <DeployForm
-      servers={servers}
-      templates={templates}
-      onDeploy={handleDeploy}
-      defaultTemplateId={preselectedTemplateId}
-      onTemplateChange={handleTemplateChange}
-      templateEnvSchema={getTemplateEnvSchema()}
-    />
+    <div>
+      {deployProgress && (
+        <Card size="small" style={{ marginBottom: 16 }}>
+          <Progress percent={deployProgress.percent} status="active" />
+          <Text type="secondary">{deployProgress.message}</Text>
+        </Card>
+      )}
+      <DeployForm
+        servers={servers}
+        templates={templates}
+        onDeploy={handleDeploy}
+        defaultTemplateId={preselectedTemplateId}
+        onTemplateChange={handleTemplateChange}
+        templateEnvSchema={getTemplateEnvSchema()}
+      />
+    </div>
   )
 }
 

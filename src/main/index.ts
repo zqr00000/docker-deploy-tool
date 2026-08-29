@@ -130,7 +130,7 @@ app.on('quit', () => {
 })
 
 // ==================== 运维 Agent (Mastra) ====================
-import { setAgentModelConfig, setApprovalSender, chatWithAgent, resolveApproval, getAgentConfig } from './services/ops-agent'
+import { setAgentModelConfig, setApprovalSender, chatWithAgent, resolveApproval, getAgentConfig, approveCommandExecution } from './services/ops-agent'
 
 // 流式对话请求（用于取消）
 const opsAgentStreams = new Map<string, AbortController>()
@@ -651,9 +651,15 @@ function registerIpcHandlers(): void {
     }
   })
 
-  ipcMain.handle('app:deploy', async (_, options) => {
+  ipcMain.handle('app:deploy', async (event, options) => {
     try {
-      const result = await appDeployService.deployApp(options)
+      // 部署进度事件：此前部署全程无反馈，前端只能盲等
+      const onProgress = (info: { percent: number; stage: string; message: string }) => {
+        if (event.sender && !event.sender.isDestroyed()) {
+          event.sender.send('deploy:progress', { appName: options.appName, ...info })
+        }
+      }
+      const result = await appDeployService.deployApp(options, onProgress)
       auditLogService.log({
         action: 'app_deploy',
         targetType: 'app',
@@ -1462,9 +1468,9 @@ function registerIpcHandlers(): void {
   })
 
   ipcMain.handle('auditLog:getAll', (_, options?: { limit?: number }) => {
+    const limit = options?.limit || 50
     try {
-      const limit = options?.limit || 50
-      return auditLogService.query({ limit, page: 1, pageSize: limit })
+      return auditLogService.query({ page: 1, pageSize: limit })
     } catch (error) {
       log.error('auditLog:getAll error:', error)
       return { logs: [], total: 0, page: 1, pageSize: limit }
@@ -2417,9 +2423,9 @@ function registerIpcHandlers(): void {
     }
   })
 
-  ipcMain.handle('resourceReport:startPeriodicCollection', (_, serverId: string, containerIds: string[], interval?: number) => {
+  ipcMain.handle('resourceReport:startPeriodicCollection', (_, serverId: string, containerIds: string[], interval?: number, appId?: string | null) => {
     try {
-      resourceReportsService.startPeriodicCollection(serverId, containerIds, interval)
+      resourceReportsService.startPeriodicCollection(serverId, containerIds, interval, appId)
       return { success: true }
     } catch (error) {
       log.error('resourceReport:startPeriodicCollection error:', error)
@@ -2629,6 +2635,16 @@ function registerIpcHandlers(): void {
   ipcMain.handle('opsAgent:approval', (_, id: string, approved: boolean) => {
     resolveApproval(id, approved)
     return { success: true }
+  })
+
+  // 渲染层"AI 建议命令一键执行"的风控门禁：黑名单拒绝 + 高危命令统一审批
+  ipcMain.handle('opsAgent:approveCommand', async (_, payload: { command: string; riskLevel?: string }) => {
+    try {
+      return await approveCommandExecution(payload.command, payload.riskLevel)
+    } catch (error) {
+      log.error('opsAgent:approveCommand error:', error)
+      return { approved: false, riskLevel: 'high', blocked: false }
+    }
   })
 
   // 流式对话
@@ -2880,8 +2896,11 @@ function registerIpcHandlers(): void {
   // 启动告警监控
   alertService.startMonitoring()
 
-  // 启动自动清理
+  // 启动自动清理（审计日志 / 告警历史 / 健康检查历史 / 资源指标）
   auditLogService.startAutoCleanup()
+  alertService.startAutoCleanup(30)
+  healthCheckService.startAutoCleanup(14)
+  resourceReportsService.startAutoCleanup(7)
 
   // 启动定期健康检查（默认60秒间隔）
   healthCheckService.startPeriodicCheck(60000)

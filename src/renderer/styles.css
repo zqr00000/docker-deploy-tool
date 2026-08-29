@@ -216,39 +216,87 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: nowrap;
   padding: 0 24px;
   height: 64px;
   flex-shrink: 0;
-  position: relative;
-  z-index: 10;
+  /* 固定于页面顶部：内容区滚动时导航始终可见 */
+  position: sticky;
+  top: 0;
+  z-index: 100;
 }
 
-.app-body {
-  display: flex;
+/* ====== 顶部水平导航（桌面端 / 平板） ====== */
+.app-topnav {
   flex: 1;
-  min-height: 0;
+  min-width: 0;
+  display: flex;
+  justify-content: center;
   overflow: hidden;
 }
 
-.app-sider {
-  flex-shrink: 0;
-  transition: width 0.2s ease, flex 0.2s ease;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  height: calc(100vh - 64px);
-  position: relative;
+/* 覆盖全局侧边栏样式：顶部导航使用下划线指示器而非左侧竖条 */
+.app-topnav .ant-menu {
+  background: transparent !important;
+  border-bottom: none !important;
+  min-width: 0;
 }
 
-.app-sider .ant-menu {
-  flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
+.app-topnav .ant-menu-item-selected::before {
+  display: none !important;
 }
 
-.app-sider.collapsed {
-  width: 0 !important;
-  flex: 0 0 0 !important;
+/* 横向菜单项：紧凑间距 + 圆角悬停背景 */
+.app-topnav .ant-menu-horizontal > .ant-menu-item,
+.app-topnav .ant-menu-horizontal > .ant-menu-submenu {
+  padding-inline: 13px !important;
+  border-radius: 8px;
+}
+
+.app-topnav .ant-menu-horizontal > .ant-menu-item:hover,
+.app-topnav .ant-menu-horizontal > .ant-menu-submenu:hover .ant-menu-submenu-title {
+  background: var(--app-hover-bg) !important;
+  border-radius: 8px;
+}
+
+/* 弹出子菜单下拉面板 — Apple 风格卡片 */
+/* 背景放在外层容器上（全局规则把 .ant-menu 背景设为透明，必须由容器兜底） */
+.ant-menu-submenu-popup {
+  background: var(--app-content-bg) !important;
+  border: 1px solid var(--app-border-color) !important;
+  border-radius: 12px !important;
+  box-shadow: var(--app-shadow-lg) !important;
+  overflow: hidden !important;
+}
+
+[data-theme='dark'] .ant-menu-submenu-popup {
+  background: #1c1c1e !important;
+}
+
+.ant-menu-submenu-popup .ant-menu {
+  background: transparent !important;
+  border-right: none !important;
+}
+
+/* 弹出面板内菜单项：常规缩进，不使用侧边栏的 36px 缩进与左侧竖条 */
+.ant-menu-submenu-popup .ant-menu-sub .ant-menu-item {
+  padding-inline: 12px !important;
+}
+
+.ant-menu-submenu-popup .ant-menu-item-selected::before {
+  display: none !important;
+}
+
+/* 平板：压缩横向菜单项以避免溢出 */
+@media (min-width: 768px) and (max-width: 991px) {
+  .app-topnav .ant-menu-horizontal {
+    font-size: 13px;
+  }
+
+  .app-topnav .ant-menu-horizontal > .ant-menu-item,
+  .app-topnav .ant-menu-horizontal > .ant-menu-submenu {
+    padding-inline: 8px !important;
+  }
 }
 
 .app-content-wrapper {
@@ -1834,15 +1882,6 @@ body {
 @media (max-width: 767px) {
   .sidebar-overlay.visible {
     display: block;
-  }
-
-  .app-sider.mobile-open {
-    position: fixed;
-    top: 0;
-    left: 0;
-    bottom: 0;
-    z-index: 100;
-    box-shadow: 2px 0 8px rgba(0, 0, 0, 0.15);
   }
 }
 

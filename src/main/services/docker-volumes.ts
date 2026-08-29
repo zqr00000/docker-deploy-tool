@@ -1,5 +1,6 @@
 import log from 'electron-log'
 import { sshService } from '../ssh'
+import { validateDockerRef, shQuote } from '../utils/shell'
 
 export interface VolumeInfo {
   name: string
@@ -92,23 +93,31 @@ class DockerVolumesService {
     options?: Record<string, string>
   ): Promise<{ success: boolean; message: string }> {
     try {
+      // 卷名/驱动来自渲染层输入，拼入 shell 前统一校验（防命令注入）
+      const invalidName = validateDockerRef(name, '数据卷名称')
+      if (invalidName) return { success: false, message: invalidName }
+      if (driver && driver !== 'local') {
+        const invalidDriver = validateDockerRef(driver, '卷驱动')
+        if (invalidDriver) return { success: false, message: invalidDriver }
+      }
+
       let command = `docker volume create`
 
       if (driver && driver !== 'local') {
-        command += ` --driver ${driver}`
+        command += ` --driver ${shQuote(driver)}`
       }
 
       // 添加标签
       if (labels) {
         for (const [key, value] of Object.entries(labels)) {
-          command += ` --label "${key}=${value}"`
+          command += ` --label ${shQuote(`${key}=${value}`)}`
         }
       }
 
       // 添加驱动选项
       if (options) {
         for (const [key, value] of Object.entries(options)) {
-          command += ` --opt "${key}=${value}"`
+          command += ` --opt ${shQuote(`${key}=${value}`)}`
         }
       }
 
@@ -132,6 +141,9 @@ class DockerVolumesService {
    */
   async removeVolume(serverId: string, name: string, force: boolean = false): Promise<{ success: boolean; message: string }> {
     try {
+      const invalidName = validateDockerRef(name, '数据卷名称')
+      if (invalidName) return { success: false, message: invalidName }
+
       let command = `docker volume rm`
       if (force) {
         command += ` --force`
@@ -222,6 +234,12 @@ class DockerVolumesService {
    */
   async getVolumeInfo(serverId: string, name: string): Promise<VolumeDetail | null> {
     try {
+      const invalidName = validateDockerRef(name, '数据卷名称')
+      if (invalidName) {
+        log.error(`getVolumeInfo: ${invalidName}`)
+        return null
+      }
+
       const result = await sshService.executeCommand(
         serverId,
         `docker volume inspect ${name}`
@@ -264,6 +282,9 @@ class DockerVolumesService {
    */
   async getVolumeSize(serverId: string, name: string): Promise<string> {
     try {
+      const invalidName = validateDockerRef(name, '数据卷名称')
+      if (invalidName) return '-'
+
       // 直接对挂载点执行 du（单条快速命令，不起容器）；无权限时返回 '-'
       const result = await sshService.executeCommand(
         serverId,

@@ -20,7 +20,10 @@ import {
   StopOutlined,
   ReloadOutlined,
   EyeOutlined,
-  FileTextOutlined
+  FileTextOutlined,
+  CaretRightOutlined,
+  PauseCircleOutlined,
+  SyncOutlined
 } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
@@ -60,6 +63,9 @@ const Apps: React.FC = () => {
   const [selectedApp, setSelectedApp] = useState<App | null>(null)
   const [logs, setLogs] = useState('')
   const [logsLoading, setLogsLoading] = useState(false)
+  // 批量操作：表格多选 + 批量启停/重启（batch API 已齐备，此前无 UI 入口）
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
+  const [batchLoading, setBatchLoading] = useState<'start' | 'stop' | 'restart' | null>(null)
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -104,6 +110,42 @@ const Apps: React.FC = () => {
     if (templateId === 'custom') return t('app.custom')
     return templateMap.get(templateId) || templateId
   }, [templateMap, t])
+
+  // 批量启停/重启（复用既有 batch API）
+  const handleBatchAction = useCallback(async (action: 'start' | 'stop' | 'restart') => {
+    if (selectedRowKeys.length === 0) return
+    const ids = selectedRowKeys.map(String)
+    const actionLabel = action === 'start' ? t('app.start') : action === 'stop' ? t('app.stop') : t('app.restart')
+    Modal.confirm({
+      title: `批量${actionLabel}`,
+      content: `将对选中的 ${ids.length} 个应用执行「${actionLabel}」操作，是否继续？`,
+      okText: t('common.confirm'),
+      cancelText: t('common.cancel'),
+      onOk: async () => {
+        setBatchLoading(action)
+        try {
+          const api = window.electronAPI.batch
+          const result = action === 'start'
+            ? await api.start(ids)
+            : action === 'stop'
+              ? await api.stop(ids)
+              : await api.restart(ids)
+          const successCount = result.results?.filter((r: { success: boolean }) => r.success).length ?? 0
+          if (result.success) {
+            message.success(`批量${actionLabel}完成：成功 ${successCount}/${ids.length}`)
+          } else {
+            message.warning(`批量${actionLabel}部分失败：成功 ${successCount}/${ids.length}`)
+          }
+          setSelectedRowKeys([])
+          loadData()
+        } catch (error) {
+          message.error(`批量${actionLabel}失败: ${(error as Error).message}`)
+        } finally {
+          setBatchLoading(null)
+        }
+      }
+    })
+  }, [selectedRowKeys, loadData, t])
 
   const handleStart = useCallback(async (appId: string) => {
     setActionLoading(appId)
@@ -376,6 +418,39 @@ const Apps: React.FC = () => {
 
       {/* Table Card */}
       <Card>
+        {/* 批量操作栏（选中行时显示） */}
+        {selectedRowKeys.length > 0 && (
+          <div className="action-bar" style={{ marginBottom: 12 }}>
+            <Text type="secondary">已选 {selectedRowKeys.length} 项：</Text>
+            <Button
+              size="small"
+              icon={<CaretRightOutlined />}
+              loading={batchLoading === 'start'}
+              onClick={() => handleBatchAction('start')}
+            >
+              {t('app.start')}
+            </Button>
+            <Button
+              size="small"
+              icon={<PauseCircleOutlined />}
+              loading={batchLoading === 'stop'}
+              onClick={() => handleBatchAction('stop')}
+            >
+              {t('app.stop')}
+            </Button>
+            <Button
+              size="small"
+              icon={<SyncOutlined />}
+              loading={batchLoading === 'restart'}
+              onClick={() => handleBatchAction('restart')}
+            >
+              {t('app.restart')}
+            </Button>
+            <Button size="small" type="text" onClick={() => setSelectedRowKeys([])}>
+              {t('common.cancel')}
+            </Button>
+          </div>
+        )}
         <Table
           columns={columns}
           dataSource={apps}
@@ -384,6 +459,10 @@ const Apps: React.FC = () => {
           locale={{ emptyText: t('common.noData') }}
           pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (total) => `${total} ${t('common.items')}` }}
           scroll={{ x: 900 }}
+          rowSelection={{
+            selectedRowKeys,
+            onChange: (keys) => setSelectedRowKeys(keys)
+          }}
           expandable={{
             expandedRowRender,
             rowExpandable: (record) => record.status !== 'deploying',

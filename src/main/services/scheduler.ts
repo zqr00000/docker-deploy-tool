@@ -232,44 +232,64 @@ class SchedulerService {
 
     const backupDir = this.getBackupDir()
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
-    const backupFile = join(backupDir, `db-backup-${task.serverId}-${timestamp}.sql`)
 
-    // 获取所有运行中的数据库容器
+    // 列出所有运行中容器的镜像名（ancestor 过滤匹配不到带 tag 的镜像，如 mysql:8.0，改为按镜像名过滤）
     const psResult = await sshService.executeCommand(
       task.serverId,
-      `docker ps --filter "ancestor=mysql" --filter "ancestor=postgres" --filter "ancestor=mariadb" --format "{{.ID}} {{.Image}}"`
+      `docker ps --format "{{.ID}} {{.Image}}"`
     )
 
     if (!psResult.success || !psResult.stdout.trim()) {
+      return 'No running containers found to backup'
+    }
+
+    const dbImageRe = /mysql|mariadb|postgres/i
+    const lines = psResult.stdout.trim().split('\n')
+      .map(l => l.trim())
+      .filter(l => {
+        const image = l.split(' ')[1] || ''
+        return dbImageRe.test(image)
+      })
+
+    if (lines.length === 0) {
       return 'No database containers found to backup'
     }
 
-    const lines = psResult.stdout.trim().split('\n')
     let backupCount = 0
+    const failures: string[] = []
 
     for (const line of lines) {
       const [containerId, image] = line.split(' ')
       if (!containerId) continue
 
+      // 优先使用容器环境变量中的凭据（官方 mysql/mariadb/postgres 镜像内置）
       let dumpCmd = ''
-      if (image.includes('mysql') || image.includes('mariadb')) {
-        dumpCmd = `docker exec ${containerId} mysqldump -u root --all-databases --single-transaction --routines --triggers 2>/dev/null`
-      } else if (image.includes('postgres')) {
-        dumpCmd = `docker exec ${containerId} pg_dumpall -U postgres 2>/dev/null`
+      if (/mysql|mariadb/i.test(image)) {
+        dumpCmd = `docker exec ${containerId} sh -c 'mysqldump -u root -p"\$MYSQL_ROOT_PASSWORD" --all-databases --single-transaction --routines --triggers'`
+      } else if (/postgres/i.test(image)) {
+        dumpCmd = `docker exec ${containerId} sh -c 'PGPASSWORD="\$POSTGRES_PASSWORD" pg_dumpall -U "\${POSTGRES_USER:-postgres}"'`
       }
 
       if (dumpCmd) {
-        const dumpResult = await sshService.executeCommand(task.serverId, dumpCmd)
+        const dumpResult = await sshService.executeCommand(task.serverId, dumpCmd, 2, 1000, 300000)
         if (dumpResult.success && dumpResult.stdout.trim()) {
-          const fileName = join(backupDir, `db-${containerId.substring( 0, 12)}-${timestamp}.sql`)
+          const fileName = join(backupDir, `db-${containerId.substring(0, 12)}-${timestamp}.sql`)
           const { writeFile } = await import('fs/promises')
           await writeFile(fileName, dumpResult.stdout, 'utf-8')
           backupCount++
+        } else {
+          // 不再静默跳过：dump 失败必须暴露出来，否则任务假成功
+          failures.push(`${image || 'db'}(${containerId.substring(0, 12)}): ${dumpResult.stderr?.trim().slice(0, 200) || 'empty dump output'}`)
         }
       }
     }
 
-    return `Database backup completed: ${backupCount} databases backed up to ${backupDir}`
+    if (backupCount === 0) {
+      throw new Error(`Database backup failed for all containers: ${failures.join('; ')}`)
+    }
+
+    const msg = `Database backup completed: ${backupCount} databases backed up to ${backupDir}`
+    return failures.length > 0 ? `${msg}（部分失败: ${failures.join('; ')}）` : msg
   }
 
   private async executeBackupVolume(task: ScheduledTaskRow): Promise<string> {
@@ -297,7 +317,6 @@ class SchedulerService {
 
     const backupDir = this.getBackupDir()
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
-    const backupFile = join(backupDir, `volumes-backup-${task.serverId}-${timestamp}.tar.gz`)
 
     // 获取所有卷
     const volResult = await sshService.executeCommand(
@@ -310,17 +329,31 @@ class SchedulerService {
     }
 
     const volumes = volResult.stdout.trim().split('\n').filter(v => v.trim())
-    
+
     if (volumes.length === 0) {
       return 'No volumes found to backup'
     }
 
-    // 创建卷备份（使用临时容器打包卷数据）
-    const backupCmd = `docker run --rm -v /var/lib/docker/volumes:/volumes:ro -v ${backupDir}:/backup alpine tar czf /backup/volumes-backup-${task.serverId}-${timestamp}.tar.gz -C /volumes ${volumes.join(' ')} 2>/dev/null || echo "Backup completed with warnings"`
-    
-    const result = await sshService.executeCommand(task.serverId, backupCmd, 2, 1000, 120000)
-    
-    return `Volume backup completed: ${volumes.length} volumes backed up to ${backupFile}`
+    // 在远端打包到 /tmp（挂载本机 backupDir 到远端容器是无效的——远端不存在该 Windows 路径），
+    // 打包完成后经 SFTP 拉回本地备份目录，最后清理远端临时文件
+    const remoteTmp = `/tmp/volumes-backup-${task.serverId}-${timestamp}.tar.gz`
+    const tarCmd = `docker run --rm -v /var/lib/docker/volumes:/volumes:ro -v /tmp:/backup alpine tar czf /backup/${remoteTmp.split('/').pop()} -C /volumes ${volumes.join(' ')}`
+
+    const result = await sshService.executeCommand(task.serverId, tarCmd, 2, 1000, 600000)
+    if (!result.success) {
+      throw new Error(`Volume backup tar failed: ${result.stderr?.trim().slice(0, 300) || 'command failed'}`)
+    }
+
+    const localFile = join(backupDir, `volumes-backup-${task.serverId}-${timestamp}.tar.gz`)
+    const download = await sshService.downloadFile(task.serverId, remoteTmp, localFile)
+    // 无论下载成败都清理远端临时文件
+    await sshService.executeCommand(task.serverId, `rm -f ${remoteTmp}`)
+
+    if (!download.success) {
+      throw new Error(`Volume backup download failed: ${download.message}`)
+    }
+
+    return `Volume backup completed: ${volumes.length} volumes backed up to ${localFile}`
   }
 
   private async executeCleanupImages(task: ScheduledTaskRow): Promise<string> {

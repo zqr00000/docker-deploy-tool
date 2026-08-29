@@ -1,4 +1,4 @@
-﻿import log from 'electron-log'
+import log from 'electron-log'
 import { randomUUID } from 'crypto'
 import { sshService } from '../ssh'
 import { appQueries, healthCheckConfigQueries, healthCheckHistoryQueries } from '../database'
@@ -61,6 +61,7 @@ class HealthCheckService {
   private checkInterval: NodeJS.Timeout | null = null
   private checkIntervalMs = 60000 // 默认60秒检查一次
   private isRunning = false
+  private cleanupTimer: NodeJS.Timeout | null = null
 
   /**
    * 获取单个容器的健康状态
@@ -186,6 +187,134 @@ class HealthCheckService {
   }
 
   /**
+   * 批量获取容器健康状态：单条 docker inspect 覆盖全部容器（1 次 SSH 往返），
+   * 替代此前每容器 2-3 次往返的串行调用（N 容器 = 2N~3N 次 SSH）
+   */
+  private async getContainersHealthBatch(serverId: string, containerIds: string[]): Promise<ContainerHealthStatus[]> {
+    const startTime = Date.now()
+    if (containerIds.length === 0) return []
+
+    const results: ContainerHealthStatus[] = []
+    try {
+      // 每行: 完整ID|State JSON|容器名（去前导斜杠）
+      const result = await sshService.executeCommand(
+        serverId,
+        `docker inspect --format '{{.Id}}|{{json .State}}|{{.Name}}' ${containerIds.join(' ')} 2>/dev/null`,
+        2,
+        1000,
+        30000
+      )
+
+      const responseTime = Date.now() - startTime
+      const byId = new Map<string, { state: any; name: string }>()
+
+      if (result.success && result.stdout.trim()) {
+        for (const line of result.stdout.trim().split('\n').filter(l => l.trim())) {
+          const sep1 = line.indexOf('|')
+          const sep2 = line.indexOf('|', sep1 + 1)
+          if (sep1 === -1 || sep2 === -1) continue
+          const id = line.slice(0, sep1)
+          const name = line.slice(sep2 + 1).replace(/^\//, '')
+          let state: any = {}
+          try {
+            state = JSON.parse(line.slice(sep1 + 1, sep2))
+          } catch {
+            state = {}
+          }
+          byId.set(id, { state, name })
+        }
+      }
+
+      for (const containerId of containerIds) {
+        // docker inspect 返回完整 ID；传入的可能是短 ID，按前缀匹配
+        const entry = byId.get(containerId)
+          || Array.from(byId.entries()).find(([fullId]) => fullId.startsWith(containerId))?.[1]
+
+        if (!entry) {
+          results.push({
+            containerId,
+            containerName: containerId.substring(0, 12),
+            status: 'unknown',
+            healthStatus: 'unknown',
+            uptime: '-',
+            restartCount: 0,
+            exitCode: -1,
+            errorMessage: '无法获取容器状态（容器可能已被移除）',
+            responseTime
+          })
+          continue
+        }
+
+        const state = entry.state || {}
+        const stateStatus = state.Status || 'unknown'
+        const isRunning = state.Running === true
+        const restartCount = state.RestartCount || 0
+        const exitCode = state.ExitCode || 0
+
+        let healthStatus = 'none'
+        if (state.Health && state.Health.Status) {
+          healthStatus = state.Health.Status
+        }
+
+        let uptime = '-'
+        const startedAt = state.StartedAt || ''
+        if (startedAt && isRunning) {
+          try {
+            uptime = this.formatUptime(Date.now() - new Date(startedAt).getTime())
+          } catch {
+            uptime = '-'
+          }
+        }
+
+        // 状态判定（与 getContainerHealth 保持一致）
+        let status: ContainerHealthStatus['status'] = 'unknown'
+        if (isRunning || stateStatus === 'running') {
+          if (healthStatus === 'healthy' || healthStatus === 'none' || healthStatus === '') {
+            status = 'healthy'
+          } else if (healthStatus === 'starting') {
+            status = 'starting'
+          } else if (healthStatus === 'unhealthy') {
+            status = 'unhealthy'
+          } else {
+            status = 'healthy'
+          }
+        } else if (stateStatus === 'exited' || stateStatus === 'dead') {
+          status = 'unhealthy'
+        }
+
+        results.push({
+          containerId,
+          containerName: entry.name || containerId.substring(0, 12),
+          status,
+          healthStatus: healthStatus || 'none',
+          uptime,
+          restartCount,
+          exitCode,
+          responseTime
+        })
+      }
+    } catch (error) {
+      log.error('Failed to batch get container health:', error)
+      // 批量失败时回退为逐容器 unknown，保证调用方拿到完整列表
+      for (const containerId of containerIds) {
+        results.push({
+          containerId,
+          containerName: containerId.substring(0, 12),
+          status: 'unknown',
+          healthStatus: 'error',
+          uptime: '-',
+          restartCount: 0,
+          exitCode: -1,
+          errorMessage: (error as Error).message,
+          responseTime: Date.now() - startTime
+        })
+      }
+    }
+
+    return results
+  }
+
+  /**
    * 获取应用所有容器的健康状态
    */
   async getAppHealth(serverId: string, projectPath: string): Promise<AppHealthStatus> {
@@ -215,22 +344,23 @@ class HealthCheckService {
         }
       }
 
-      // 获取每个容器的健康状态
-      const containerHealths: ContainerHealthStatus[] = []
-      for (const container of containers) {
-        const health = await this.getContainerHealth(serverId, container.id)
-        containerHealths.push(health)
-      }
+      // 批量获取全部容器健康状态（单条 inspect 覆盖所有容器，替代此前每容器 2-3 次 SSH 往返）
+      const containerHealths = await this.getContainersHealthBatch(
+        serverId,
+        containers.map(c => c.id)
+      )
 
       // 确定总体状态
       const unhealthyCount = containerHealths.filter(c => c.status === 'unhealthy').length
       const healthyCount = containerHealths.filter(c => c.status === 'healthy').length
       const startingCount = containerHealths.filter(c => c.status === 'starting').length
+      // unknown（如 restarting / SSH 抖动）不参与健康计数，但不能被误判为全 healthy
+      const unknownCount = containerHealths.filter(c => c.status === 'unknown').length
 
       let overallStatus: AppHealthStatus['overallStatus'] = 'healthy'
       if (unhealthyCount > 0) {
         overallStatus = healthyCount > 0 ? 'partial' : 'unhealthy'
-      } else if (startingCount > 0) {
+      } else if (startingCount > 0 || unknownCount > 0) {
         overallStatus = 'partial'
       }
 
@@ -483,6 +613,29 @@ class HealthCheckService {
   cleanupHistory(days: number = 30): number {
     const cutoffDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString()
     return healthCheckHistoryQueries.deleteBefore(cutoffDate)
+  }
+
+  /**
+   * 定时自动清理健康检查历史（此前仅能手动触发，60秒/条的写入速率会无限膨胀）。
+   * 启动时立即执行一次，避免升级/积压场景首日不清理。
+   */
+  startAutoCleanup(retentionDays = 14, intervalHours = 24): void {
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer)
+    }
+
+    const run = () => {
+      try {
+        const deleted = this.cleanupHistory(retentionDays)
+        if (deleted > 0) log.info(`Health check history auto cleanup: removed ${deleted} entries (retention ${retentionDays} days)`)
+      } catch (error) {
+        log.error('Health check history auto cleanup failed:', error)
+      }
+    }
+
+    run()
+    this.cleanupTimer = setInterval(run, intervalHours * 60 * 60 * 1000)
+    log.info(`Health check history auto cleanup started: retention ${retentionDays} days`)
   }
 
   /**

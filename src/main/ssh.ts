@@ -510,7 +510,7 @@ class SSHService {
 
   async uploadContent(
     serverId: string,
-    content: string,
+    content: string | Buffer,
     remotePath: string
   ): Promise<{ success: boolean; message: string }> {
     const entry = this.connections.get(serverId)
@@ -527,7 +527,9 @@ class SSHService {
         }
 
         try {
-          sftp.writeFile(remotePath, Buffer.from(content), (writeErr) => {
+          // Buffer 直接写入以保持二进制完整性；字符串按 utf8 编码
+          const payload = Buffer.isBuffer(content) ? content : Buffer.from(content)
+          sftp.writeFile(remotePath, payload, (writeErr) => {
             if (writeErr) {
               log.error(`SFTP write error: ${writeErr.message}`)
               resolve({ success: false, message: writeErr.message })
@@ -784,16 +786,16 @@ class SSHService {
         }
         switch (op) {
           case 'mkdir':
-            sftp.mkdir(target, (e) => done(e, '目录已创建'))
+            sftp.mkdir(target, (e) => done(e ?? undefined, '目录已创建'))
             break
           case 'rename':
-            sftp.rename(target, to || '', (e) => done(e, '重命名成功'))
+            sftp.rename(target, to || '', (e) => done(e ?? undefined, '重命名成功'))
             break
           case 'delete':
             // 先尝试按目录删（仅空目录），失败再按文件删
             sftp.rmdir(target, (e1) => {
-              if (e1) sftp.unlink(target, (e2) => done(e2, '已删除'))
-              else done(null, '已删除')
+              if (e1) sftp.unlink(target, (e2) => done(e2 ?? undefined, '已删除'))
+              else done(undefined, '已删除')
             })
             break
           default:

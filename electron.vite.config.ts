@@ -28,6 +28,10 @@ export default defineConfig({
   renderer: {
     plugins: [react()],
     root: resolve(__dirname, 'src/renderer'),
+    // monaco 的 worker 以 `?worker` 形式从 node_modules 导入，依赖预构建无法解析，需排除
+    optimizeDeps: {
+      exclude: ['monaco-editor']
+    },
     build: {
       rollupOptions: {
         input: {

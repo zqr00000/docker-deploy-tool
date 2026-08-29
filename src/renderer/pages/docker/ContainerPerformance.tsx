@@ -113,7 +113,11 @@ const ContainerPerformance: React.FC = () => {
   // 加载容器列表
   const loadContainers = useCallback(async () => {
     try {
-      const apps = await window.electronAPI.app.getAll()
+      const [apps, servers] = await Promise.all([
+        window.electronAPI.app.getAll(),
+        window.electronAPI.server.getAll()
+      ])
+      const serverNames = new Map(servers.map(s => [s.id, s.name]))
       const containersList: Container[] = []
 
       for (const app of apps) {
@@ -125,7 +129,7 @@ const ContainerPerformance: React.FC = () => {
                 id: containerId,
                 name: `${app.name}-${containerId.substring(0, 8)}`,
                 serverId: app.serverId,
-                serverName: app.serverName || 'Unknown',
+                serverName: serverNames.get(app.serverId) || 'Unknown',
                 appName: app.name,
                 status: 'running'
               })

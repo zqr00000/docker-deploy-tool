@@ -1,4 +1,4 @@
-﻿import log from 'electron-log'
+import log from 'electron-log'
 import { Notification } from 'electron'
 import { generateId } from '../ssh'
 import { alertRuleQueries, alertHistoryQueries, serverQueries, appQueries, AlertRuleRow, AlertHistoryRow } from '../database'
@@ -17,6 +17,8 @@ export interface AlertRule {
   threshold?: number
   enabled: boolean
   notifyChannels: NotifyChannel[]
+  /** 规则级静默窗口（分钟）：同一目标在窗口内不重复触发 */
+  silenceMinutes?: number
   createdAt: string
   updatedAt: string
 }
@@ -69,6 +71,9 @@ class AlertService {
   private timer: NodeJS.Timeout | null = null
   private restartCountThreshold = 5
   private restartCountMap: Map<string, { count: number; lastRestart: number }> = new Map()
+  // 告警去重：同一目标在冷却窗口内不重复触发（避免每轮轮询产生告警风暴）
+  private alertDedupMap: Map<string, number> = new Map()
+  private alertDedupCooldownMs = 5 * 60 * 1000
 
   // 转换数据库行到前端接口
   private rowToRule(row: AlertRuleRow): AlertRule {
@@ -81,6 +86,8 @@ class AlertService {
       threshold: row.threshold ?? undefined,
       enabled: row.enabled === 1,
       notifyChannels: JSON.parse(row.notifyChannels) as NotifyChannel[],
+      // 规则级静默窗口（分钟），未配置时回退到默认 5 分钟
+      silenceMinutes: row.silenceMinutes ?? 5,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt
     }
@@ -229,21 +236,57 @@ class AlertService {
     const cutoffDate = new Date()
     cutoffDate.setDate(cutoffDate.getDate() - retentionDays)
     const cutoffISO = cutoffDate.toISOString()
-    
+
     const deleted = alertHistoryQueries.deleteBefore(cutoffISO)
     log.info(`Alert history cleanup: removed ${deleted} entries older than ${retentionDays} days`)
     return deleted
   }
 
-  // 触发告警
+  private cleanupTimer: NodeJS.Timeout | null = null
+
+  /**
+   * 定时自动清理告警历史（此前仅能手动触发，轮询写入会无限膨胀）。
+   * 启动时立即执行一次。
+   */
+  startAutoCleanup(retentionDays = 30, intervalHours = 24): void {
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer)
+    }
+
+    const run = () => {
+      try {
+        this.cleanup(retentionDays)
+      } catch (error) {
+        log.error('Alert history auto cleanup failed:', error)
+      }
+    }
+
+    run()
+    this.cleanupTimer = setInterval(run, intervalHours * 60 * 60 * 1000)
+    log.info(`Alert history auto cleanup started: retention ${retentionDays} days`)
+  }
+
+  // 触发告警（dedupKey：同一目标在冷却窗口内去重，避免轮询导致的告警风暴）
   private triggerAlert(
     rule: AlertRule,
     alertType: AlertRuleType,
     message: string,
-    severity: AlertSeverity
+    severity: AlertSeverity,
+    dedupKey?: string
   ): void {
     try {
-      const now = new Date().toISOString()
+      const now = Date.now()
+      // 静默窗口优先使用规则配置（silenceMinutes，分钟），未配置回退默认 5 分钟；0 表示每轮都触发
+      const cooldownMs = (rule.silenceMinutes ?? 5) * 60 * 1000
+      if (dedupKey && cooldownMs > 0) {
+        const lastTriggered = this.alertDedupMap.get(dedupKey)
+        if (lastTriggered && now - lastTriggered < cooldownMs) {
+          log.debug(`Alert suppressed (cooldown): ${dedupKey}`)
+          return
+        }
+        this.alertDedupMap.set(dedupKey, now)
+      }
+
       alertHistoryQueries.insert({
         ruleId: rule.id,
         ruleName: rule.name,
@@ -251,7 +294,7 @@ class AlertService {
         message,
         severity,
         status: 'active',
-        triggeredAt: now,
+        triggeredAt: new Date(now).toISOString(),
         resolvedAt: null
       })
 
@@ -361,7 +404,8 @@ class AlertService {
         rule,
         'container_exit',
         `容器 ${data.containerName} 已退出 (状态: ${data.status})`,
-        'critical'
+        'critical',
+        `${rule.id}:exit:${data.containerId}`
       )
     }
   }
@@ -372,17 +416,20 @@ class AlertService {
     const now = Date.now()
     const record = this.restartCountMap.get(key)
 
-    if (data.status === 'restarting' || data.status === 'running') {
+    // 仅统计真正处于 restarting 状态的容器（running 是正常状态，计入会造成误报）
+    if (data.status === 'restarting') {
       if (record) {
         // 如果在60秒内重启次数超过阈值
         if (now - record.lastRestart < 60000) {
           record.count++
+          record.lastRestart = now
           if (record.count >= this.restartCountThreshold) {
             this.triggerAlert(
               rule,
               'container_restart_loop',
               `容器 ${data.containerName} 检测到重启循环 (${record.count} 次/分钟)`,
-              'critical'
+              'critical',
+              `${rule.id}:restart_loop:${data.containerId}`
             )
             record.count = 0 // 重置以避免重复告警
           }
@@ -417,7 +464,8 @@ class AlertService {
               rule,
               'high_cpu',
               `容器 ${data.containerName} CPU 使用率过高: ${data.cpuPercent.toFixed(1)}% (阈值: ${threshold}%)`,
-              data.cpuPercent >= 95 ? 'critical' : 'warning'
+              data.cpuPercent >= 95 ? 'critical' : 'warning',
+              `${rule.id}:cpu:${data.containerId}`
             )
           }
           break
@@ -427,7 +475,8 @@ class AlertService {
               rule,
               'high_memory',
               `容器 ${data.containerName} 内存使用率过高: ${data.memoryPercent.toFixed(1)}% (阈值: ${threshold}%)`,
-              data.memoryPercent >= 95 ? 'critical' : 'warning'
+              data.memoryPercent >= 95 ? 'critical' : 'warning',
+              `${rule.id}:mem:${data.containerId}`
             )
           }
           break
@@ -437,7 +486,8 @@ class AlertService {
               rule,
               'high_disk',
               `容器 ${data.containerName} 磁盘使用率过高: ${data.diskPercent.toFixed(1)}% (阈值: ${threshold}%)`,
-              data.diskPercent >= 95 ? 'critical' : 'warning'
+              data.diskPercent >= 95 ? 'critical' : 'warning',
+              `${rule.id}:disk:${data.containerId}`
             )
           }
           break
@@ -500,6 +550,17 @@ class AlertService {
       const rules = alertRuleQueries.getEnabled()
       if (rules.length === 0) return
 
+      // 仅存在资源类规则时才额外采集容器 stats（省一次 SSH 往返）
+      const needStats = rules.some(r => r.ruleType === 'high_cpu' || r.ruleType === 'high_memory' || r.ruleType === 'high_disk')
+
+      // 清理过期的告警去重记录
+      const nowMs = Date.now()
+      for (const [key, ts] of this.alertDedupMap.entries()) {
+        if (nowMs - ts > this.alertDedupCooldownMs * 2) {
+          this.alertDedupMap.delete(key)
+        }
+      }
+
       // 获取所有服务器
       const servers = serverQueries.getAll()
 
@@ -515,7 +576,7 @@ class AlertService {
             if (!app.projectPath) continue
 
             // 获取容器列表
-            const containers = await this.getContainersForServer(server.id, app.projectPath)
+            const containers = await this.getContainersForServer(server.id, app.projectPath, needStats)
 
             for (const container of containers) {
               // 检查容器状态
@@ -551,8 +612,8 @@ class AlertService {
     }
   }
 
-  // 获取服务器上的容器
-  private async getContainersForServer(serverId: string, projectPath: string): Promise<Array<{
+  // 获取服务器上的容器（includeStats：是否同时采集 CPU/内存使用率，供资源类告警使用）
+  private async getContainersForServer(serverId: string, projectPath: string, includeStats = false): Promise<Array<{
     id: string
     name: string
     status: string
@@ -567,10 +628,11 @@ class AlertService {
         return []
       }
 
-      // 获取容器列表
+      // 使用 .State（短状态：running/exited/restarting...）而非 .Status（人类可读长文本如 "Up 2 hours"），
+      // 否则与 exited/restarting 的比较永远不匹配，容器退出与重启循环告警失效
       const result = await sshService.executeCommand(
         serverId,
-        `docker ps -a --filter "label=com.docker.compose.project=${projectPath}" --format "{{.ID}}|{{.Names}}|{{.Status}}"`
+        `docker ps -a --filter "label=com.docker.compose.project=${projectPath}" --format "{{.ID}}|{{.Names}}|{{.State}}"`
       )
 
       if (!result.success || !result.stdout) {
@@ -596,6 +658,39 @@ class AlertService {
             status: status?.trim() || 'unknown',
             restartCount: 0
           })
+        }
+      }
+
+      // 批量采集资源指标：单条 docker stats 命令覆盖全部容器，避免逐容器 SSH 往返
+      if (includeStats && containers.length > 0) {
+        try {
+          const ids = containers.map(c => c.id).join(' ')
+          const statsResult = await sshService.executeCommand(
+            serverId,
+            `docker stats --no-stream --format "{{.ID}}|{{.CPUPerc}}|{{.MemPerc}}" ${ids}`
+          )
+          if (statsResult.success && statsResult.stdout) {
+            const statsMap = new Map<string, { cpu?: number; mem?: number }>()
+            for (const line of statsResult.stdout.trim().split('\n').filter((l: string) => l.trim())) {
+              const [cid, cpu, mem] = line.split('|')
+              if (!cid) continue
+              const parsePercent = (v?: string): number | undefined => {
+                if (!v) return undefined
+                const n = parseFloat(v.trim().replace('%', ''))
+                return Number.isFinite(n) ? n : undefined
+              }
+              statsMap.set(cid.trim(), { cpu: parsePercent(cpu), mem: parsePercent(mem) })
+            }
+            for (const container of containers) {
+              const stats = statsMap.get(container.id)
+              if (stats) {
+                container.cpuPercent = stats.cpu
+                container.memoryPercent = stats.mem
+              }
+            }
+          }
+        } catch (statsError) {
+          log.warn(`Failed to collect container stats for server ${serverId}:`, statsError)
         }
       }
 

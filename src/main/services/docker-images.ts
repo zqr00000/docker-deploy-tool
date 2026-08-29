@@ -1,5 +1,6 @@
 import log from 'electron-log'
 import { sshService } from '../ssh'
+import { validateDockerRef } from '../utils/shell'
 
 export interface DockerImage {
   id: string
@@ -97,6 +98,11 @@ class DockerImagesService {
       if (!imageName || !imageName.trim()) {
         return { success: false, message: '镜像名称不能为空' }
       }
+      // 镜像名来自渲染层输入，拼入 shell 前必须校验（防命令注入）
+      const invalid = validateDockerRef(imageName, '镜像名称')
+      if (invalid) {
+        return { success: false, message: invalid }
+      }
 
       log.info(`Pulling image: ${imageName} on server ${serverId}`)
 
@@ -129,6 +135,11 @@ class DockerImagesService {
     try {
       if (!imageId || !imageId.trim()) {
         return { success: false, message: '镜像ID不能为空' }
+      }
+      // 镜像ID来自渲染层输入，拼入 shell 前必须校验（防命令注入）
+      const invalid = validateDockerRef(imageId, '镜像ID')
+      if (invalid) {
+        return { success: false, message: invalid }
       }
 
       log.info(`Removing image: ${imageId} on server ${serverId}`)
@@ -283,6 +294,12 @@ class DockerImagesService {
    */
   async getImageInfo(serverId: string, imageId: string): Promise<string> {
     try {
+      // 镜像ID来自渲染层输入，拼入 shell 前必须校验（防命令注入）
+      const invalid = validateDockerRef(imageId, '镜像ID')
+      if (invalid) {
+        return invalid
+      }
+
       const result = await sshService.executeCommand(
         serverId,
         `docker image inspect ${imageId}`,

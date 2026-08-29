@@ -137,6 +137,8 @@ export interface MessageMetadata {
   tokensUsed?: number
   /** 本次回复的模型 token 用量（流式 usage_update 汇总） */
   usage?: { input: number; output: number }
+  /** 本次回复实际使用的模型路由档位（execution/thinking/critique/vision） */
+  route?: string
 }
 
 export interface ExecutedCommand {

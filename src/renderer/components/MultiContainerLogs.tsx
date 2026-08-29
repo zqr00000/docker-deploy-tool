@@ -125,12 +125,16 @@ const MultiContainerLogs: React.FC<MultiContainerLogsProps> = ({
     setIsStreaming(false)
   }, [])
 
-  // 监听日志数据
+  // 监听日志数据（仅注册一次：此前依赖 [containers] 且空清理，containers 变化即重复注册，
+  // 导致同一条日志被多次追加；改用 ref 持有最新 containers）
+  const containersRef = useRef(containers)
+  containersRef.current = containers
+
   useEffect(() => {
     const handleData = (streamId: string, data: string) => {
       if (streamIdsRef.current.has(streamId)) {
         const containerId = streamId.split(':')[1]
-        const container = containers.find(c => c.id === containerId)
+        const container = containersRef.current.find(c => c.id === containerId)
         const newLines = data.split('\n').filter(l => l.trim())
 
         const entries: LogEntry[] = newLines.map(line => ({
@@ -162,20 +166,20 @@ const MultiContainerLogs: React.FC<MultiContainerLogsProps> = ({
       }
     }
 
-    window.electronAPI.logs.onData(handleData)
-    window.electronAPI.logs.onError(handleError)
-    window.electronAPI.logs.onClose(handleClose)
+    const unsubData = window.electronAPI.logs.onData(handleData)
+    const unsubError = window.electronAPI.logs.onError(handleError)
+    const unsubClose = window.electronAPI.logs.onClose(handleClose)
 
-    return () => {}
-  }, [containers])
-
-  // 组件卸载时停止所有流
-  useEffect(() => {
     return () => {
+      // 卸载时移除监听器并停止所有日志流
+      unsubData()
+      unsubError()
+      unsubClose()
       for (const streamId of streamIdsRef.current) {
         const [sid, cid] = streamId.split(':')
         window.electronAPI.logs.stop(sid, cid)
       }
+      streamIdsRef.current.clear()
     }
   }, [])
 

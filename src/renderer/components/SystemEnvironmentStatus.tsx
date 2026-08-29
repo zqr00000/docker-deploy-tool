@@ -102,6 +102,11 @@ const SystemEnvironmentStatus: React.FC<SystemEnvironmentStatusProps> = ({ serve
         systemOk: false,
         hardwareOk: false,
         dockerOk: false,
+        dockerInstalled: false,
+        dockerRunning: false,
+        dockerVersion: '',
+        composeInstalled: false,
+        composeVersion: '',
         error: (error as Error).message
       })
     } finally {
@@ -141,7 +146,7 @@ const SystemEnvironmentStatus: React.FC<SystemEnvironmentStatusProps> = ({ serve
     )
   }
 
-  const renderSystemInfo = (info: SystemInfo, networkInfo?: NetworkInfo) => (
+  const renderSystemInfo = (info: SystemInfo, networkInfo?: NetworkInfo | null) => (
     <Card title={<Space><CloudServerOutlined /> {t('environment.systemInfo')}</Space>} bordered={false}>
       <Descriptions column={1} size="small">
         <Descriptions.Item label={t('environment.osName')}>{info.osName}</Descriptions.Item>

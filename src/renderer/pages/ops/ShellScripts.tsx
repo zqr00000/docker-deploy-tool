@@ -41,6 +41,8 @@ import {
 } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import type { ColumnsType } from 'antd/es/table'
+// Monaco 本地化配置（side-effect：配置 loader 与 worker，必须在编辑器挂载前执行）
+import '../../components/monaco-setup'
 import Editor from '@monaco-editor/react'
 import type { editor as MonacoEditor } from 'monaco-editor'
 import type {

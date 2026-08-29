@@ -29,7 +29,7 @@ import {
 } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import { useServers } from '../../context/ServerContext'
-import type { DockerImage } from '../../../preload/index'
+import type { DockerImage } from '../../types/global'
 
 const { Title, Paragraph } = Typography
 const { Option } = Select

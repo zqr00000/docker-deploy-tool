@@ -1,5 +1,6 @@
-﻿import log from 'electron-log'
+import log from 'electron-log'
 import { sshService } from '../ssh'
+import { validateDockerRef, shQuote } from '../utils/shell'
 
 export interface ScanVulnerability {
   id: string
@@ -49,11 +50,11 @@ class SecurityScanService {
     return { critical: 0, high: 0, medium: 0, low: 0, negligible: 0, total: 0 }
   }
 
-  /** 构造代理环境变量前缀（配置了代理时生效） */
+  /** 构造代理环境变量前缀（配置了代理时生效）；值经 shQuote 转义防注入 */
   private proxyEnv(proxy?: string): string {
     if (!proxy || !proxy.trim()) return ''
-    const p = proxy.trim()
-    return `export HTTPS_PROXY='${p}' HTTP_PROXY='${p}' ALL_PROXY='${p}' NO_PROXY='localhost,127.0.0.1,::1'; `
+    const q = shQuote(proxy.trim())
+    return `export HTTPS_PROXY=${q} HTTP_PROXY=${q} ALL_PROXY=${q} NO_PROXY='localhost,127.0.0.1,::1'; `
   }
 
   private mapSeverity(sev: string): ScanVulnerability['severity'] {
@@ -159,6 +160,12 @@ class SecurityScanService {
 
     if (!imageName || !imageName.trim()) {
       return { success: false, message: '镜像名称不能为空', trivyInstalled: false, vulnerabilities: [], summary: empty, scanTime: now }
+    }
+
+    // 镜像名来自渲染层输入，拼入 SSH 命令前必须校验（防命令注入）
+    const invalidRef = validateDockerRef(imageName, '镜像名称')
+    if (invalidRef) {
+      return { success: false, message: invalidRef, trivyInstalled: false, vulnerabilities: [], summary: empty, scanTime: now }
     }
 
     try {

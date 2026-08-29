@@ -1,4 +1,4 @@
-﻿/**
+/**
  * 基于 better-sqlite3 的 Mastra Memory 存储
  * 实现 MemoryStorage 抽象类，将 Mastra 会话/消息持久化到本地 SQLite
  */
@@ -207,7 +207,7 @@ export async function createSqliteMemoryStorage(db: Database.Database): Promise<
       if (messages.length === 0) return []
       // 批量查询已有消息，避免逐条 N+1
       const existing = await this.listMessagesById({ messageIds: messages.map(m => m.id) })
-      const existingMap = new Map(existing.messages.map(m => [m.id, m]))
+      const existingMap = new Map(existing.messages.map((m: { id: string }) => [m.id, m]))
       const stmt = this.db.prepare(`
         UPDATE mastra_messages SET content = ?, role = ?, type = ?, metadata = ?, updated_at = ? WHERE id = ?
       `)

@@ -7,10 +7,15 @@ import { app } from 'electron'
 import { join } from 'path'
 import Database from 'better-sqlite3'
 import log from 'electron-log'
+import { validateDockerRef } from '../utils/shell'
 import { sshService } from '../ssh'
 import { createAIModel } from './ai-model'
 import { createSqliteMemoryStorage } from './sqlite-memory-store'
 import { auditLogService } from './audit-log'
+import { appQueries } from '../database'
+import { appDeployService } from './app-deploy'
+import { shellScriptService } from './shell-scripts'
+import { securityScanService } from './security-scan'
 
 // ==================== 类型 ====================
 
@@ -118,7 +123,8 @@ async function requestApproval(action: string, riskLevel: string, timeoutMs?: nu
     })
     return true
   }
-  const effTimeout = timeoutMs ?? currentConfig?.approvalTimeout ?? 60000
+  // approvalTimeout 配置单位为"秒"（UI 限制 10-300），此处换算为毫秒；显式传入的 timeoutMs 视为毫秒
+  const effTimeout = timeoutMs ?? (currentConfig?.approvalTimeout ? currentConfig.approvalTimeout * 1000 : 60000)
   return new Promise((resolve) => {
     const id = `approval-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
     const timer = setTimeout(() => {
@@ -164,6 +170,27 @@ const HIGH_RISK_PATTERNS = [
   /docker\s+rm\s+-f/i, /kubectl\s+delete/i, /DROP\s+TABLE/i, /TRUNCATE/i,
   /fdisk/i, /parted/i, /mkfs\./i
 ]
+
+/**
+ * 供渲染层"AI 建议命令一键执行"复用的风控门禁：
+ * 黑名单直接拒绝；命中高危正则或声称为高危的命令走统一审批通道。
+ * 此前渲染层将 AI 正文命令一律标记为 low 并直接执行，绕过了整个审批体系。
+ */
+export async function approveCommandExecution(
+  command: string,
+  claimedRisk?: string
+): Promise<{ approved: boolean; riskLevel: 'low' | 'medium' | 'high'; blocked: boolean }> {
+  if (isBlocklisted(command)) {
+    log.warn(`[ops-agent] AI 建议命令命中黑名单，直接拒绝: ${command.slice(0, 80)}`)
+    return { approved: false, riskLevel: 'high', blocked: true }
+  }
+  let riskLevel: 'low' | 'medium' | 'high' = claimedRisk === 'high' || claimedRisk === 'medium' ? claimedRisk : 'low'
+  if (HIGH_RISK_PATTERNS.some(p => p.test(command))) {
+    riskLevel = 'high'
+  }
+  const approved = await requestApproval(`执行 AI 建议命令: ${command}`, riskLevel)
+  return { approved, riskLevel, blocked: false }
+}
 
 // ==================== 工具执行 ====================
 
@@ -267,9 +294,22 @@ async function createOpsTools(): Promise<Record<string, any>> {
 
     docker_exec: mk({
       id: 'docker_exec',
-      description: '在Docker容器内执行命令',
+      description: '在Docker容器内执行命令。与 shell_execute 相同的风控：命中黑名单直接拒绝；危险命令需要用户审批。',
       inputSchema: srv({ container: z.string().describe('容器名称或ID'), command: z.string().describe('要执行的命令') }),
-      execute: async ({ serverId, container, command }) => exec(serverId, `docker exec ${container} ${command}`, 30000)
+      execute: async ({ serverId, container, command }) => {
+        // 容器名与内部命令都来自 LLM，需与 shell_execute 同等风控，防止借道容器绕过审批
+        const invalid = validateDockerRef(container, '容器名称或ID')
+        if (invalid) return { success: false, output: invalid, exitCode: -1 }
+        if (isBlocklisted(command)) {
+          log.warn(`[ops-agent] docker_exec 黑名单拦截命令: ${command.slice(0, 80)}`)
+          return { success: false, output: `命令被黑名单拦截，已拒绝执行: ${command.slice(0, 100)}`, exitCode: -1 }
+        }
+        if (HIGH_RISK_PATTERNS.some(p => p.test(command))) {
+          const ok = await requestApproval(`在容器 ${container} 内执行高危命令: ${command}`, 'high')
+          if (!ok) return { success: false, output: '用户拒绝了此操作', exitCode: -1 }
+        }
+        return exec(serverId, `docker exec ${container} ${command}`, 30000)
+      }
     }),
 
     // 重启容器（需审批）
@@ -622,6 +662,67 @@ async function createOpsTools(): Promise<Record<string, any>> {
     })
   }
 
+  // ==================== 业务闭环工具（诊断 → 修复） ====================
+  // 复用现有服务能力，让 Agent 从"只能诊断"升级为"能诊断也能执行修复"
+
+  toolsInstance.app_restart = mk({
+    id: 'app_restart',
+    description: '重启指定应用（Compose 项目）的全部容器。需要用户审批。',
+    inputSchema: srv({ appId: z.string().describe('应用ID') }),
+    execute: async ({ serverId, appId }) => {
+      const app = appQueries.getById(appId)
+      if (!app) return { success: false, output: `应用不存在: ${appId}`, exitCode: -1 }
+      if (app.serverId !== serverId) return { success: false, output: `应用 ${app.name} 不属于当前服务器`, exitCode: -1 }
+      const ok = await requestApproval(`重启应用: ${app.name} (${appId})`, 'medium')
+      if (!ok) return { success: false, output: '用户拒绝了此操作', exitCode: -1 }
+      const r = await appDeployService.restartApp(appId)
+      return { success: r.success, output: r.message, exitCode: r.success ? 0 : -1 }
+    }
+  })
+
+  toolsInstance.run_script = mk({
+    id: 'run_script',
+    description: '执行脚本库中的 Shell 脚本（高危，需用户审批）。适合执行预置的修复/巡检/清理脚本。',
+    inputSchema: srv({
+      scriptId: z.string().describe('脚本ID'),
+      args: z.array(z.string()).optional().describe('位置参数，脚本内通过 $1 $2 引用'),
+      params: z.record(z.string(), z.string()).optional().describe('环境变量参数，脚本内通过 ${KEY} 引用')
+    }),
+    execute: async ({ serverId, scriptId, args, params }) => {
+      const ok = await requestApproval(`执行脚本库脚本: ${scriptId}`, 'high')
+      if (!ok) return { success: false, output: '用户拒绝了此操作', exitCode: -1 }
+      const result = await shellScriptService.run(scriptId, { serverIds: [serverId], args, params })
+      const parts = result.results.map((r: any) =>
+        `服务器 ${r.serverName || r.serverId}: ${r.success ? '成功' : '失败'}\n${String(r.stdout || r.stderr || '').slice(0, 2000)}`
+      )
+      const output = parts.join('\n\n') || `脚本执行完成: 共 ${result.total} 台，成功 ${result.successCount} 台`
+      return { success: result.success, output, exitCode: result.success ? 0 : -1 }
+    }
+  })
+
+  toolsInstance.scan_image = mk({
+    id: 'scan_image',
+    description: '使用 Trivy 扫描镜像漏洞（首次扫描需下载漏洞库，可能耗时数分钟）。',
+    inputSchema: srv({ imageName: z.string().describe('镜像名称，如 nginx:1.25') }),
+    execute: async ({ serverId, imageName }) => {
+      const invalid = validateDockerRef(imageName, '镜像名称')
+      if (invalid) return { success: false, output: invalid, exitCode: -1 }
+      const r = await securityScanService.scanImage(serverId, imageName)
+      if (!r.success) {
+        return { success: false, output: r.message, exitCode: -1 }
+      }
+      const s = r.summary
+      const lines = [
+        `扫描完成: 共 ${s.total} 个漏洞（critical=${s.critical}, high=${s.high}, medium=${s.medium}, low=${s.low}, negligible=${s.negligible}）`,
+        ...r.vulnerabilities.slice(0, 10).map(v =>
+          `- [${v.severity}] ${v.cveId || v.id}: ${v.packageName} ${v.installedVersion} → ${v.fixedVersion || '无修复版本'}`
+        ),
+        s.total > 10 ? `...（仅展示前 10 条，共 ${s.total} 条）` : ''
+      ].filter(Boolean)
+      return { success: true, output: lines.join('\n'), exitCode: 0 }
+    }
+  })
+
   return toolsInstance
 }
 
@@ -766,6 +867,8 @@ export async function chatWithAgent(params: {
         maxTokens: cfg.maxTokens
       } : undefined
     })
+    // 本次对话的 token 用量累计器（usage_update 为每步增量，需累计后再转发）
+    const usageAccumulator = { input: 0, output: 0 }
     for await (const chunk of result.fullStream) {
       if (signal?.aborted) break
       switch (chunk.type) {
@@ -798,10 +901,11 @@ export async function chatWithAgent(params: {
         case 'usage_update': {
           const u = chunk.payload?.usage
           if (u && typeof u === 'object') {
-            callbacks.onUsage?.({
-              input: Number(u.inputTokens ?? u.promptTokens ?? 0) || 0,
-              output: Number(u.outputTokens ?? u.completionTokens ?? 0) || 0
-            })
+            // 多步工具循环中每次 usage_update 是"该步"用量，必须累计而非覆盖，
+            // 否则多工具调用的回复 token 用量被低估
+            usageAccumulator.input += Number(u.inputTokens ?? u.promptTokens ?? 0) || 0
+            usageAccumulator.output += Number(u.outputTokens ?? u.completionTokens ?? 0) || 0
+            callbacks.onUsage?.({ ...usageAccumulator })
           }
           break
         }

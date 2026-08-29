@@ -1,30 +1,10 @@
+import type { Template, TemplateFormData, EnvVariableSchema } from './electron-api'
+
+// Template / TemplateFormData / EnvVariableSchema 的规范定义在 ./electron-api（单一来源），
+// 此处 re-export 供 UI 使用；分类枚举与展示元数据仍由本文件维护
+export type { Template, TemplateFormData, EnvVariableSchema }
+
 export type TemplateCategory = 'web' | 'database' | 'cache' | 'cms' | 'app' | 'message-queue' | 'search' | 'monitoring' | 'ci-cd' | 'devops' | 'storage' | 'proxy' | 'stack'
-
-export interface EnvVariableSchema {
-  name: string
-  defaultValue?: string
-  description?: string
-  required?: boolean
-}
-
-export interface Template {
-  id: string
-  name: string
-  description: string
-  category: TemplateCategory
-  dockerCompose: string
-  isBuiltIn: boolean
-  envSchema: EnvVariableSchema[]
-  createdAt: string
-}
-
-export interface TemplateFormData {
-  name: string
-  description: string
-  category: TemplateCategory
-  dockerCompose: string
-  envSchema: EnvVariableSchema[]
-}
 
 export const CATEGORY_LABELS: Record<TemplateCategory, { zh: string; en: string }> = {
   web: { zh: 'Web服务器', en: 'Web Server' },

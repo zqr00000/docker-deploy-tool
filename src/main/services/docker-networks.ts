@@ -1,5 +1,6 @@
-﻿import log from 'electron-log'
+import log from 'electron-log'
 import { sshService } from '../ssh'
+import { validateDockerRef, isValidIpOrCidr, shQuote } from '../utils/shell'
 
 export interface NetworkInfo {
   id: string
@@ -80,40 +81,33 @@ class DockerNetworksService {
         }
       }
 
-      // 获取每个网络的子网和网关信息
-      for (const network of networks) {
+      // 单次批量 inspect 获取全部网络的详细信息（IPAM 子网/网关、创建时间、internal）
+      // 此前对每个网络串行执行 3 条 inspect，N 个网络 = 3N 次 SSH 往返，列表加载秒级卡顿
+      if (networks.length > 0) {
         try {
-          const inspectResult = await sshService.executeCommand(
+          const detailResult = await sshService.executeCommand(
             serverId,
-            `docker network inspect ${network.id} --format '{{json .IPAM.Config}}' 2>/dev/null || echo "[]"`
+            `docker network inspect $(docker network ls -q) --format '{{json .}}' 2>/dev/null || echo "[]"`
           )
-          if (inspectResult.success && inspectResult.stdout.trim()) {
-            const configs = JSON.parse(inspectResult.stdout.trim())
-            if (configs && configs.length > 0) {
-              network.subnet = configs[0].Subnet || ''
-              network.gateway = configs[0].Gateway || ''
+          if (detailResult.success && detailResult.stdout.trim()) {
+            const details = JSON.parse(detailResult.stdout.trim())
+            if (Array.isArray(details)) {
+              const detailById = new Map<string, any>(details.map((d: any) => [d.Id, d]))
+              for (const network of networks) {
+                const d = detailById.get(network.id)
+                if (!d) continue
+                const ipamConfig = d.IPAM?.Config?.[0]
+                if (ipamConfig) {
+                  network.subnet = ipamConfig.Subnet || ''
+                  network.gateway = ipamConfig.Gateway || ''
+                }
+                network.createdAt = d.Created || ''
+                network.internal = !!d.Internal
+              }
             }
           }
-
-          // 获取创建时间
-          const createdResult = await sshService.executeCommand(
-            serverId,
-            `docker network inspect ${network.id} --format '{{.Created}}' 2>/dev/null || echo ""`
-          )
-          if (createdResult.success && createdResult.stdout.trim()) {
-            network.createdAt = createdResult.stdout.trim()
-          }
-
-          // 获取 internal 属性
-          const internalResult = await sshService.executeCommand(
-            serverId,
-            `docker network inspect ${network.id} --format '{{.Internal}}' 2>/dev/null || echo "false"`
-          )
-          if (internalResult.success) {
-            network.internal = internalResult.stdout.trim().toLowerCase() === 'true'
-          }
         } catch {
-          // 忽略单个网络信息获取错误
+          // 批量获取失败时保留 ls 的基础信息，不影响列表展示
         }
       }
 
@@ -142,10 +136,27 @@ class DockerNetworksService {
     auxAddresses?: Record<string, string>
   ): Promise<{ success: boolean; message: string; networkId?: string }> {
     try {
+      // 所有参数来自渲染层输入，拼入 shell 前统一校验（防命令注入）
+      const invalidName = validateDockerRef(name, '网络名称')
+      if (invalidName) return { success: false, message: invalidName }
+      if (driver && driver !== 'bridge') {
+        const invalidDriver = validateDockerRef(driver, '网络驱动')
+        if (invalidDriver) return { success: false, message: invalidDriver }
+      }
+      if (subnet && !isValidIpOrCidr(subnet)) {
+        return { success: false, message: `子网格式非法: ${subnet}` }
+      }
+      if (gateway && !isValidIpOrCidr(gateway)) {
+        return { success: false, message: `网关格式非法: ${gateway}` }
+      }
+      if (ipRange && !isValidIpOrCidr(ipRange)) {
+        return { success: false, message: `IP 范围格式非法: ${ipRange}` }
+      }
+
       let command = `docker network create`
 
       if (driver && driver !== 'bridge') {
-        command += ` --driver ${driver}`
+        command += ` --driver ${shQuote(driver)}`
       }
 
       // 添加子网
@@ -176,28 +187,28 @@ class DockerNetworksService {
       // 添加标签
       if (labels) {
         for (const [key, value] of Object.entries(labels)) {
-          command += ` --label "${key}=${value}"`
+          command += ` --label ${shQuote(`${key}=${value}`)}`
         }
       }
 
       // 添加驱动选项
       if (options) {
         for (const [key, value] of Object.entries(options)) {
-          command += ` --opt "${key}=${value}"`
+          command += ` --opt ${shQuote(`${key}=${value}`)}`
         }
       }
 
       // 添加 IPAM 选项
       if (ipamOptions) {
         for (const [key, value] of Object.entries(ipamOptions)) {
-          command += ` --ipam-opt "${key}=${value}"`
+          command += ` --ipam-opt ${shQuote(`${key}=${value}`)}`
         }
       }
 
       // 添加辅助地址
       if (auxAddresses) {
         for (const [key, value] of Object.entries(auxAddresses)) {
-          command += ` --aux-address "${key}=${value}"`
+          command += ` --aux-address ${shQuote(`${key}=${value}`)}`
         }
       }
 
@@ -326,6 +337,25 @@ class DockerNetworksService {
     linkLocalIPs?: string[]
   ): Promise<{ success: boolean; message: string }> {
     try {
+      // 参数来自渲染层输入，统一校验（防命令注入）
+      for (const [label, value] of [['网络ID', networkId], ['容器ID', containerId]] as const) {
+        const invalid = validateDockerRef(value, label)
+        if (invalid) return { success: false, message: invalid }
+      }
+      if (ip && !isValidIpOrCidr(ip)) return { success: false, message: `IP 格式非法: ${ip}` }
+      if (ipv6 && !isValidIpOrCidr(ipv6)) return { success: false, message: `IPv6 格式非法: ${ipv6}` }
+      for (const alias of aliases || []) {
+        const invalidAlias = validateDockerRef(alias, '别名')
+        if (invalidAlias) return { success: false, message: invalidAlias }
+      }
+      for (const link of links || []) {
+        const invalid = validateDockerRef(link, '链接')
+        if (invalid) return { success: false, message: invalid }
+      }
+      for (const localIP of linkLocalIPs || []) {
+        if (!isValidIpOrCidr(localIP)) return { success: false, message: `link-local IP 格式非法: ${localIP}` }
+      }
+
       let command = `docker network connect`
 
       // 指定 IP 地址
@@ -341,14 +371,14 @@ class DockerNetworksService {
       // 添加别名
       if (aliases && aliases.length > 0) {
         for (const alias of aliases) {
-          command += ` --alias ${alias}`
+          command += ` --alias ${shQuote(alias)}`
         }
       }
 
       // 添加链接
       if (links && links.length > 0) {
         for (const link of links) {
-          command += ` --link ${link}`
+          command += ` --link ${shQuote(link)}`
         }
       }
 
@@ -384,6 +414,11 @@ class DockerNetworksService {
     force: boolean = false
   ): Promise<{ success: boolean; message: string }> {
     try {
+      const invalidNetwork = validateDockerRef(networkId, '网络ID')
+      if (invalidNetwork) return { success: false, message: invalidNetwork }
+      const invalidContainer = validateDockerRef(containerId, '容器ID')
+      if (invalidContainer) return { success: false, message: invalidContainer }
+
       let command = `docker network disconnect`
       if (force) {
         command += ` --force`

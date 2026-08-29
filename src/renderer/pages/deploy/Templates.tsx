@@ -37,7 +37,8 @@ const { Title, Text, Paragraph } = Typography
 interface ExportTemplate {
   name: string
   description: string
-  category: TemplateCategory
+  // 与规范 Template 一致：DB 中为自由文本分类
+  category: string
   dockerCompose: string
   envSchema: EnvVariableSchema[]
 }
@@ -511,7 +512,7 @@ const Templates: React.FC = () => {
             {importTemplates.map((tpl, index) => (
               <li key={index} style={{ marginBottom: 8 }}>
                 <Tag color={getCategoryColor(tpl.category)}>
-                  {CATEGORY_LABELS[tpl.category]?.[i18n.language === 'zh-CN' ? 'zh' : 'en'] || tpl.category}
+                {CATEGORY_LABELS[tpl.category as TemplateCategory]?.[i18n.language === 'zh-CN' ? 'zh' : 'en'] || tpl.category}
                 </Tag>
                 <span style={{ marginLeft: 8 }}>{tpl.name}</span>
                 {tpl.envSchema && tpl.envSchema.length > 0 && (
@@ -556,7 +557,7 @@ const Templates: React.FC = () => {
           <div>
             <div style={{ marginBottom: 16 }}>
               <Tag color={getCategoryColor(selectedTemplate.category)}>
-                {CATEGORY_LABELS[selectedTemplate.category]?.[i18n.language === 'zh-CN' ? 'zh' : 'en']}
+                {CATEGORY_LABELS[selectedTemplate.category as TemplateCategory]?.[i18n.language === 'zh-CN' ? 'zh' : 'en']}
               </Tag>
             </div>
             <Paragraph>{selectedTemplate.description}</Paragraph>

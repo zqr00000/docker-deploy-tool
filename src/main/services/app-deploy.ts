@@ -2,6 +2,7 @@ import log from 'electron-log'
 import { sshService } from '../ssh'
 import { appQueries, serverQueries } from '../database'
 import { randomUUID } from 'crypto'
+import { shQuote, validatePath, validateEnvName, assertSafe } from '../utils/shell'
 
 export interface EnvVariable {
   name: string
@@ -154,13 +155,38 @@ class AppDeployService {
     return env.command
   }
 
-  async deployApp(options: DeployOptions): Promise<DeployResult> {
+  /** 校验项目路径（防命令注入/路径穿越），不合法直接抛错 */
+  private assertProjectPath(path: string): void {
+    assertSafe(validatePath(path, '项目路径'))
+  }
+
+  async deployApp(
+    options: DeployOptions,
+    onProgress?: (info: { percent: number; stage: string; message: string }) => void
+  ): Promise<DeployResult> {
     const { serverId, appName, dockerCompose, projectPath, templateId, envVariables } = options
+    // 进度上报：异常不影响部署流程本身
+    const report = (percent: number, stage: string, message: string) => {
+      try {
+        onProgress?.({ percent, stage, message })
+      } catch { /* ignore */ }
+    }
 
     log.info(`Starting deployment of app ${appName} to server ${serverId}`)
 
     if (!sshService.isConnected(serverId)) {
       return { success: false, message: 'Server not connected. Please connect to the server first.' }
+    }
+
+    // projectPath 来自渲染层输入，拼入 shell 前必须校验（防命令注入/路径穿越）
+    try {
+      assertSafe(validatePath(projectPath, '项目路径'))
+    } catch (pathError) {
+      return { success: false, message: (pathError as Error).message }
+    }
+    const invalidEnv = (envVariables || []).find(v => v.name && v.name.trim() && !validateEnvName(v.name.trim()))
+    if (invalidEnv) {
+      return { success: false, message: `非法的环境变量名: ${invalidEnv.name}（仅允许字母、数字、下划线，且不能以数字开头）` }
     }
 
     const server = serverQueries.getById(serverId)
@@ -186,12 +212,14 @@ class AppDeployService {
     }
 
     try {
+      report(10, 'prepare', '创建远程目录')
       const dirsResult = await this.ensureDirectory(serverId, projectPath)
       if (!dirsResult.success) {
         this.updateAppStatus(appId, 'error', '[]')
         return { success: false, appId, message: `Failed to create directory: ${dirsResult.message}` }
       }
 
+      report(25, 'upload', '上传 docker-compose.yml')
       log.info(`Uploading docker-compose.yml to ${projectPath}`)
       // 自动检测 Compose 版本并按版本规范化内容（V1 保留/补充 version 键，V2 移除）
       const composeEnv = await this.detectComposeEnvironment(serverId)
@@ -203,12 +231,13 @@ class AppDeployService {
       }
 
       if (envVariables && envVariables.length > 0) {
+        report(40, 'upload', '上传 .env 环境变量')
         log.info(`Generating .env file for ${appName}`)
         const envContent = envVariables
           .filter(v => v.name.trim())
           .map(v => `${v.name}=${v.value || ''}`)
           .join('\n')
-        
+
         const envUploadResult = await sshService.uploadContent(serverId, envContent, `${projectPath}/.env`)
         if (!envUploadResult.success) {
           this.updateAppStatus(appId, 'error', '[]')
@@ -216,14 +245,16 @@ class AppDeployService {
         }
       }
 
+      report(55, 'pull', '拉取 Docker 镜像（可能需要较长时间）')
       log.info(`Pulling Docker images for ${appName}`)
-      const pullResult = await sshService.executeCommand(serverId, `cd ${projectPath} && ${composeEnv.command} --env-file .env pull 2>/dev/null || ${composeEnv.command} pull`)
+      const pullResult = await sshService.executeCommand(serverId, `cd ${shQuote(projectPath)} && ${composeEnv.command} --env-file .env pull 2>/dev/null || ${composeEnv.command} pull`)
       if (!pullResult.success) {
         log.warn(`Docker pull warning: ${pullResult.stderr}`)
       }
 
+      report(75, 'up', '启动容器')
       log.info(`Starting containers for ${appName}`)
-      const deployResult = await sshService.executeCommand(serverId, `cd ${projectPath} && ${composeEnv.command} --env-file .env up -d 2>/dev/null || ${composeEnv.command} up -d`)
+      const deployResult = await sshService.executeCommand(serverId, `cd ${shQuote(projectPath)} && ${composeEnv.command} --env-file .env up -d 2>/dev/null || ${composeEnv.command} up -d`)
       if (!deployResult.success) {
         this.updateAppStatus(appId, 'error', '[]')
         return { success: false, appId, message: `Failed to start containers: ${deployResult.stderr}` }
@@ -231,13 +262,9 @@ class AppDeployService {
 
       await new Promise(resolve => setTimeout(resolve, 3000))
 
+      report(90, 'inspect', '获取容器列表')
       const containerIds = await this.getContainerIds(serverId, projectPath, appName)
       this.updateAppStatus(appId, 'running', JSON.stringify(containerIds))
-
-      appQueries.update(appId, {
-        status: 'running',
-        containerIds: JSON.stringify(containerIds)
-      })
 
       log.info(`App ${appName} deployed successfully with containers: ${containerIds.join(', ')}`)
       return {
@@ -255,15 +282,16 @@ class AppDeployService {
   }
 
   private async ensureDirectory(serverId: string, path: string): Promise<{ success: boolean; message: string }> {
-    const checkCmd = `if [ -d "${path}" ]; then echo "exists"; else mkdir -p "${path}"; fi`
+    this.assertProjectPath(path)
+    const quoted = shQuote(path)
+    const checkCmd = `if [ -d ${quoted} ]; then echo "exists"; else mkdir -p ${quoted}; fi`
     const result = await sshService.executeCommand(serverId, checkCmd)
 
     if (result.success) {
       return { success: true, message: 'Directory ready' }
     }
 
-    const createCmd = `mkdir -p "${path}"`
-    const createResult = await sshService.executeCommand(serverId, createCmd)
+    const createResult = await sshService.executeCommand(serverId, `mkdir -p ${quoted}`)
 
     if (createResult.success) {
       return { success: true, message: 'Directory created' }
@@ -276,7 +304,7 @@ class AppDeployService {
     const composeCmd = await this.getComposeCommand(serverId)
     const psResult = await sshService.executeCommand(
       serverId,
-      `cd ${projectPath} && ${composeCmd} ps -aq`
+      `cd ${shQuote(projectPath)} && ${composeCmd} ps -aq`
     )
 
     if (!psResult.success || !psResult.stdout.trim()) {
@@ -308,11 +336,13 @@ class AppDeployService {
       return { success: false, message: 'Server not connected' }
     }
 
+    this.assertProjectPath(app.projectPath)
+
     try {
       appQueries.update(appId, { status: 'deploying' })
 
       const composeCmd = await this.getComposeCommand(app.serverId)
-      const result = await sshService.executeCommand(app.serverId, `cd ${app.projectPath} && ${composeCmd} start`)
+      const result = await sshService.executeCommand(app.serverId, `cd ${shQuote(app.projectPath)} && ${composeCmd} start`)
       if (!result.success) {
         appQueries.update(appId, { status: 'error' })
         return { success: false, message: `Failed to start: ${result.stderr}` }
@@ -341,11 +371,13 @@ class AppDeployService {
       return { success: false, message: 'Server not connected' }
     }
 
+    this.assertProjectPath(app.projectPath)
+
     try {
       appQueries.update(appId, { status: 'deploying' })
 
       const composeCmd = await this.getComposeCommand(app.serverId)
-      const result = await sshService.executeCommand(app.serverId, `cd ${app.projectPath} && ${composeCmd} stop`)
+      const result = await sshService.executeCommand(app.serverId, `cd ${shQuote(app.projectPath)} && ${composeCmd} stop`)
       if (!result.success) {
         appQueries.update(appId, { status: 'error' })
         return { success: false, message: `Failed to stop: ${result.stderr}` }
@@ -382,14 +414,18 @@ class AppDeployService {
       return { success: true, message: 'Application deleted (server not connected)' }
     }
 
+    // 高危操作：rm -rf 前强制校验路径，杜绝注入与误删
+    this.assertProjectPath(app.projectPath)
+    const quotedPath = shQuote(app.projectPath)
+
     try {
       const composeCmd = await this.getComposeCommand(app.serverId)
-      const downResult = await sshService.executeCommand(app.serverId, `cd ${app.projectPath} && ${composeCmd} down -v --remove-orphans`)
+      const downResult = await sshService.executeCommand(app.serverId, `cd ${quotedPath} && ${composeCmd} down -v --remove-orphans`)
       if (!downResult.success) {
         log.warn(`docker-compose down warning: ${downResult.stderr}`)
       }
 
-      const rmResult = await sshService.executeCommand(app.serverId, `rm -rf ${app.projectPath}`)
+      const rmResult = await sshService.executeCommand(app.serverId, `rm -rf ${quotedPath}`)
       if (!rmResult.success) {
         log.warn(`Failed to remove project directory: ${rmResult.stderr}`)
       }
@@ -414,6 +450,8 @@ class AppDeployService {
       return { success: false, message: 'Server not connected' }
     }
 
+    this.assertProjectPath(app.projectPath)
+
     try {
       appQueries.update(appId, { status: 'deploying' })
 
@@ -428,12 +466,12 @@ class AppDeployService {
         }
       }
 
-      const pullResult = await sshService.executeCommand(app.serverId, `cd ${app.projectPath} && ${composeEnv.command} pull`)
+      const pullResult = await sshService.executeCommand(app.serverId, `cd ${shQuote(app.projectPath)} && ${composeEnv.command} pull`)
       if (!pullResult.success) {
         log.warn(`Pull warning: ${pullResult.stderr}`)
       }
 
-      const upResult = await sshService.executeCommand(app.serverId, `cd ${app.projectPath} && ${composeEnv.command} up -d`)
+      const upResult = await sshService.executeCommand(app.serverId, `cd ${shQuote(app.projectPath)} && ${composeEnv.command} up -d`)
       if (!upResult.success) {
         appQueries.update(appId, { status: 'error' })
         return { success: false, message: `Failed to update: ${upResult.stderr}` }
@@ -457,10 +495,12 @@ class AppDeployService {
       return []
     }
 
+    this.assertProjectPath(projectPath)
+
     const composeCmd = await this.getComposeCommand(serverId)
     const psResult = await sshService.executeCommand(
       serverId,
-      `cd ${projectPath} && ${composeCmd} ps -a --format json 2>/dev/null || ${composeCmd} ps -a`
+      `cd ${shQuote(projectPath)} && ${composeCmd} ps -a --format json 2>/dev/null || ${composeCmd} ps -a`
     )
 
     if (!psResult.success || !psResult.stdout.trim()) {
@@ -508,10 +548,12 @@ class AppDeployService {
       return 'Server not connected'
     }
 
+    this.assertProjectPath(projectPath)
+
     const composeCmd = await this.getComposeCommand(serverId)
     const result = await sshService.executeCommand(
       serverId,
-      `cd ${projectPath} && ${composeCmd} logs --tail=${lines}`
+      `cd ${shQuote(projectPath)} && ${composeCmd} logs --tail=${lines}`
     )
 
     if (result.success) {
@@ -567,13 +609,38 @@ class AppDeployService {
     }
 
     const containers = await this.getContainerInfo(serverId, projectPath)
-    const stats: ContainerStats[] = []
+    if (containers.length === 0) {
+      return []
+    }
 
-    for (const container of containers) {
-      const stat = await this.getContainerStats(serverId, container.id)
-      if (stat) {
-        stats.push(stat)
-      }
+    // 单条 docker stats 批量采集全部容器（此前逐容器串行，N 容器 = N 次 SSH 往返）
+    const ids = containers.map(c => c.id).join(' ')
+    const result = await sshService.executeCommand(
+      serverId,
+      `docker stats --no-stream --format "{{.ID}},{{.Name}},{{.CPUPerc}},{{.MemUsage}},{{.MemPerc}},{{.NetIO}},{{.BlockIO}},{{.PIDs}}" ${ids}`
+    )
+
+    const stats: ContainerStats[] = []
+    if (!result.success || !result.stdout.trim()) {
+      return stats
+    }
+
+    for (const line of result.stdout.trim().split('\n').filter(l => l.trim())) {
+      const parts = line.split(',')
+      if (parts.length < 8) continue
+
+      const [memUsage, memLimit] = parts[3].split('/').map(s => s.trim())
+      stats.push({
+        containerId: parts[0],
+        containerName: parts[1],
+        cpuPercent: parseFloat(parts[2].replace('%', '')) || 0,
+        memoryUsage: memUsage || 'N/A',
+        memoryLimit: memLimit || 'N/A',
+        memoryPercent: parseFloat(parts[4].replace('%', '')) || 0,
+        networkIO: parts[5] || 'N/A',
+        blockIO: parts[6] || 'N/A',
+        pids: parseInt(parts[7], 10) || 0
+      })
     }
 
     return stats

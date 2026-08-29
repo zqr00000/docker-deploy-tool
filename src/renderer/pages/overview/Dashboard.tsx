@@ -12,7 +12,9 @@ import {
   Empty,
   Badge,
   Tooltip,
-  Divider
+  Divider,
+  Alert,
+  Button
 } from 'antd'
 import {
   CloudServerOutlined,
@@ -100,6 +102,9 @@ const Dashboard: React.FC = () => {
   })
   const [servers, setServers] = useState<ServerStatus[]>([])
   const [recentOps, setRecentOps] = useState<RecentOperation[]>([])
+  const [fetchError, setFetchError] = useState<string | null>(null)
+  // 仅首次加载显示整页 Spin，轮询刷新静默进行
+  const initialLoadDoneRef = useRef(false)
 
   // Sparkline 数据 — 基于当前统计值生成趋势
   const serverSparkData = useSparklineData(stats.onlineServers, Math.max(stats.totalServers, 1), 5000)
@@ -108,58 +113,61 @@ const Dashboard: React.FC = () => {
   const alertSparkData = useSparklineData(stats.activeAlerts, Math.max(stats.activeAlerts + 2, 5), 5000)
 
   const fetchDashboardData = useCallback(async () => {
-    setLoading(true)
+    if (!initialLoadDoneRef.current) setLoading(true)
     try {
-      // 获取服务器列表
-      const serverList = await window.electronAPI.server.getAll()
+      // 渲染层 API 桥未注入时直接报错，避免 undefined 访问
+      const api = window.electronAPI
+      if (!api) throw new Error('Electron API 未就绪，请重启应用')
+
+      // 四类基础数据相互独立，并行获取
+      const [serverList, appList, alerts, auditResult] = await Promise.all([
+        api.server.getAll(),
+        api.app.getAll(),
+        api.alert.getActiveAlerts(),
+        api.auditLog.getAll({ limit: 10 })
+      ])
+      // auditLog.getAll 返回 { logs, total, ... } 对象
+      const auditLogs = auditResult?.logs ?? []
       const onlineServers = serverList.filter(s => s.status === 'online')
 
-      // 获取应用列表
-      const appList = await window.electronAPI.app.getAll()
-      const runningApps = appList.filter(a => a.status === 'running')
-
-      // 获取告警统计
-      const alerts = await window.electronAPI.alert.getActiveAlerts()
-
-      // 获取审计日志（最近操作）
-      const auditLogs = await window.electronAPI.auditLog.getAll({ limit: 10 })
-
-      // 计算容器统计
+      // 按服务器并行统计容器（服务器间并行，服务器内应用也并行）
       let totalContainers = 0
       let healthyContainers = 0
-      const serverStatuses: ServerStatus[] = []
-
-      for (const server of serverList) {
-        let containerCount = 0
-        if (server.status === 'online') {
-          try {
-            const apps = await window.electronAPI.app.getByServerId(server.id)
-            for (const app of apps) {
-              if (app.projectPath) {
-                const containers = await window.electronAPI.app.getContainers(server.id, app.projectPath)
+      const serverStatuses: ServerStatus[] = await Promise.all(
+        serverList.map(async server => {
+          let containerCount = 0
+          if (server.status === 'online') {
+            try {
+              const apps = await api.app.getByServerId(server.id)
+              const containerLists = await Promise.all(
+                apps
+                  .filter(app => app.projectPath)
+                  .map(app => api.app.getContainers(server.id, app.projectPath))
+              )
+              for (const containers of containerLists) {
                 containerCount += containers.length
                 totalContainers += containers.length
                 healthyContainers += containers.filter(c => c.status.includes('running') || c.status.includes('Up')).length
               }
+            } catch {
+              // 单服务器统计失败不影响整体
             }
-          } catch {
-            // 忽略错误
           }
-        }
-        serverStatuses.push({
-          id: server.id,
-          name: server.name,
-          host: server.host,
-          status: server.status,
-          containerCount
+          return {
+            id: server.id,
+            name: server.name,
+            host: server.host,
+            status: server.status,
+            containerCount
+          }
         })
-      }
+      )
 
       setStats({
         totalServers: serverList.length,
         onlineServers: onlineServers.length,
         totalApps: appList.length,
-        runningApps: runningApps.length,
+        runningApps: appList.filter(a => a.status === 'running').length,
         totalContainers,
         healthyContainers,
         activeAlerts: alerts.length,
@@ -177,8 +185,11 @@ const Dashboard: React.FC = () => {
         timestamp: log.timestamp
       }))
       setRecentOps(operations.slice(0, 5))
+      setFetchError(null)
+      initialLoadDoneRef.current = true
     } catch (error) {
       console.error('Failed to fetch dashboard data:', error)
+      setFetchError(error instanceof Error ? error.message : String(error))
     } finally {
       setLoading(false)
     }
@@ -279,6 +290,20 @@ const Dashboard: React.FC = () => {
 
   return (
     <div className="page-content">
+      {fetchError && (
+        <Alert
+          type="error"
+          showIcon
+          message="仪表盘数据加载失败"
+          description={fetchError}
+          action={
+            <Button size="small" danger onClick={fetchDashboardData}>
+              重试
+            </Button>
+          }
+          style={{ marginBottom: 16 }}
+        />
+      )}
       <div className="page-header">
         <div className="page-header-left">
           <Title level={4} style={{ margin: 0, fontWeight: 700 }}>
