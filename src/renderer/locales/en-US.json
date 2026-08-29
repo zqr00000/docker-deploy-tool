@@ -1,7 +1,7 @@
 {
   "app": {
-    "title": "Docker Deploy Tool",
-    "welcome": "Welcome to Docker Deploy Tool"
+    "title": "YunDuo",
+    "welcome": "Welcome to YunDuo"
   },
   "menu": {
     "dashboard": "Dashboard",
@@ -18,6 +18,7 @@
     "serverTerminal": "Server Terminal",
     "aiAgent": "AI Agent",
     "agentTerminal": "AI Ops Terminal",
+    "fileTransfer": "File Transfer",
     "images": "Images",
     "volumes": "Volumes",
     "networks": "Networks",
@@ -930,9 +931,9 @@
   "onboarding": {
     "helpButton": "Help",
     "welcomeTitle": "Welcome",
-    "welcomeDesc": "Quickly learn the core features of Docker Deploy Tool",
+    "welcomeDesc": "Quickly learn the core features of YunDuo",
     "whatIsThisTitle": "What is this?",
-    "whatIsThisDesc": "Docker Deploy Tool is a desktop application for managing Docker containers, servers, and applications. It helps you easily deploy, monitor, and manage containerized applications across multiple servers.",
+    "whatIsThisDesc": "YunDuo is a desktop application for managing Docker containers, servers, and applications. It helps you easily deploy, monitor, and manage containerized applications across multiple servers.",
     "featuresTitle": "Core Features",
     "feature1": "Server Management - Connect and manage multiple remote servers",
     "feature2": "App Deployment - One-click deploy Docker Compose applications",
@@ -968,7 +969,7 @@
     "tip2": "View overall status on the Dashboard",
     "tip3": "Set scheduled tasks for automatic backups",
     "tip4": "Use batch operations to manage multiple containers",
-    "congratsMessage": "Congratulations! You've completed the quick start guide and can now start using Docker Deploy Tool.",
+    "congratsMessage": "Congratulations! You've completed the quick start guide and can now start using YunDuo.",
     "prev": "Previous",
     "next": "Next",
     "complete": "Get Started",

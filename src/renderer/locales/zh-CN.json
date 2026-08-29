@@ -1,7 +1,7 @@
 {
   "app": {
-    "title": "Docker 部署工具",
-    "welcome": "欢迎使用 Docker 部署工具"
+    "title": "云舵",
+    "welcome": "欢迎使用云舵"
   },
   "menu": {
     "dashboard": "仪表盘",
@@ -18,6 +18,7 @@
     "serverTerminal": "服务器终端",
     "aiAgent": "AI 助手",
     "agentTerminal": "AI 运维终端",
+    "fileTransfer": "文件传输",
     "images": "镜像",
     "volumes": "数据卷",
     "networks": "网络",
@@ -945,9 +946,9 @@
   "onboarding": {
     "helpButton": "使用帮助",
     "welcomeTitle": "欢迎使用",
-    "welcomeDesc": "快速了解 Docker 部署工具的核心功能",
+    "welcomeDesc": "快速了解云舵的核心功能",
     "whatIsThisTitle": "这是什么？",
-    "whatIsThisDesc": "Docker 部署工具是一款用于管理 Docker 容器、服务器和应用的桌面应用程序。它可以帮助您轻松部署、监控和管理多个服务器上的容器化应用。",
+    "whatIsThisDesc": "云舵是一款用于管理 Docker 容器、服务器和应用的桌面应用程序。它可以帮助您轻松部署、监控和管理多个服务器上的容器化应用。",
     "featuresTitle": "核心功能",
     "feature1": "服务器管理 - 连接和管理多台远程服务器",
     "feature2": "应用部署 - 一键部署 Docker Compose 应用",
@@ -983,7 +984,7 @@
     "tip2": "在仪表盘查看整体运行状态",
     "tip3": "设置定时任务自动备份数据",
     "tip4": "使用批量操作同时管理多个容器",
-    "congratsMessage": "恭喜！您已完成快速开始指南，现在可以开始使用 Docker 部署工具了。",
+    "congratsMessage": "恭喜！您已完成快速开始指南，现在可以开始使用云舵了。",
     "prev": "上一步",
     "next": "下一步",
     "complete": "开始使用",

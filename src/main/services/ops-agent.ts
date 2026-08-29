@@ -46,6 +46,8 @@ export interface ChatCallbacks {
   onRoute?: (route: string) => void
   /** 思维过程（reasoning）增量文本，供前端折叠展示 */
   onReasoning?: (delta: string) => void
+  /** token 用量（输入/输出），由流式 usage_update 转发 */
+  onUsage?: (usage: { input: number; output: number }) => void
 }
 
 // ==================== Mastra 动态加载 ====================
@@ -724,8 +726,10 @@ export async function chatWithAgent(params: {
   signal?: AbortSignal
   /** 上下文自动压缩：前端传入的早期对话摘要，超长历史时由前端压缩为简短文本 */
   historySummary?: string
+  /** 会话级温度覆盖（0~2），未传时使用全局配置 */
+  temperature?: number
 }): Promise<void> {
-  const { serverId, serverName, userInput, threadId, callbacks, signal, historySummary } = params
+  const { serverId, serverName, userInput, threadId, callbacks, signal, historySummary, temperature } = params
   // 多模型路由：按输入特征选择档位（未开启路由或档位未配置时回退主模型）
   const route = detectRoute(userInput)
   const agent = await getAgent(route)
@@ -758,7 +762,7 @@ export async function chatWithAgent(params: {
       abortSignal: signal,
       maxSteps: cfg?.maxIterations || 15,
       modelSettings: cfg ? {
-        temperature: cfg.temperature,
+        temperature: temperature ?? cfg.temperature, // 会话级温度覆盖优先，未覆盖时用全局配置
         maxTokens: cfg.maxTokens
       } : undefined
     })
@@ -791,6 +795,16 @@ export async function chatWithAgent(params: {
         case 'abort':
           callbacks.onError?.('cancelled')
           break
+        case 'usage_update': {
+          const u = chunk.payload?.usage
+          if (u && typeof u === 'object') {
+            callbacks.onUsage?.({
+              input: Number(u.inputTokens ?? u.promptTokens ?? 0) || 0,
+              output: Number(u.outputTokens ?? u.completionTokens ?? 0) || 0
+            })
+          }
+          break
+        }
         case 'error':
           callbacks.onError?.(errMessage(chunk.payload?.error) || 'Agent 执行出错')
           break

@@ -409,30 +409,55 @@ class DockerImagesService {
   }
 
   /**
-   * 获取被容器使用的镜像名称集合（repository:tag 格式）
+   * 获取被容器使用的镜像 ID 集合（权威：docker inspect 取每个容器的真实镜像 ID）
+   * 兜底：inspect 失败时回退 docker ps 的 name/ID 引用
    */
   async getUsedImageNames(serverId: string): Promise<Set<string>> {
     try {
-      const result = await sshService.executeCommand(
+      const usedImages = new Set<string>()
+
+      // 权威来源：容器真实镜像 ID（避免同仓库多代镜像被 name 引用误判）
+      const idsRes = await sshService.executeCommand(
         serverId,
-        'docker ps -a --format "{{.Image}}"',
+        'docker ps -aq --no-trunc',
         0,
         500,
         15000
       )
-
-      if (!result.success) {
-        log.warn(`getUsedImageNames failed: ${result.stderr}`)
-        return new Set()
+      if (idsRes.success && idsRes.stdout.trim()) {
+        const ids = idsRes.stdout.trim().split(/\s+/).filter(Boolean)
+        const insp = await sshService.executeCommand(
+          serverId,
+          `docker inspect ${ids.join(' ')} --format '{{.Image}}'`,
+          0,
+          500,
+          20000
+        )
+        if (insp.success) {
+          for (const line of insp.stdout.trim().split('\n')) {
+            const v = line.trim().replace(/^sha256:/, '')
+            if (v && v !== '<none>' && v !== 'N/A') usedImages.add(v)
+          }
+        }
       }
 
-      const usedImages = new Set<string>()
-      const lines = result.stdout.trim().split('\n').filter(line => line.trim())
-
-      for (const line of lines) {
-        const image = line.trim()
-        if (image && image !== 'N/A') {
-          usedImages.add(image)
+      // 兜底：inspect 失败时回退 name/ID 引用
+      if (usedImages.size === 0) {
+        const result = await sshService.executeCommand(
+          serverId,
+          'docker ps -a --no-trunc --format "{{.Image}}"',
+          0,
+          500,
+          15000
+        )
+        if (result.success) {
+          const lines = result.stdout.trim().split('\n').filter(line => line.trim())
+          for (const line of lines) {
+            const image = line.trim().replace(/^sha256:/, '')
+            if (image && image !== 'N/A' && image !== '<none>') {
+              usedImages.add(image)
+            }
+          }
         }
       }
 

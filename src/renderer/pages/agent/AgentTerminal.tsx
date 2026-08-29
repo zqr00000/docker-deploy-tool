@@ -25,8 +25,7 @@ import {
   Alert,
   Spin,
   Progress,
-  Collapse,
-  Tabs as AntTabs
+  Collapse
 } from 'antd'
 import {
   RobotOutlined,
@@ -94,6 +93,48 @@ const { Panel } = Collapse
 // Storage keys
 const CONFIG_KEY = 'agentOpsModelConfig'
 
+// ==================== 上下文压缩策略常量 ====================
+// 与发送逻辑（doSendMessage）共用同一组策略，保证可视化展示与实际压缩行为一致
+const HISTORY_KEEP = 8        // 保留最近 N 条消息完整传递
+const SUMMARY_PER_MSG_MAX = 300 // 被压缩的早期消息，单条摘要上限（字符）
+const SUMMARY_TOTAL_MAX = 4000  // 摘要总长度上限（字符）
+const DEFAULT_CONTEXT_WINDOW = 8192 // 未配置 contextWindow 时的兜底估算窗口（tokens）
+
+// 粗略估算 token 数（中英混合约 2 字符 ≈ 1 token，标注"估算"）
+const estimateTokens = (text: string): number => {
+  if (!text) return 0
+  return Math.ceil(text.length / 2)
+}
+
+// token 数值可读化：1K / 1M / 1G（二进制 M = 1024*1024）
+const fmtTokens = (n: number): string => {
+  if (n < 1000) return String(n)
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(n < 10 * 1024 ? 1 : 0)}K`
+  if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(n < 10 * 1024 * 1024 ? 1 : 0)}M`
+  return `${(n / (1024 * 1024 * 1024)).toFixed(1)}G`
+}
+
+// 计算当前会话的上下文压缩状态（与 doSendMessage 的压缩判定保持一致）
+const computeContextState = (msgs: ChatMessage[]) => {
+  const total = msgs.length
+  const keptFull = Math.min(total, HISTORY_KEEP)                    // 完整传递条数
+  const compressedCount = Math.max(0, total - HISTORY_KEEP)         // 被压缩条数
+  let summaryChars = 0
+  if (compressedCount > 0) {
+    for (let i = 0; i < compressedCount; i++) summaryChars += Math.min((msgs[i].content || '').length, SUMMARY_PER_MSG_MAX)
+    summaryChars = Math.min(summaryChars, SUMMARY_TOTAL_MAX)
+  }
+  const fullChars = msgs.slice(-keptFull).reduce((sum, m) => sum + (m.content || '').length, 0)
+  return {
+    total,
+    keptFull,
+    compressedCount,
+    fullTokens: estimateTokens(fullChars),
+    summaryTokens: estimateTokens(summaryChars),
+    summaryChars
+  }
+}
+
 // ==================== 工具函数 ====================
 
 // Markdown简单渲染（优化版）
@@ -127,7 +168,22 @@ const buildCommandList = (
   const out: Array<{ command: string; riskLevel: string }> = []
   const push = (cmd: string) => {
     const c = cmd.trim()
-    if (c && !out.some(o => o.command === c)) out.push({ command: c, riskLevel: 'low' })
+    if (!c) return
+    // 诊断并跳过不完整的 find -exec 片段（AI 容易只抽子命令段丢前缀）
+    // 常见情况：truncate -s 0 {} \; （缺失 find 前缀）、exec truncate ... （缺失 find 前缀）、... -exec （缺失子命令）
+    const lc = c.toLowerCase()
+    if (lc.endsWith('-exec') || lc.endsWith(' exec')) {
+      // 不完整：只有 exec 前缀，跳过
+      return
+    }
+    if (lc.startsWith('truncate ') || lc.startsWith('rm ') || lc.startsWith('exec ')) {
+      // 如果是 "truncate -s 0 {} ..." 开头，且不含 find/路径，很大概率是 AI 拆分错了的 find -exec 片段
+      // 只提取了 exec 参数段，漏掉了前面的 find ...，跳过避免误执行
+      if (!lc.includes('find')) {
+        return
+      }
+    }
+    if (!out.some(o => o.command === c)) out.push({ command: c, riskLevel: 'low' })
   }
   // bash/sh/shell 代码块整体作为一条命令
   const blockRe = /```(?:bash|sh|shell)?\s*\n([\s\S]*?)```/gi
@@ -355,6 +411,8 @@ const AgentTerminalPage: React.FC = () => {
   const [loading, setLoading] = useState(false)
   const messagesRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<any>(null)
+  // 会话级温度覆盖（undefined = 跟随全局配置，切换/新建会话时重置）
+  const [sessionTemp, setSessionTemp] = useState<number | undefined>(undefined)
 
   // Session state
   const [sessions, setSessions] = useState<ChatSession[]>([])
@@ -433,6 +491,9 @@ const AgentTerminalPage: React.FC = () => {
 
   // 当前流式请求 ID（用于取消）
   const currentRequestIdRef = useRef<string | null>(null)
+
+  // 终端就绪标记：收到过 shell 输出即视为就绪（prompt 已渲染），避免命令写入时没有提示符
+  const terminalReadyRef = useRef<Map<string, boolean>>(new Map())
 
   // Stats
   const [stats, setStats] = useState({
@@ -560,6 +621,7 @@ const AgentTerminalPage: React.FC = () => {
     await loadSessions()
     setActiveSessionId(session.id)
     setMessages([])
+    setSessionTemp(undefined) // 新会话重置会话级温度覆盖
   }
 
   const deleteSession = async (sessionId: string) => {
@@ -797,6 +859,16 @@ const AgentTerminalPage: React.FC = () => {
         })
       : () => {}
 
+    // token 用量：把 usage_update 写入当前助手消息元数据，用于气泡与会话累计展示
+    const removeUsage = window.electronAPI.opsAgent.onUsage
+      ? window.electronAPI.opsAgent.onUsage(({ requestId: rid, usage }) => {
+          if (rid !== requestId) return
+          setMessages(prev => prev.map(m =>
+            m.id === assistantId ? { ...m, metadata: { ...(m.metadata || {}), usage } } : m
+          ))
+        })
+      : () => {}
+
     const removeError = window.electronAPI.opsAgent.onError(({ requestId: rid, error }) => {
       if (rid !== requestId) return
       const cancelled = error === 'cancelled'
@@ -842,6 +914,7 @@ const AgentTerminalPage: React.FC = () => {
       toolCallStartTimes.clear()
       removeChunk()
       removeReasoning()
+      removeUsage()
       removeToolCall()
       removeToolResult()
       removeRoute()
@@ -850,19 +923,19 @@ const AgentTerminalPage: React.FC = () => {
     }
 
     // 上下文自动压缩：较早对话压缩为摘要传给后端，避免上下文超长导致模型遗忘
-    const HISTORY_KEEP = 8 // 保留最近 N 条消息完整传递，更早的压缩为摘要
+    // 策略与顶部常量一致（HISTORY_KEEP / SUMMARY_PER_MSG_MAX / SUMMARY_TOTAL_MAX）
     let historySummary: string | undefined
     if (messages.length > HISTORY_KEEP) {
       const older = messages.slice(0, messages.length - HISTORY_KEEP)
       const parts: string[] = []
       for (const m of older) {
         const role = m.role === 'user' ? '用户' : m.role === 'system' ? '系统' : '助手'
-        const content = (m.content || '').replace(/\s+/g, ' ').trim().slice(0, 300)
+        const content = (m.content || '').replace(/\s+/g, ' ').trim().slice(0, SUMMARY_PER_MSG_MAX)
         if (content) parts.push(`${role}: ${content}`)
       }
       historySummary = parts.join('\n')
-      if (historySummary.length > 4000) {
-        historySummary = `${historySummary.slice(0, 4000)}\n...（更早的对话内容已省略）`
+      if (historySummary.length > SUMMARY_TOTAL_MAX) {
+        historySummary = `${historySummary.slice(0, SUMMARY_TOTAL_MAX)}\n...（更早的对话内容已省略）`
       }
     }
 
@@ -872,7 +945,8 @@ const AgentTerminalPage: React.FC = () => {
         serverName: server?.name,
         userInput,
         threadId,
-        historySummary
+        historySummary,
+        temperature: sessionTemp
       })
       if (!result.success) {
         setMessages(prev => prev.map(m =>
@@ -970,6 +1044,18 @@ const AgentTerminalPage: React.FC = () => {
     try {
       // 确保终端处于活动状态
       setActiveTerminalTab(activeTerminalTab)
+      // 等待终端就绪：shell prompt（如 [root@localhost ~]#）渲染完成后再写入命令，
+      // 避免命令挤在没有提示符的位置
+      if (!terminalReadyRef.current.get(activeTerminalTab)) {
+        const deadline = Date.now() + 3000
+        while (!terminalReadyRef.current.get(activeTerminalTab) && Date.now() < deadline) {
+          await new Promise(r => setTimeout(r, 150))
+        }
+        if (!terminalReadyRef.current.get(activeTerminalTab)) {
+          message.warning('终端尚未就绪，已取消发送。请确认终端已连接后重试')
+          return
+        }
+      }
       // 发送命令到终端（添加换行符执行）
       await window.electronAPI.terminal.write(activeTerminalTab, command + '\n')
       message.success('命令已发送到终端')
@@ -1087,6 +1173,26 @@ const AgentTerminalPage: React.FC = () => {
   // 当前激活档案（扁平字段为激活档案的镜像）
   const profiles = modelConfig.providerProfiles || []
 
+  // 上下文压缩策略可视化：估算当前会话的 token 占用与压缩状态
+  const ctxState = useMemo(() => computeContextState(messages), [messages])
+  const contextWindow = useMemo(() => {
+    const active = profiles.find(p => p.id === modelConfig.activeProfileId) || profiles[0]
+    return active?.contextWindow || DEFAULT_CONTEXT_WINDOW
+  }, [profiles, modelConfig.activeProfileId])
+  const ctxUsage = ctxState.fullTokens + ctxState.summaryTokens
+  const ctxPct = Math.min(100, Math.round((ctxUsage / contextWindow) * 100))
+  const ctxColor = ctxPct >= 80 ? '#FF3B30' : ctxPct >= 60 ? '#FF9500' : '#0A84FF'
+
+  // 本会话累计 token 用量（来自每条助手消息 metadata.usage）
+  const sessionTotalUsage = useMemo(() => {
+    let input = 0, output = 0
+    for (const m of messages) {
+      const u = m.metadata?.usage
+      if (u) { input += u.input; output += u.output }
+    }
+    return { input, output }
+  }, [messages])
+
   // 切换激活档案（同步扁平字段，供 chat / setConfig 使用）
   const activateProfile = (id: string) => {
     const p = profiles.find(x => x.id === id)
@@ -1095,7 +1201,8 @@ const AgentTerminalPage: React.FC = () => {
       ...modelConfig,
       activeProfileId: id,
       provider: p.provider, apiKey: p.apiKey, model: p.model, baseUrl: p.baseUrl,
-      azureEndpoint: p.azureEndpoint, azureDeployment: p.azureDeployment
+      azureEndpoint: p.azureEndpoint, azureDeployment: p.azureDeployment,
+      maxTokens: p.maxTokens ?? modelConfig.maxTokens
     })
   }
 
@@ -1172,6 +1279,7 @@ const AgentTerminalPage: React.FC = () => {
     setTerminalTabs(prev => {
       const newTabs = prev.filter(t => t.sessionId !== sessionId)
       terminalContainersRef.current.delete(sessionId)
+      terminalReadyRef.current.delete(sessionId)
       if (activeTerminalTab === sessionId && newTabs.length > 0) {
         setActiveTerminalTab(newTabs[newTabs.length - 1].sessionId)
       }
@@ -1244,6 +1352,7 @@ const AgentTerminalPage: React.FC = () => {
   // 终端数据处理器
   useEffect(() => {
     const removeDataListener = window.electronAPI.terminal.onData((sessionId, data) => {
+      terminalReadyRef.current.set(sessionId, true)
       const term = terminalInstancesRef.current.get(sessionId)
       if (term) {
         term.write(data)
@@ -1520,6 +1629,34 @@ const AgentTerminalPage: React.FC = () => {
               </Space>
             </div>
 
+            {/* 上下文压缩策略可视化：token 占用进度 + 压缩状态（悬停查看策略说明） */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 14px', background: 'rgba(28,28,30,0.45)', borderBottom: '1px solid #48484a', flexShrink: 0 }}>
+              <Tooltip
+                title={<div style={{ fontSize: 11, lineHeight: 1.8 }}>
+                  <div style={{ fontWeight: 600, marginBottom: 4 }}>上下文压缩策略</div>
+                  <div>• 保留最近 {HISTORY_KEEP} 条消息完整传递</div>
+                  <div>• 更早消息压缩为摘要：单条 ≤ {SUMMARY_PER_MSG_MAX} 字，摘要总长 ≤ {SUMMARY_TOTAL_MAX} 字</div>
+                  <div>• 当前：完整 {ctxState.keptFull} 条（≈{fmtTokens(ctxState.fullTokens)}）+ 已压缩 {ctxState.compressedCount} 条（≈{fmtTokens(ctxState.summaryTokens)}）</div>
+                  <div style={{ color: '#8e8e93', marginTop: 4 }}>窗口：{fmtTokens(contextWindow)}（可于「系统管理 → AI 模型配置 → 单模型」中调整），占比按估算。</div>
+                </div>}
+                placement="bottom"
+              >
+                <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3, cursor: 'help' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, lineHeight: '12px', whiteSpace: 'nowrap', gap: 8 }}>
+                    <span style={{ color: '#aeaeb2', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      上下文 <span style={{ color: ctxColor, fontWeight: 600 }}>≈{fmtTokens(ctxUsage)}</span>/{fmtTokens(contextWindow)} · <span style={{ color: ctxColor }}>{ctxPct}%</span>
+                    </span>
+                    <span style={{ color: ctxState.compressedCount > 0 ? '#FF9500' : '#6e6e73', flexShrink: 0 }}>
+                      {ctxState.compressedCount > 0 ? `已压缩 ${ctxState.compressedCount} 条` : `完整 ${ctxState.total} 条`}
+                    </span>
+                  </div>
+                  <div style={{ height: 3, borderRadius: 2, background: '#3a3a3c', overflow: 'hidden' }}>
+                    <div style={{ width: `${ctxPct}%`, height: '100%', background: ctxColor, transition: 'width .3s ease' }} />
+                  </div>
+                </div>
+              </Tooltip>
+            </div>
+
             <div ref={messagesRef} className="agent-messages" style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: 16 }}>
               {messages.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '60px 0' }}>
@@ -1609,6 +1746,9 @@ const AgentTerminalPage: React.FC = () => {
                           <div style={{ fontSize: 10, color: '#8e8e93', marginTop: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
                             {new Date(msg.timestamp).toLocaleTimeString()}
                             {msg.metadata?.executionTime && <span>⏱ {msg.metadata.executionTime}ms</span>}
+                            {msg.metadata?.usage && !!(msg.metadata.usage.input + msg.metadata.usage.output) && (
+                              <span style={{ color: '#6e6e73' }} title="本次回复的模型 token 用量">↑{msg.metadata.usage.input} · ↓{msg.metadata.usage.output}</span>
+                            )}
                             {msg.metadata?.route && msg.metadata.route !== 'execution' && (
                               <Tag color={ROUTE_META[msg.metadata.route]?.color || 'default'} style={{ fontSize: 10, margin: 0, borderRadius: 999 }}>
                                 {ROUTE_META[msg.metadata.route]?.label || msg.metadata.route}
@@ -1656,9 +1796,28 @@ const AgentTerminalPage: React.FC = () => {
                   disabled={loading || !inputText.trim() || !modelConfig.apiKey || !modelConfig.model}
                   style={{ background: 'linear-gradient(135deg, #0A84FF 0%, #0051D5 100%)', borderColor: 'transparent', borderRadius: '0 8px 8px 0', boxShadow: '0 2px 10px rgba(10,132,255,0.2)', flexShrink: 0, display: 'flex', alignItems: 'center' }} />
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6, padding: '0 2px' }}>
-                <Text style={{ fontSize: 10, color: '#8e8e93' }}>Enter 发送 · Shift+Enter 换行</Text>
-                {selectedServer && <Text style={{ fontSize: 10, color: '#30D158' }}><LinkOutlined style={{ marginRight: 3 }} />已连接 {servers.find(s => s.id === selectedServer)?.name}</Text>}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6, padding: '0 2px', gap: 8 }}>
+                <Text style={{ fontSize: 10, color: '#8e8e93', flexShrink: 0 }}>Enter 发送 · Shift+Enter 换行</Text>
+                <div style={{ flex: 1, minWidth: 0, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, overflow: 'hidden' }}>
+                  {/* 会话级温度覆盖：仅影响当前会话，不写回全局配置 */}
+                  <Select
+                    size="small" variant="borderless"
+                    value={sessionTemp === undefined ? 'global' : String(sessionTemp)}
+                    onChange={v => setSessionTemp(v === 'global' ? undefined : Number(v))}
+                    popupMatchSelectWidth={false}
+                    style={{ minWidth: 92, fontSize: 10, color: sessionTemp === undefined ? '#8e8e93' : '#0A84FF', flexShrink: 0 }}
+                    options={[
+                      { value: 'global', label: '温度：全局' },
+                      ...[0.1, 0.3, 0.5, 0.7, 1.0, 1.5].map(t => ({ value: String(t), label: `温度：${t.toFixed(1)}` }))
+                    ]}
+                  />
+                  {sessionTotalUsage.input + sessionTotalUsage.output > 0 && (
+                    <span style={{ fontSize: 10, color: '#6e6e73', whiteSpace: 'nowrap', flexShrink: 0 }} title="本会话累计 token 用量">
+                      累计 ↑{sessionTotalUsage.input} · ↓{sessionTotalUsage.output}
+                    </span>
+                  )}
+                  {selectedServer && <Text style={{ fontSize: 10, color: '#30D158', flexShrink: 0 }} ellipsis><LinkOutlined style={{ marginRight: 3 }} />已连接 {servers.find(s => s.id === selectedServer)?.name}</Text>}
+                </div>
               </div>
             </div>
           </div>

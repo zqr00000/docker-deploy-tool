@@ -1,6 +1,9 @@
 import { app, BrowserWindow, ipcMain, dialog, safeStorage, shell } from 'electron'
 import { join } from 'path'
 import { writeFile, readFile } from 'fs/promises'
+import fs from 'fs'
+import path from 'path'
+import os from 'os'
 import https from 'https'
 import { URL } from 'url'
 import log from 'electron-log'
@@ -39,7 +42,7 @@ process.on('unhandledRejection', (reason, promise) => {
   log.error('Unhandled Rejection at:', promise, 'reason:', reason)
 })
 
-log.info('Docker Deploy Tool starting...')
+log.info('云舵 (YunDuo) starting...')
 
 function createWindow(): void {
   log.info('Creating main window...')
@@ -49,7 +52,8 @@ function createWindow(): void {
     height: 800,
     minWidth: 900,
     minHeight: 600,
-    title: 'Docker Deploy Tool',
+    title: '云舵',
+    autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -1573,6 +1577,203 @@ function registerIpcHandlers(): void {
     }
   })
 
+  // ==================== 文件传输 IPC ====================
+
+  // 选择本地文件（上传用，支持多选）
+  ipcMain.handle('fileTrans:selectFile', async () => {
+    const result = await dialog.showOpenDialog(mainWindow!, {
+      title: '选择要上传的文件（可多选）',
+      properties: ['openFile', 'multiSelections']
+    })
+    if (result.canceled || result.filePaths.length === 0) return { success: false, canceled: true }
+    return { success: true, path: result.filePaths[0], paths: result.filePaths }
+  })
+
+  // 选择本地保存位置（下载用）
+  ipcMain.handle('fileTrans:selectSavePath', async (_, defaultName?: string) => {
+    const result = await dialog.showSaveDialog(mainWindow!, {
+      title: '选择保存位置',
+      defaultPath: defaultName
+    })
+    if (result.canceled || !result.filePath) return { success: false, canceled: true }
+    return { success: true, path: result.filePath }
+  })
+
+  // 上传本地文件到服务器（SFTP 流式，支持进度回调）
+  ipcMain.handle('fileTrans:upload', async (event, serverId: string, localPath: string, remotePath: string, taskId?: string) => {
+    try {
+      const r = await sshService.uploadFileStream(serverId, localPath, remotePath, (transferred, total) => {
+        if (!event.sender.isDestroyed() && taskId) {
+          event.sender.send('fileTrans:progress', { taskId, transferred, total })
+        }
+      })
+      return { success: r.success, message: r.message || '' }
+    } catch (error) {
+      log.error('fileTrans:upload error:', error)
+      return { success: false, message: (error as Error).message }
+    }
+  })
+
+  // 从服务器下载文件到本地（SFTP 流式，支持进度回调）
+  ipcMain.handle('fileTrans:download', async (event, serverId: string, remotePath: string, localPath: string, taskId?: string) => {
+    try {
+      const r = await sshService.downloadFile(serverId, remotePath, localPath, (transferred, total) => {
+        if (!event.sender.isDestroyed() && taskId) {
+          event.sender.send('fileTrans:progress', { taskId, transferred, total })
+        }
+      })
+      return { success: r.success, message: r.message || '' }
+    } catch (error) {
+      log.error('fileTrans:download error:', error)
+      return { success: false, message: (error as Error).message }
+    }
+  })
+
+  // 列举远端目录（XFTP 式浏览）
+  ipcMain.handle('fileTrans:listRemote', async (_, serverId: string, remotePath: string) => {
+    try {
+      return await sshService.listRemoteDir(serverId, remotePath)
+    } catch (error) {
+      log.error('fileTrans:listRemote error:', error)
+      return { success: false, message: (error as Error).message }
+    }
+  })
+
+  // 列举本地目录（XFTP 式浏览）
+  ipcMain.handle('fileTrans:listLocal', async (_, localPath: string) => {
+    const target = (localPath || '').trim()
+    if (!target) return { success: false, message: '路径不能为空' }
+    try {
+      const entries = fs.readdirSync(target, { withFileTypes: true })
+        .filter(x => x.name !== '.' && x.name !== '..')
+        .map(x => {
+          const stat = (() => { try { return fs.statSync(path.join(target, x.name)) } catch { return null } })()
+          return {
+            name: x.name,
+            type: x.isDirectory() ? 'dir' as const : 'file' as const,
+            size: stat?.size || 0,
+            mtime: stat?.mtimeMs || 0
+          }
+        })
+        .sort((a, b) => (a.type === b.type ? a.name.localeCompare(b.name) : a.type === 'dir' ? -1 : 1))
+      return { success: true, entries }
+    } catch (error) {
+      log.error('fileTrans:listLocal error:', error)
+      return { success: false, message: (error as Error).message }
+    }
+  })
+
+  // 本地主目录（XFTP 初始路径）
+  ipcMain.handle('fileTrans:homeLocal', async () => {
+    try {
+      return { success: true, path: os.homedir() }
+    } catch (error) {
+      log.error('fileTrans:homeLocal error:', error)
+      return { success: false, message: (error as Error).message }
+    }
+  })
+
+  // 本地可用盘符（Windows 枚举 A:-Z: 存在的盘；其他平台返回 ['/']）
+  ipcMain.handle('fileTrans:listDrives', async () => {
+    try {
+      if (process.platform === 'win32') {
+        const drives: string[] = []
+        for (let i = 65; i <= 90; i++) {
+          const letter = `${String.fromCharCode(i)}:`
+          try {
+            const root = `${letter}\\`
+            if (fs.existsSync(root)) drives.push(letter)
+          } catch { /* ignore */ }
+        }
+        return { success: true, drives: drives.length > 0 ? drives : ['C:'] }
+      }
+      return { success: true, drives: ['/'] }
+    } catch (error) {
+      log.error('fileTrans:listDrives error:', error)
+      return { success: false, message: (error as Error).message }
+    }
+  })
+
+  // 本地文件操作：新建目录 / 重命名 / 删除（文件或空目录）
+  ipcMain.handle('fileTrans:localOp', async (_, op: 'mkdir' | 'rename' | 'delete', target: string, to?: string) => {
+    try {
+      if (op === 'mkdir') {
+        fs.mkdirSync(target, { recursive: false })
+        return { success: true, message: '目录已创建' }
+      }
+      if (op === 'rename') {
+        if (!to) return { success: false, message: '目标名不能为空' }
+        fs.renameSync(target, to)
+        return { success: true, message: '重命名成功' }
+      }
+      // delete：目录仅允许空目录（rmdir），文件直接删除，避免误删非空目录
+      const stat = fs.statSync(target)
+      if (stat.isDirectory()) {
+        fs.rmdirSync(target)
+      } else {
+        fs.unlinkSync(target)
+      }
+      return { success: true, message: '已删除' }
+    } catch (error) {
+      log.error(`fileTrans:localOp(${op}) error:`, error)
+      return { success: false, message: (error as Error).message }
+    }
+  })
+
+  // 远端文件操作：新建目录 / 重命名 / 删除（文件或空目录）
+  ipcMain.handle('fileTrans:remoteOp', async (_, serverId: string, op: 'mkdir' | 'rename' | 'delete', target: string, to?: string) => {
+    try {
+      return await sshService.remoteFileOp(serverId, op, target, to)
+    } catch (error) {
+      log.error('fileTrans:remoteOp error:', error)
+      return { success: false, message: (error as Error).message }
+    }
+  })
+
+  // 读取本地文件（文本，超 2MB 拒绝）
+  ipcMain.handle('fileTrans:readLocal', async (_, filePath: string) => {
+    try {
+      const stat = fs.statSync(filePath)
+      if (stat.size > 2 * 1024 * 1024) return { success: false, message: '文件超过 2MB，请使用终端处理' }
+      return { success: true, content: fs.readFileSync(filePath, 'utf-8') }
+    } catch (error) {
+      log.error('fileTrans:readLocal error:', error)
+      return { success: false, message: (error as Error).message }
+    }
+  })
+
+  // 写入本地文件（文本）
+  ipcMain.handle('fileTrans:writeLocal', async (_, filePath: string, content: string) => {
+    try {
+      fs.writeFileSync(filePath, content, 'utf-8')
+      return { success: true, message: '已保存' }
+    } catch (error) {
+      log.error('fileTrans:writeLocal error:', error)
+      return { success: false, message: (error as Error).message }
+    }
+  })
+
+  // 读取远端文件（文本，超 2MB 拒绝）
+  ipcMain.handle('fileTrans:readRemote', async (_, serverId: string, remotePath: string) => {
+    try {
+      return await sshService.readRemoteFile(serverId, remotePath)
+    } catch (error) {
+      log.error('fileTrans:readRemote error:', error)
+      return { success: false, message: (error as Error).message }
+    }
+  })
+
+  // 写入远端文件（文本，SFTP）
+  ipcMain.handle('fileTrans:writeRemote', async (_, serverId: string, remotePath: string, content: string) => {
+    try {
+      const r = await sshService.uploadContent(serverId, content, remotePath)
+      return { success: r.success, message: r.message || '' }
+    } catch (error) {
+      log.error('fileTrans:writeRemote error:', error)
+      return { success: false, message: (error as Error).message }
+    }
+  })
+
   // 日志流 IPC 处理器
   const logStreams = new Map<string, boolean>()
 
@@ -2448,6 +2649,7 @@ function registerIpcHandlers(): void {
         userInput: options?.userInput,
         threadId: options?.threadId || `thread-${Date.now()}`,
         historySummary: options?.historySummary,
+        temperature: options?.temperature,
         signal: controller.signal,
         callbacks: {
           onDelta: (delta) => sendEvent('opsAgent:chunk', { requestId, delta }),
@@ -2456,7 +2658,8 @@ function registerIpcHandlers(): void {
           onToolResult: (toolName, success, output, toolCallId) => sendEvent('opsAgent:toolResult', { requestId, toolName, success, output, toolCallId }),
           onError: (error) => sendEvent('opsAgent:error', { requestId, error }),
           onDone: () => sendEvent('opsAgent:done', { requestId }),
-          onRoute: (route) => sendEvent('opsAgent:route', { requestId, route })
+          onRoute: (route) => sendEvent('opsAgent:route', { requestId, route }),
+          onUsage: (usage) => sendEvent('opsAgent:usage', { requestId, usage })
         }
       })
 

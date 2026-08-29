@@ -152,4 +152,35 @@ for (const lang of ['shell', 'bash']) {
   registerShellCompletion(lang)
 }
 
+// ==================== 日志文件语法高亮（识别 time/level/ip 等） ====================
+monaco.languages.register({ id: 'log' })
+
+monaco.languages.setMonarchTokensProvider('log', {
+  tokenizer: {
+    root: [
+      // 带括号的日志级别：[ERROR] 整块上色（避免被通用括号规则吞掉）
+      [/\[(?:FATAL|SEVERE|CRITICAL|PANIC|EMERG)\]/i, 'invalid'],
+      [/\[(?:ERROR|ERR|FAILURE|FAILED)\]/i, 'invalid'],
+      [/\[(?:WARN|WARNING)\]/i, 'string'],
+      [/\[(?:INFO|NOTICE|SUCCESS|OK)\]/i, 'keyword'],
+      [/\[(?:TRACE|DEBUG|VERBOSE)\]/i, 'comment'],
+      // 裸日志级别（按严重程度配色）：FATAL/ERROR 红、WARN 橙、INFO 蓝、DEBUG/TRACE 灰
+      [/\b(?:FATAL|SEVERE|CRITICAL|PANIC|EMERG)\b/i, 'invalid'],
+      [/\b(?:ERROR|ERR|FAILURE|FAILED)\b/i, 'invalid'],
+      [/\b(?:WARN|WARNING)\b/i, 'string'],
+      [/\b(?:INFO|NOTICE|SUCCESS|OK)\b/i, 'keyword'],
+      [/\b(?:TRACE|DEBUG|VERBOSE)\b/i, 'comment'],
+      // 时间戳：2024-01-02 03:04:05.123 / 03:04:05 / 2024-01-02T03:04:05Z
+      [/\d{4}-\d{2}-\d{2}[T ]\d{1,2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?/, 'number'],
+      [/\b\d{1,2}:\d{2}:\d{2}(?:\.\d+)?\b/, 'number'],
+      // 其它括号标记：[12] | [pid:123]
+      [/\[[^\]]*\]/, 'type'],
+      // IP:端口 或 主机名:端口
+      [/\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?/, 'number'],
+      // 数字/十六进制
+      [/\b(?:0x[0-9a-fA-F]+|\d+)\b/, 'number'],
+    ]
+  }
+})
+
 export default monaco

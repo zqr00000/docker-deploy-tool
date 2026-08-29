@@ -831,6 +831,24 @@ export interface ElectronAPI {
     onClose: (callback: (sessionId: string) => void) => () => void
     onError: (callback: (sessionId: string, error: string) => void) => () => void
   }
+  // 文件传输（SFTP 上传/下载 + 本地路径选择）
+  fileTransfer: {
+    selectFile: () => Promise<{ success: boolean; canceled?: boolean; path?: string; paths?: string[] }>
+    selectSavePath: (defaultName?: string) => Promise<{ success: boolean; canceled?: boolean; path?: string }>
+    upload: (serverId: string, localPath: string, remotePath: string, taskId?: string) => Promise<{ success: boolean; message?: string }>
+    download: (serverId: string, remotePath: string, localPath: string, taskId?: string) => Promise<{ success: boolean; message?: string }>
+    listRemote: (serverId: string, remotePath: string) => Promise<{ success: boolean; entries?: Array<{ name: string; type: 'dir' | 'link' | 'file'; size: number; mtime: number; mode?: number }>; message?: string }>
+    listLocal: (localPath: string) => Promise<{ success: boolean; entries?: Array<{ name: string; type: 'dir' | 'file'; size: number; mtime: number }>; message?: string }>
+    homeLocal: () => Promise<{ success: boolean; path?: string; message?: string }>
+    listDrives: () => Promise<{ success: boolean; drives?: string[]; message?: string }>
+    localOp: (op: 'mkdir' | 'rename' | 'delete', target: string, to?: string) => Promise<{ success: boolean; message?: string }>
+    remoteOp: (serverId: string, op: 'mkdir' | 'rename' | 'delete', target: string, to?: string) => Promise<{ success: boolean; message?: string }>
+    readLocal: (filePath: string) => Promise<{ success: boolean; content?: string; message?: string }>
+    writeLocal: (filePath: string, content: string) => Promise<{ success: boolean; message?: string }>
+    readRemote: (serverId: string, remotePath: string) => Promise<{ success: boolean; content?: string; message?: string }>
+    writeRemote: (serverId: string, remotePath: string, content: string) => Promise<{ success: boolean; message?: string }>
+    onProgress: (callback: (payload: { taskId: string; transferred: number; total: number }) => void) => () => void
+  }
   logs: {
     start: (serverId: string, containerId: string, options?: { tail?: number; follow?: boolean }) => Promise<{ success: boolean; message?: string }>
     stop: (serverId: string, containerId: string) => Promise<{ success: boolean }>
@@ -870,7 +888,7 @@ export interface ElectronAPI {
   opsAgent: {
     setConfig: (config: any) => Promise<{ success: boolean; error?: string }>
     getConfig: () => Promise<{ success: boolean; data?: any; error?: string }>
-    chat: (requestId: string, options: { serverId?: string; serverName?: string; userInput: string; threadId?: string; historySummary?: string }) => Promise<{ success: boolean; requestId?: string; error?: string }>
+    chat: (requestId: string, options: { serverId?: string; serverName?: string; userInput: string; threadId?: string; historySummary?: string; temperature?: number }) => Promise<{ success: boolean; requestId?: string; error?: string }>
     cancel: (requestId: string) => Promise<{ success: boolean; error?: string }>
     approval: (id: string, approved: boolean) => Promise<{ success: boolean }>
     onChunk: (callback: (payload: { requestId: string; delta: string }) => void) => () => void
@@ -881,6 +899,7 @@ export interface ElectronAPI {
     onDone: (callback: (payload: { requestId: string }) => void) => () => void
     onApprovalRequest: (callback: (payload: { id: string; action: string; riskLevel: string }) => void) => () => void
     onRoute: (callback: (payload: { requestId: string; route: string }) => void) => () => void
+    onUsage: (callback: (payload: { requestId: string; usage: { input: number; output: number } }) => void) => () => void
   }
   healthCheck: {
     getContainerHealth: (serverId: string, containerId: string) => Promise<ContainerHealthStatus | null>
@@ -1099,6 +1118,27 @@ const electronAPI: ElectronAPI = {
       return () => ipcRenderer.removeListener('terminal:error', listener)
     }
   },
+  fileTransfer: {
+    selectFile: (): Promise<{ success: boolean; canceled?: boolean; path?: string; paths?: string[] }> => ipcRenderer.invoke('fileTrans:selectFile'),
+    selectSavePath: (defaultName?: string): Promise<{ success: boolean; canceled?: boolean; path?: string }> => ipcRenderer.invoke('fileTrans:selectSavePath', defaultName),
+    upload: (serverId: string, localPath: string, remotePath: string, taskId?: string): Promise<{ success: boolean; message?: string }> => ipcRenderer.invoke('fileTrans:upload', serverId, localPath, remotePath, taskId),
+    download: (serverId: string, remotePath: string, localPath: string, taskId?: string): Promise<{ success: boolean; message?: string }> => ipcRenderer.invoke('fileTrans:download', serverId, remotePath, localPath, taskId),
+    listRemote: (serverId: string, remotePath: string): Promise<{ success: boolean; entries?: Array<{ name: string; type: 'dir' | 'link' | 'file'; size: number; mtime: number; mode?: number }>; message?: string }> => ipcRenderer.invoke('fileTrans:listRemote', serverId, remotePath),
+    listLocal: (localPath: string): Promise<{ success: boolean; entries?: Array<{ name: string; type: 'dir' | 'file'; size: number; mtime: number }>; message?: string }> => ipcRenderer.invoke('fileTrans:listLocal', localPath),
+    homeLocal: (): Promise<{ success: boolean; path?: string; message?: string }> => ipcRenderer.invoke('fileTrans:homeLocal'),
+    listDrives: (): Promise<{ success: boolean; drives?: string[]; message?: string }> => ipcRenderer.invoke('fileTrans:listDrives'),
+    localOp: (op: 'mkdir' | 'rename' | 'delete', target: string, to?: string): Promise<{ success: boolean; message?: string }> => ipcRenderer.invoke('fileTrans:localOp', op, target, to),
+    remoteOp: (serverId: string, op: 'mkdir' | 'rename' | 'delete', target: string, to?: string): Promise<{ success: boolean; message?: string }> => ipcRenderer.invoke('fileTrans:remoteOp', serverId, op, target, to),
+    readLocal: (filePath: string): Promise<{ success: boolean; content?: string; message?: string }> => ipcRenderer.invoke('fileTrans:readLocal', filePath),
+    writeLocal: (filePath: string, content: string): Promise<{ success: boolean; message?: string }> => ipcRenderer.invoke('fileTrans:writeLocal', filePath, content),
+    readRemote: (serverId: string, remotePath: string): Promise<{ success: boolean; content?: string; message?: string }> => ipcRenderer.invoke('fileTrans:readRemote', serverId, remotePath),
+    writeRemote: (serverId: string, remotePath: string, content: string): Promise<{ success: boolean; message?: string }> => ipcRenderer.invoke('fileTrans:writeRemote', serverId, remotePath, content),
+    onProgress: (callback: (payload: { taskId: string; transferred: number; total: number }) => void): (() => void) => {
+      const listener = (_e: any, payload: { taskId: string; transferred: number; total: number }) => callback(payload)
+      ipcRenderer.on('fileTrans:progress', listener)
+      return () => ipcRenderer.removeListener('fileTrans:progress', listener)
+    }
+  },
   logs: {
     start: (serverId: string, containerId: string, options?: { tail?: number; follow?: boolean }): Promise<{ success: boolean; message?: string }> => ipcRenderer.invoke('logs:start', serverId, containerId, options),
     stop: (serverId: string, containerId: string): Promise<{ success: boolean }> => ipcRenderer.invoke('logs:stop', serverId, containerId),
@@ -1212,6 +1252,11 @@ const electronAPI: ElectronAPI = {
       const listener = (_e: any, payload: { requestId: string; route: string }) => callback(payload)
       ipcRenderer.on('opsAgent:route', listener)
       return () => { ipcRenderer.removeListener('opsAgent:route', listener) }
+    },
+    onUsage: (callback: (payload: { requestId: string; usage: { input: number; output: number } }) => void): (() => void) => {
+      const listener = (_e: any, payload: { requestId: string; usage: { input: number; output: number } }) => callback(payload)
+      ipcRenderer.on('opsAgent:usage', listener)
+      return () => { ipcRenderer.removeListener('opsAgent:usage', listener) }
     }
   },
   scheduledTask: {

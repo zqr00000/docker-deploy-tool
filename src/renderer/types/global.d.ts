@@ -171,6 +171,24 @@ export interface ElectronAPI {
     onClose: (callback: (sessionId: string) => void) => () => void
     onError: (callback: (sessionId: string, error: string) => void) => () => void
   }
+  // 文件传输（SFTP 上传/下载 + 本地路径选择）— 多任务队列 + 进度
+  fileTransfer: {
+    selectFile: () => Promise<{ success: boolean; canceled?: boolean; path?: string; paths?: string[] }>
+    selectSavePath: (defaultName?: string) => Promise<{ success: boolean; canceled?: boolean; path?: string }>
+    upload: (serverId: string, localPath: string, remotePath: string, taskId?: string) => Promise<{ success: boolean; message?: string }>
+    download: (serverId: string, remotePath: string, localPath: string, taskId?: string) => Promise<{ success: boolean; message?: string }>
+    listRemote: (serverId: string, remotePath: string) => Promise<{ success: boolean; entries?: Array<{ name: string; type: 'dir' | 'link' | 'file'; size: number; mtime: number; mode?: number }>; message?: string }>
+    listLocal: (localPath: string) => Promise<{ success: boolean; entries?: Array<{ name: string; type: 'dir' | 'file'; size: number; mtime: number }>; message?: string }>
+    homeLocal: () => Promise<{ success: boolean; path?: string; message?: string }>
+    listDrives: () => Promise<{ success: boolean; drives?: string[]; message?: string }>
+    localOp: (op: 'mkdir' | 'rename' | 'delete', target: string, to?: string) => Promise<{ success: boolean; message?: string }>
+    remoteOp: (serverId: string, op: 'mkdir' | 'rename' | 'delete', target: string, to?: string) => Promise<{ success: boolean; message?: string }>
+    readLocal: (filePath: string) => Promise<{ success: boolean; content?: string; message?: string }>
+    writeLocal: (filePath: string, content: string) => Promise<{ success: boolean; message?: string }>
+    readRemote: (serverId: string, remotePath: string) => Promise<{ success: boolean; content?: string; message?: string }>
+    writeRemote: (serverId: string, remotePath: string, content: string) => Promise<{ success: boolean; message?: string }>
+    onProgress: (callback: (payload: { taskId: string; transferred: number; total: number }) => void) => () => void
+  }
   alertRule: {
     getAll: () => Promise<AlertRule[]>
     getById: (id: string) => Promise<AlertRule | undefined>

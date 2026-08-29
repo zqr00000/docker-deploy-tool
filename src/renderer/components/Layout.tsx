@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, memo } from 'react'
-import { Menu, Typography, Grid, Button, Drawer, Input, Space, Tag } from 'antd'
+import { Menu, Typography, Grid, Button, Drawer, Input, Space, Tag, Tabs } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useLocation } from 'react-router-dom'
 import {
@@ -27,7 +27,8 @@ import {
   SafetyCertificateOutlined,
   CodeOutlined,
   RobotOutlined,
-  CloudUploadOutlined
+  CloudUploadOutlined,
+  SwapOutlined
 } from '@ant-design/icons'
 import type { MenuProps } from 'antd'
 import LanguageSwitcher from './LanguageSwitcher'
@@ -91,6 +92,7 @@ const MENU_ITEM_CONFIG: MenuItemConfig[] = [
     labelKey: 'menuGroups.ops',
     children: [
       { key: 'shell-scripts', iconKey: 'CodeOutlined', labelKey: 'menu.shellScripts' },
+      { key: 'file-transfer', iconKey: 'SwapOutlined', labelKey: 'menu.fileTransfer' },
       { key: 'scheduled-tasks', iconKey: 'ScheduleOutlined', labelKey: 'menu.scheduledTasks' },
       { key: 'health-check', iconKey: 'HeartOutlined', labelKey: 'menu.healthCheck' },
       { key: 'security-scan', iconKey: 'SafetyCertificateOutlined', labelKey: 'menu.securityScan' },
@@ -139,7 +141,8 @@ const ICON_MAP: Record<string, React.ReactNode> = {
   SettingOutlined: <SettingOutlined />,
   SafetyCertificateOutlined: <SafetyCertificateOutlined />,
   RobotOutlined: <RobotOutlined />,
-  CloudUploadOutlined: <CloudUploadOutlined />
+  CloudUploadOutlined: <CloudUploadOutlined />,
+  SwapOutlined: <SwapOutlined />
 }
 
 const LayoutComponent: React.FC<LayoutProps> = memo(({ children }) => {
@@ -154,6 +157,55 @@ const LayoutComponent: React.FC<LayoutProps> = memo(({ children }) => {
   const [searchVisible, setSearchVisible] = useState(false)
   const [onboardingVisible, setOnboardingVisible] = useState(false)
   const [openKeys, setOpenKeys] = useState<string[]>([])
+
+  // ===== 标签页工作区：openTabs 记录已打开的页面标签（同一菜单只保留一个）=====
+  interface OpenTab { key: string; label: string }
+  const [openTabs, setOpenTabs] = useState<OpenTab[]>([])
+
+  // 在菜单配置中递归查找叶子菜单项（不含分组）
+  const findMenuByKey = useCallback((key: string): MenuItemConfig | undefined => {
+    const find = (items: MenuItemConfig[]): MenuItemConfig | undefined => {
+      for (const item of items) {
+        if (item.key === key && !item.children) return item
+        if (item.children) {
+          const nested = find(item.children)
+          if (nested) return nested
+        }
+      }
+      return undefined
+    }
+    return find(MENU_ITEM_CONFIG)
+  }, [])
+
+  // 当前激活标签：由路由路径派生（路径对应某个已打开菜单标签时高亮）
+  const currentPath = location.pathname.slice(1)
+  const activeTabKey = openTabs.some(t => t.key === currentPath) ? currentPath : undefined
+
+  // 路由变化时自动打开/高亮对应菜单标签（同一菜单不重复打开）
+  useEffect(() => {
+    const path = location.pathname.replace('/', '')
+    if (!path) return
+    const cfg = findMenuByKey(path)
+    if (!cfg) return
+    setOpenTabs(prev => prev.some(t => t.key === path)
+      ? prev
+      : [...prev, { key: path, label: t(cfg.labelKey) }])
+  }, [location.pathname, findMenuByKey, t])
+
+  // 关闭标签：若关闭的是当前激活标签，跳转到相邻标签；全部关闭则回仪表盘
+  const closeTab = useCallback((key: string) => {
+    const idx = openTabs.findIndex(x => x.key === key)
+    if (idx === -1) return
+    const next = openTabs.filter(x => x.key !== key)
+    setOpenTabs(next)
+    if (location.pathname === `/${key}`) {
+      if (next.length === 0) {
+        navigate('/dashboard')
+      } else {
+        navigate(`/${next[Math.max(0, idx - 1)].key}`)
+      }
+    }
+  }, [openTabs, navigate, location.pathname])
 
   // 根据路径找到其所属的父级菜单 key（用于自动展开）
   const getParentKeyForPath = useCallback((path: string): string | undefined => {
@@ -288,6 +340,26 @@ const LayoutComponent: React.FC<LayoutProps> = memo(({ children }) => {
     padding: isXs ? 12 : isSm ? 16 : 24
   }), [isXs, isSm])
 
+  // 标签页栏：打开多个菜单页面后切换；同一菜单只保留一个标签
+  const tabBar = openTabs.length > 0 ? (
+    <Tabs
+      type="editable-card"
+      hideAdd
+      size="small"
+      activeKey={activeTabKey}
+      onChange={k => navigate(`/${k}`)}
+      onEdit={(targetKey, action) => { if (action === 'remove') closeTab(targetKey as string) }}
+      items={openTabs.map(tab => ({ key: tab.key, label: tab.label, closable: true }))}
+      tabBarStyle={{
+        margin: 0,
+        padding: '6px 10px 0',
+        background: isDark ? 'rgba(28,28,30,0.85)' : 'rgba(249,249,251,0.9)',
+        borderBottom: `1px solid ${isDark ? '#38383a' : '#e5e5ea'}`
+      }}
+      className="app-tabbar"
+    />
+  ) : null
+
   // 移动端使用 Drawer
   if (isMobile) {
     return (
@@ -344,10 +416,13 @@ const LayoutComponent: React.FC<LayoutProps> = memo(({ children }) => {
         </Drawer>
 
         {/* Content */}
-        <div className={`app-content-wrapper ${location.pathname === '/agent-terminal' ? 'no-scroll' : ''}`}>
-          <main className="app-content" style={{ ...contentStyle, ...(location.pathname === '/agent-terminal' ? { padding: 0, height: '100%', overflow: 'hidden' } : {}) }}>
-            {children}
-          </main>
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+          {tabBar}
+          <div className={`app-content-wrapper ${location.pathname === '/agent-terminal' ? 'no-scroll' : ''}`}>
+            <main className="app-content" style={{ ...contentStyle, ...(location.pathname === '/agent-terminal' ? { padding: 0, height: '100%', overflow: 'hidden' } : {}) }}>
+              {children}
+            </main>
+          </div>
         </div>
 
         {/* Global Search Modal */}
@@ -425,10 +500,13 @@ const LayoutComponent: React.FC<LayoutProps> = memo(({ children }) => {
         </aside>
 
         {/* Content */}
-        <div className={`app-content-wrapper ${location.pathname === '/agent-terminal' ? 'no-scroll' : ''}`}>
-          <main className="app-content" style={{ ...contentStyle, ...(location.pathname === '/agent-terminal' ? { padding: 0, height: '100%', overflow: 'hidden' } : {}) }}>
-            {children}
-          </main>
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+          {tabBar}
+          <div className={`app-content-wrapper ${location.pathname === '/agent-terminal' ? 'no-scroll' : ''}`}>
+            <main className="app-content" style={{ ...contentStyle, ...(location.pathname === '/agent-terminal' ? { padding: 0, height: '100%', overflow: 'hidden' } : {}) }}>
+              {children}
+            </main>
+          </div>
         </div>
       </div>
 

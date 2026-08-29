@@ -331,11 +331,24 @@ const Images: React.FC = () => {
       const key = img.id
       const existing = map.get(key)
       const repoTag = `${img.repository}:${img.tag}`
+      const cleanId = img.id.replace(/^sha256:/, '')
 
-      const isUsed = usedImageNames.has(repoTag) ||
-        (img.repository !== '<none>' && usedNamesArr.some(
-          name => name === repoTag || name.startsWith(`${img.repository}:`)
-        ))
+      // 使用中判定：精确匹配（repo:tag / 完整镜像 ID / 12 位短 ID / digest 摘要）
+      const isUsed = usedImageNames.has(repoTag) || usedNamesArr.some((name) => {
+        if (!name || name === 'N/A' || name === '<none>') return false
+        const cleanName = String(name).replace(/^sha256:/, '')
+        if (cleanName === repoTag) return true
+        // 仅当镜像无 <none> 时才做 ID 级比对（不同仓库同名不会再互相误标）
+        if (cleanName === cleanId) return true
+        if (cleanName.length >= 12 && cleanId.startsWith(cleanName)) return true
+        // digest 引用（repo@sha256:xxx）
+        const digIdx = cleanName.indexOf('@sha256:')
+        if (digIdx >= 0) {
+          const digestId = cleanName.slice(digIdx + '@sha256:'.length)
+          if (digestId === cleanId || cleanId.startsWith(digestId.slice(0, 12))) return true
+        }
+        return false
+      })
 
       if (existing) {
         existing.items.push(img)

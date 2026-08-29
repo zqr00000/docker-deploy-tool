@@ -38,6 +38,7 @@ const SecurityScan = lazy(() => import('./pages/ops/SecurityScan'))
 const CicdIntegration = lazy(() => import('./pages/deploy/CicdIntegration'))
 const AgentTerminal = lazy(() => import('./pages/agent/AgentTerminal'))
 const ShellScripts = lazy(() => import('./pages/ops/ShellScripts'))
+const FileTransfer = lazy(() => import('./pages/ops/FileTransfer'))
 
 type ThemeMode = 'system' | 'dark' | 'light'
 
@@ -62,6 +63,16 @@ const PageLoading: React.FC = () => (
 
 const App: React.FC = () => {
   const { i18n: i18nInstance } = useTranslation()
+
+  // 主题版本：Settings 切换主题时派发 app-theme-changed 事件，强制本组件重渲染
+  // （否则 antd ConfigProvider 的 token 不会随 data-theme 变化更新）
+  const [themeVersion, setThemeVersion] = React.useState(0)
+
+  useEffect(() => {
+    const handleThemeChanged = () => setThemeVersion(v => v + 1)
+    window.addEventListener('app-theme-changed', handleThemeChanged)
+    return () => window.removeEventListener('app-theme-changed', handleThemeChanged)
+  }, [])
 
   useEffect(() => {
     const savedLanguage = localStorage.getItem('language')
@@ -165,7 +176,8 @@ const App: React.FC = () => {
     }
   }
 
-  const antdTheme = getAntdTheme()
+  // themeVersion 变化时重算 antd 主题 token（依赖它保证切换生效）
+  const antdTheme = React.useMemo(() => getAntdTheme(), [themeVersion])
 
   return (
     <ConfigProvider
@@ -207,6 +219,7 @@ const App: React.FC = () => {
                       <Route path="/resource-reports" element={<ResourceReports />} />
                       <Route path="/compose-editor" element={<ComposeEditor />} />
                       <Route path="/shell-scripts" element={<ShellScripts />} />
+                      <Route path="/file-transfer" element={<FileTransfer />} />
                       <Route path="/settings" element={<Settings />} />
                       <Route path="/ai-model-config" element={<ModelConfig />} />
                     </Routes>

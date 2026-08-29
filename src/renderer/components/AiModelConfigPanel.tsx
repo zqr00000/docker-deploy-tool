@@ -491,13 +491,13 @@ const AiModelConfigPanel: React.FC<AiModelConfigPanelProps> = ({ selectedServer 
                           <span className="field-label">最大输出（tokens）</span>
                           <InputNumber value={activeProfile?.maxTokens ?? modelConfig.maxTokens}
                             onChange={v => updateProfile({ maxTokens: (v as number) ?? modelConfig.maxTokens })}
-                            min={100} max={64000} step={100} size="small" style={{ width: '100%', marginTop: 6 }} />
+                            min={100} max={4194304} step={100} size="small" style={{ width: '100%', marginTop: 6 }} />
                         </div>
                         <div>
-                          <span className="field-label">上下文窗口（tokens）</span>
+                          <span className="field-label">上下文窗口（tokens，1M = 1048576）</span>
                           <InputNumber value={activeProfile?.contextWindow ?? 32768}
                             onChange={v => updateProfile({ contextWindow: (v as number) || undefined })}
-                            min={1024} max={1048576} step={1024} size="small" style={{ width: '100%', marginTop: 6 }} />
+                            min={1024} max={16777216} step={1024} size="small" style={{ width: '100%', marginTop: 6 }} />
                         </div>
                       </div>
                     </div>
@@ -522,12 +522,12 @@ const AiModelConfigPanel: React.FC<AiModelConfigPanelProps> = ({ selectedServer 
                     {/* 最大 Token */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
                       <span className="field-label" style={{ margin: 0 }}>最大 Token</span>
-                      <Text strong style={{ color: '#0A84FF', fontSize: 12 }}>{modelConfig.maxTokens}</Text>
+                      <Text strong style={{ color: '#0A84FF', fontSize: 12 }}>{modelConfig.maxTokens.toLocaleString()}</Text>
                     </div>
-                    <Slider value={modelConfig.maxTokens} onChange={v => setModelConfig({ ...modelConfig, maxTokens: v })} min={100} max={8000} step={100} tooltip={{ open: false }} />
+                    <Slider value={modelConfig.maxTokens} onChange={v => setModelConfig({ ...modelConfig, maxTokens: v })} min={100} max={4194304} step={1024} tooltip={{ open: false }} />
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: -8, marginBottom: 16 }}>
                       <Text style={{ fontSize: 10, color: 'var(--app-text-secondary)' }}>100</Text>
-                      <Text style={{ fontSize: 10, color: 'var(--app-text-secondary)' }}>8000</Text>
+                      <Text style={{ fontSize: 10, color: 'var(--app-text-secondary)' }}>4M（精细值请用连接页"最大输出"）</Text>
                     </div>
                   </div>
                 )}

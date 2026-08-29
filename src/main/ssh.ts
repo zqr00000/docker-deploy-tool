@@ -3,6 +3,15 @@ import log from 'electron-log'
 import { randomUUID } from 'crypto'
 import { readFileSync, existsSync } from 'fs'
 
+// 远端目录条目（XFTP 式浏览用）
+export interface RemoteDirEntry {
+  name: string
+  type: 'dir' | 'file' | 'link' | 'other'
+  size: number
+  mtime: number
+  mode: number
+}
+
 export interface SSHServerConfig {
   id: string
   host: string
@@ -588,7 +597,8 @@ class SSHService {
   async uploadFileStream(
     serverId: string,
     localPath: string,
-    remotePath: string
+    remotePath: string,
+    onProgress?: (transferred: number, total: number) => void
   ): Promise<{ success: boolean; message: string }> {
     const entry = this.connections.get(serverId)
     if (!entry || !entry.authenticated) {
@@ -607,7 +617,11 @@ class SSHService {
           return
         }
 
-        sftp.fastPut(localPath, remotePath, (putErr) => {
+        sftp.fastPut(localPath, remotePath, {
+          step: (total: number, _chunk: number, fsize: number) => {
+            if (fsize > 0) onProgress?.(Math.min(total, fsize), fsize)
+          }
+        }, (putErr) => {
           sftp.end()
           if (putErr) {
             log.error(`SFTP fastPut error: ${putErr.message}`)
@@ -627,7 +641,8 @@ class SSHService {
   async downloadFile(
     serverId: string,
     remotePath: string,
-    localPath: string
+    localPath: string,
+    onProgress?: (transferred: number, total: number) => void
   ): Promise<{ success: boolean; message: string }> {
     const entry = this.connections.get(serverId)
     if (!entry || !entry.authenticated) {
@@ -642,7 +657,11 @@ class SSHService {
           return
         }
 
-        sftp.fastGet(remotePath, localPath, (getErr) => {
+        sftp.fastGet(remotePath, localPath, {
+          step: (total: number, _chunk: number, fsize: number) => {
+            if (fsize > 0) onProgress?.(Math.min(total, fsize), fsize)
+          }
+        }, (getErr) => {
           sftp.end()
           if (getErr) {
             log.error(`SFTP fastGet error: ${getErr.message}`)
@@ -652,6 +671,135 @@ class SSHService {
             resolve({ success: true, message: 'File downloaded successfully' })
           }
         })
+      })
+    })
+  }
+
+  /**
+   * 读取远端文件内容（UTF-8 文本，供查看/编辑）
+   */
+  async readRemoteFile(
+    serverId: string,
+    remotePath: string
+  ): Promise<{ success: boolean; content?: string; message?: string }> {
+    const entry = this.connections.get(serverId)
+    if (!entry || !entry.authenticated) {
+      return { success: false, message: 'Not connected to server' }
+    }
+
+    return new Promise((resolve) => {
+      entry.client.sftp((err, sftp) => {
+        if (err) {
+          log.error(`SFTP connection error: ${err.message}`)
+          resolve({ success: false, message: err.message })
+          return
+        }
+        sftp.readFile(remotePath, (readErr, data) => {
+          sftp.end()
+          if (readErr) {
+            log.error(`SFTP readFile error: ${readErr.message}`)
+            resolve({ success: false, message: readErr.message })
+            return
+          }
+          try {
+            resolve({ success: true, content: (data as Buffer).toString('utf-8') })
+          } catch (e) {
+            resolve({ success: false, message: (e as Error).message })
+          }
+        })
+      })
+    })
+  }
+
+  /**
+   * 列举远端目录（XFTP 式浏览）：返回名称/类型/大小/修改时间/权限
+   */
+  async listRemoteDir(
+    serverId: string,
+    remotePath: string
+  ): Promise<{ success: boolean; entries?: RemoteDirEntry[]; message?: string }> {
+    const entry = this.connections.get(serverId)
+    if (!entry || !entry.authenticated) {
+      return { success: false, message: 'Not connected to server' }
+    }
+
+    return new Promise((resolve) => {
+      entry.client.sftp((err, sftp) => {
+        if (err) {
+          log.error(`SFTP connection error: ${err.message}`)
+          resolve({ success: false, message: err.message })
+          return
+        }
+        sftp.readdir(remotePath, (readErr, list) => {
+          sftp.end()
+          if (readErr) {
+            log.error(`SFTP readdir error: ${readErr.message}`)
+            resolve({ success: false, message: readErr.message })
+            return
+          }
+          const entries: RemoteDirEntry[] = (list || [])
+            .filter(x => x.filename && x.filename !== '.' && x.filename !== '..')
+            .map(x => ({
+              name: x.filename,
+              type: x.attrs.isDirectory() ? 'dir' as const : x.attrs.isSymbolicLink() ? 'link' as const : 'file' as const,
+              size: x.attrs.size || 0,
+              mtime: Math.floor((x.attrs.mtime || 0)) * 1000,
+              mode: x.attrs.mode || 0
+            }))
+          resolve({ success: true, entries })
+        })
+      })
+    })
+  }
+
+  /**
+   * 远端文件操作：新建目录 / 重命名 / 删除（文件 unlink，空目录 rmdir）
+   */
+  async remoteFileOp(
+    serverId: string,
+    op: 'mkdir' | 'rename' | 'delete',
+    target: string,
+    to?: string
+  ): Promise<{ success: boolean; message: string }> {
+    const entry = this.connections.get(serverId)
+    if (!entry || !entry.authenticated) {
+      return { success: false, message: 'Not connected to server' }
+    }
+
+    return new Promise((resolve) => {
+      entry.client.sftp((err, sftp) => {
+        if (err) {
+          log.error(`SFTP connection error: ${err.message}`)
+          resolve({ success: false, message: err.message })
+          return
+        }
+        const done = (opErr: Error | undefined, okMsg: string) => {
+          sftp.end()
+          if (opErr) {
+            log.error(`SFTP ${op} error: ${opErr.message}`)
+            resolve({ success: false, message: opErr.message })
+          } else {
+            resolve({ success: true, message: okMsg })
+          }
+        }
+        switch (op) {
+          case 'mkdir':
+            sftp.mkdir(target, (e) => done(e, '目录已创建'))
+            break
+          case 'rename':
+            sftp.rename(target, to || '', (e) => done(e, '重命名成功'))
+            break
+          case 'delete':
+            // 先尝试按目录删（仅空目录），失败再按文件删
+            sftp.rmdir(target, (e1) => {
+              if (e1) sftp.unlink(target, (e2) => done(e2, '已删除'))
+              else done(null, '已删除')
+            })
+            break
+          default:
+            sftp.end()
+            resolve({ success: false, message: 'Unknown op' })
+        }
       })
     })
   }

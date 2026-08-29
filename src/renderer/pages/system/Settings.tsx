@@ -61,6 +61,8 @@ const Settings: React.FC = () => {
     localStorage.setItem('themeMode', mode)
     setCurrentTheme(mode)
     applyTheme(mode)
+    // 通知 App 重算 antd 主题 token（否则卡片/表格/菜单等不会随主题变化）
+    window.dispatchEvent(new Event('app-theme-changed'))
     message.success(t('settings.saveSuccess'))
   }
 
@@ -266,7 +268,7 @@ const Settings: React.FC = () => {
               <Text>
                 <strong>{t('app.title')}</strong>
               </Text>
-              <Text type="secondary">Docker Deploy Tool</Text>
+              <Text type="secondary">YunDuo</Text>
               <Text type="secondary" style={{ fontSize: 12 }}>
                 v1.0.0
               </Text>

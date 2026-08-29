@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react'
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef, ReactNode } from 'react'
 import log from 'electron-log'
 import type { Server, ServerFormData, ServerStatus } from '../types/server'
 
@@ -45,30 +45,59 @@ export function ServerProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  // 连接失败自动重试：5s/10s/15s 逐级退避，最多 MAX_AUTO_RETRY 次
+  const MAX_AUTO_RETRY = 3
+  const retryTimersRef = useRef<Map<string, number>>(new Map())
+
+  const scheduleRetry = (server: Server, attempt: number) => {
+    const timer = window.setTimeout(() => {
+      retryTimersRef.current.delete(server.id)
+      tryConnectServer(server, attempt + 1)
+    }, 5000 * (attempt + 1))
+    retryTimersRef.current.set(server.id, timer)
+  }
+
+  const tryConnectServer = useCallback(async (server: Server, attempt: number) => {
+    setServers(prev => prev.map(s =>
+      s.id === server.id ? { ...s, status: 'connecting' as const } : s
+    ))
+    try {
+      const result = await window.electronAPI.server.connect(server)
+      if (result.success) {
+        setServers(prev => prev.map(s =>
+          s.id === server.id ? { ...s, status: 'online' as const } : s
+        ))
+      } else if (attempt < MAX_AUTO_RETRY) {
+        log.warn(`[ServerContext] 连接失败，${5000 * (attempt + 1) / 1000}s 后自动重试(${server.name}): ${result.message}`)
+        scheduleRetry(server, attempt)
+      } else {
+        setServers(prev => prev.map(s =>
+          s.id === server.id ? { ...s, status: 'offline' as const } : s
+        ))
+      }
+    } catch (err) {
+      const e = err as Error
+      if (attempt < MAX_AUTO_RETRY) {
+        log.warn(`[ServerContext] 连接异常，将自动重试(${server.name}): ${e.message}`)
+        scheduleRetry(server, attempt)
+      } else {
+        setServers(prev => prev.map(s =>
+          s.id === server.id ? { ...s, status: 'offline' as const } : s
+        ))
+      }
+    }
+  }, [])
+
+  // 启动自动重连（仅在 tryConnectServer 定义之后声明，避免 TDZ）
   const autoReconnectServers = useCallback(async () => {
     setAutoReconnecting(true)
     try {
       const serversData = await refreshServers()
-      
+
       for (const server of serversData) {
         if (server.status === 'online') {
-          setServers(prev => prev.map(s =>
-            s.id === server.id ? { ...s, status: 'connecting' as const } : s
-          ))
-          
-          try {
-            const result = await window.electronAPI.server.connect(server)
-            setServers(prev => prev.map(s =>
-              s.id === server.id
-                ? { ...s, status: result.success ? 'online' as const : 'offline' as const }
-                : s
-            ))
-          } catch {
-            setServers(prev => prev.map(s =>
-              s.id === server.id ? { ...s, status: 'offline' as const } : s
-            ))
-          }
-          
+          // 连接失败自动重试（指数退避），无需用户手动再连
+          await tryConnectServer(server, 0)
           await new Promise(resolve => setTimeout(resolve, 500))
         }
       }
@@ -77,7 +106,15 @@ export function ServerProvider({ children }: { children: ReactNode }) {
     } finally {
       setAutoReconnecting(false)
     }
-  }, [refreshServers])
+  }, [refreshServers, tryConnectServer])
+
+  // 卸载时清理重试定时器
+  useEffect(() => {
+    return () => {
+      retryTimersRef.current.forEach(t => clearTimeout(t))
+      retryTimersRef.current.clear()
+    }
+  }, [])
 
   useEffect(() => {
     autoReconnectServers()

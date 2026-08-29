@@ -98,14 +98,6 @@ body {
   }
 }
 
-.content-wrapper {
-  animation: fadeInUp 0.35s cubic-bezier(0.32, 0.72, 0, 1);
-}
-
-.app-content > * {
-  animation: fadeInUp 0.3s cubic-bezier(0.32, 0.72, 0, 1);
-}
-
 /* ====== Flexbox Layout Utilities ====== */
 .flex {
   display: flex !important;
@@ -272,6 +264,45 @@ body {
 /* Agent Terminal 页面禁止滚动 */
 .app-content-wrapper.no-scroll {
   overflow: hidden !important;
+}
+
+/* ===== 标签页工作区（多页面标签栏） ===== */
+.app-tabbar {
+  flex-shrink: 0;
+  min-height: 38px;
+}
+.app-tabbar .ant-tabs-nav {
+  margin: 0 !important;
+}
+.app-tabbar .ant-tabs-nav::before {
+  border-bottom: none !important;
+}
+.app-tabbar .ant-tabs-nav-list {
+  gap: 4px;
+}
+.app-tabbar .ant-tabs-tab {
+  border-radius: 8px 8px 0 0 !important;
+  background: transparent !important;
+  border: none !important;
+  padding: 4px 12px !important;
+  font-size: 12px !important;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.app-tabbar .ant-tabs-tab .ant-tabs-tab-remove {
+  margin-left: 6px;
+  width: 14px;
+  height: 14px;
+  line-height: 12px;
+}
+.app-tabbar .ant-tabs-tab:hover {
+  background: var(--app-hover-bg, rgba(142,142,147,0.14)) !important;
+}
+.app-tabbar .ant-tabs-tab-active {
+  background: var(--app-bg-color, #ffffff) !important;
+  box-shadow: inset 0 2px 0 var(--app-primary-color, #0A84FF);
+}
+.app-tabbar .ant-tabs-ink-bar {
+  display: none !important;
 }
 
 .app-content {
@@ -2820,6 +2851,23 @@ body {
 /* Filter bar search input */
 .filter-bar .ant-input-affix-wrapper {
   max-width: 300px;
+}
+
+/* ===== 全局：彻底移除过渡动效 =====
+   悬停仅保留颜色/阴影弱反馈，不位移、不缩放、无过渡动画 */
+:where(
+  .ant-card, .ant-tag, .ant-btn, .ant-table-row, .ant-tabs-tab, .ant-menu-item,
+  .ant-dropdown-menu-item, .ant-select-selection-item, .stat-card, .tool-card,
+  .provider-chip, .server-card, .config-card, .quick-tip, .agent-sidebar-item,
+  .cmd-card, .terminal-tab, .theme-picker-card, .spotlight-result-item,
+  .jump-var-tag, .card-hover-lift, .sidebar-collapse-btn,
+  .ant-modal-body div[style*="cursor: pointer"], .ant-drawer-body div[style*="cursor: pointer"]
+):hover {
+  transform: none !important;
+}
+/* 所有元素彻底移除过渡（不再有任何“动一下”） */
+:where(*) {
+  transition: none !important;
 }
 
 /* 脚本参数跳转标签 */

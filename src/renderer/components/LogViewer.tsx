@@ -69,6 +69,32 @@ const LogViewer: React.FC<LogViewerProps> = ({
     return logLines.filter(line => line.toLowerCase().includes(lowerFilter))
   }, [logLines, filterText])
 
+  // 日志级别高亮：识别 FATAL/ERROR/WARN/INFO/DEBUG/TRACE 等关键词
+  const LOG_LEVEL_RE = /(FATAL|SEVERE|ERROR|ERR|WARN|WARNING|INFO|NOTICE|DEBUG|TRACE|VERBOSE|SUCCESS|OK)/gi
+  const logLevelColor = (level: string): string => {
+    const l = level.toUpperCase()
+    if (/(FATAL|SEVERE|ERROR|ERR)/.test(l)) return '#ff6b6b' // 红色：致命/错误
+    if (/(WARN|WARNING)/.test(l)) return '#ffc107' // 橙黄：警告
+    if (/(INFO|NOTICE|SUCCESS|OK)/.test(l)) return '#52c7ff' // 蓝色：信息
+    return '#8b949e' // 灰色：调试
+  }
+  const highlightedLogs = useMemo(() => {
+    if (!logs) return null
+    const parts = logs.split(LOG_LEVEL_RE)
+    if (parts.length <= 1) return logs
+    return parts.map((part, i) => {
+      // split 带捕获组时，奇数索引是匹配到的级别词
+      if (i % 2 === 1) {
+        return (
+          <span key={i} style={{ color: logLevelColor(part), fontWeight: 600 }}>
+            {part}
+          </span>
+        )
+      }
+      return part
+    })
+  }, [logs])
+
   // 获取日志（非流式）
   const fetchLogs = useCallback(async () => {
     if (!selectedContainer || !serverId) {
@@ -466,7 +492,7 @@ const LogViewer: React.FC<LogViewerProps> = ({
           wordBreak: 'break-all'
         }}
       >
-        {loading && !logs ? t('common.loading') : logs || t('app.logs.noLogs')}
+        {loading && !logs ? t('common.loading') : highlightedLogs || t('app.logs.noLogs')}
       </pre>
     </Card>
   )
