@@ -586,7 +586,22 @@
     "configImportSuccess": "Configuration imported successfully",
     "configImportFailed": "Failed to import configuration",
     "configImportConfirmTitle": "Confirm Import",
-    "configImportConfirmContent": "Importing will overwrite existing servers, templates, and apps with the same IDs. This action cannot be undone. Continue?"
+    "configImportConfirmContent": "Importing will overwrite existing servers, templates, and apps with the same IDs. This action cannot be undone. Continue?",
+    "updater": {
+      "checkUpdate": "Check for Updates",
+      "currentVersion": "Current Version",
+      "newVersionFound": "New version v{{version}} available",
+      "latestVersion": "You're up to date",
+      "downloadUpdate": "Download Update",
+      "downloading": "Downloading update",
+      "downloadedReady": "Update downloaded. Restart to install",
+      "installNow": "Restart to Install",
+      "restartConfirmTitle": "Install Update",
+      "restartConfirmContent": "The app will exit and run the installer, then restart automatically. Continue?",
+      "checkFailed": "Failed to check for updates",
+      "releaseNotes": "Release Notes",
+      "releaseDate": "Release Date"
+    }
   },
   "serverGroup": {
     "title": "Server Group Management",

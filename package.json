@@ -31,6 +31,7 @@
     "better-sqlite3": "^11.3.0",
     "dayjs": "^1.11.21",
     "electron-log": "^5.2.0",
+    "electron-updater": "^6.8.9",
     "i18next": "^23.15.1",
     "js-yaml": "^4.3.2",
     "monaco-editor": "^0.56.0",
@@ -67,6 +68,10 @@
     "directories": {
       "output": "release"
     },
+    "publish": {
+      "provider": "generic",
+      "url": "https://gitee.com/z_q_r/docker-deploy-tool/releases/download/stable/"
+    },
     "files": [
       "dist/**/*",
       "package.json"
@@ -96,11 +101,12 @@
         }
       ],
       "icon": "build/icon.svg",
-      "artifactName": "${productName}-${version}-${arch}.${ext}"
+      "artifactName": "YunDuo-${version}-${arch}.${ext}"
     },
     "nsis": {
       "oneClick": false,
       "perMachine": true,
+      "differentialPackage": true,
       "allowToChangeInstallationDirectory": true,
       "deleteAppDataOnUninstall": true,
       "createDesktopShortcut": true,

@@ -732,6 +732,35 @@ export interface ResourceMetricsResult {
   total: number
 }
 
+// ==================== 自动更新 ====================
+export interface UpdateReleaseInfo {
+  version: string
+  releaseNotes?: string
+  releaseDate?: string
+}
+
+export interface UpdateProgressInfo {
+  percent: number
+  transferred: number
+  total: number
+  bytesPerSecond: number
+}
+
+export type UpdaterEvent =
+  | { type: 'checking' }
+  | { type: 'available'; info: UpdateReleaseInfo }
+  | { type: 'not-available' }
+  | { type: 'progress'; progress: UpdateProgressInfo }
+  | { type: 'downloaded' }
+  | { type: 'error'; message: string }
+
+export interface UpdaterCheckResult extends UpdateReleaseInfo {
+  hasUpdate: boolean
+  message?: string
+}
+
+export type UpdaterStatus = 'idle' | 'checking' | 'downloading' | 'downloaded' | 'error'
+
 export interface ElectronAPI {
   getAppVersion: () => Promise<string>
   getAppName: () => Promise<string>
@@ -1004,5 +1033,12 @@ export interface ElectronAPI {
     getExecutionLogs: (scriptId?: string, limit?: number) => Promise<ShellScriptExecutionLog[]>
     deleteExecutionLog: (logId: string) => Promise<{ success: boolean; message?: string }>
     clearExecutionLogs: (scriptId?: string) => Promise<{ success: boolean; message?: string }>
+  }
+  updater: {
+    check: () => Promise<UpdaterCheckResult>
+    download: () => Promise<{ success: boolean; message?: string }>
+    install: () => Promise<{ success: boolean }>
+    getStatus: () => Promise<UpdaterStatus>
+    onEvent: (callback: (event: UpdaterEvent) => void) => () => void
   }
 }

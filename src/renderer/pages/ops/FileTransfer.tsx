@@ -101,6 +101,9 @@ const langForFile = (name: string): string => {
 // 并发数存储 key（本地持久化）
 const CONCURRENCY_KEY = 'fileTransferConcurrency'
 
+// 大文件阈值：超过 5MB 禁用语法高亮/校验，避免 Monaco 与大 JSON/YAML parse 卡顿
+const LARGE_FILE_LIMIT = 5 * 1024 * 1024
+
 type DirEntryType = 'dir' | 'link' | 'file'
 interface DirEntry {
   name: string
@@ -541,9 +544,10 @@ const FileTransfer: React.FC = () => {
   // 保存编辑器内容
   const saveEditor = async () => {
     if (!editor) return
-    // JSON / YAML 文件保存前本地语法检查（Monaco 标记 + parse 兜底）
+    // JSON / YAML 文件保存前本地语法检查（Monaco 标记 + parse 兜底；大文件跳过避免卡顿）
     const lang = langForFile(editor.name)
-    if (lang === 'json') {
+    const isLargeFile = editorContent.length > LARGE_FILE_LIMIT
+    if (lang === 'json' && !isLargeFile) {
       try {
         JSON.parse(editorContent)
       } catch (e) {
@@ -551,7 +555,7 @@ const FileTransfer: React.FC = () => {
         return
       }
     }
-    if (lang === 'yaml') {
+    if (lang === 'yaml' && !isLargeFile) {
       try {
         yaml.load(editorContent)
       } catch (e) {
@@ -859,13 +863,17 @@ const FileTransfer: React.FC = () => {
         {editorLoading ? <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div> : (
           <Editor
             height="420px"
-            language={editor ? langForFile(editor.name) : 'plaintext'}
+            // 大文件关闭语法高亮（Monaco 对超大文本的 tokenize 会卡顿），仅保留纯文本编辑
+            language={editor ? (editorContent.length > LARGE_FILE_LIMIT ? 'plaintext' : langForFile(editor.name)) : 'plaintext'}
             value={editorContent}
             onChange={(v) => setEditorContent(v || '')}
             onMount={(ed) => {
-              // YAML 实时语法检查：编辑过程中即时标错（保存按钮侧另有兜底拦截）
-              validateYamlModel(ed)
-              ed.getModel()?.onDidChangeContent(() => validateYamlModel(ed))
+              // YAML 实时语法检查：编辑过程中即时标错（保存按钮侧另有兜底拦截；大文件跳过）
+              const isLarge = ed.getValue().length > LARGE_FILE_LIMIT
+              if (!isLarge) validateYamlModel(ed)
+              ed.getModel()?.onDidChangeContent(() => {
+                if (ed.getValue().length <= LARGE_FILE_LIMIT) validateYamlModel(ed)
+              })
             }}
             theme={document.documentElement.getAttribute('data-theme') === 'dark' ? 'vs-dark' : 'light'}
             options={{

@@ -696,18 +696,31 @@ class SSHService {
           resolve({ success: false, message: err.message })
           return
         }
-        sftp.readFile(remotePath, (readErr, data) => {
-          sftp.end()
-          if (readErr) {
-            log.error(`SFTP readFile error: ${readErr.message}`)
-            resolve({ success: false, message: readErr.message })
+        sftp.stat(remotePath, (statErr, stats) => {
+          if (statErr) {
+            sftp.end()
+            resolve({ success: false, message: statErr.message })
             return
           }
-          try {
-            resolve({ success: true, content: (data as Buffer).toString('utf-8') })
-          } catch (e) {
-            resolve({ success: false, message: (e as Error).message })
+          // 超 50MB 拒绝：避免大文件一次性读入内存导致卡顿/崩溃
+          if (stats.size > 50 * 1024 * 1024) {
+            sftp.end()
+            resolve({ success: false, message: '文件超过 50MB，请使用终端处理' })
+            return
           }
+          sftp.readFile(remotePath, (readErr, data) => {
+            sftp.end()
+            if (readErr) {
+              log.error(`SFTP readFile error: ${readErr.message}`)
+              resolve({ success: false, message: readErr.message })
+              return
+            }
+            try {
+              resolve({ success: true, content: (data as Buffer).toString('utf-8') })
+            } catch (e) {
+              resolve({ success: false, message: (e as Error).message })
+            }
+          })
         })
       })
     })

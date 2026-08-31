@@ -13,7 +13,8 @@ import type {
   AlertSeverity, AlertStatus, NotifyChannel, AlertRule, AlertHistoryEntry, AlertRuleFormData,
   AlertStats, ScheduledTaskType, ScheduledTask, ScheduledTaskFormData, ContainerHealthStatus, AppHealthStatus,
   HealthCheckConfig, HealthCheckHistoryRecord, HealthCheckReport, HealthCheckConfigFormData, ResourceMetricRow, ResourceMetricsQuery,
-  MetricsSummary, ResourceMetricsResult, ElectronAPI
+  MetricsSummary, ResourceMetricsResult, ElectronAPI,
+  UpdaterCheckResult, UpdaterEvent, UpdaterStatus
 } from '../renderer/types/electron-api'
 
 export * from '../renderer/types/electron-api'
@@ -361,6 +362,19 @@ const electronAPI: ElectronAPI = {
     getExecutionLogs: (scriptId?: string, limit?: number): Promise<ShellScriptExecutionLog[]> => ipcRenderer.invoke('shellScript:getExecutionLogs', scriptId, limit),
     deleteExecutionLog: (logId: string): Promise<{ success: boolean; message?: string }> => ipcRenderer.invoke('shellScript:deleteExecutionLog', logId),
     clearExecutionLogs: (scriptId?: string): Promise<{ success: boolean; message?: string }> => ipcRenderer.invoke('shellScript:clearExecutionLogs', scriptId)
+  },
+  updater: {
+    check: (): Promise<UpdaterCheckResult> => ipcRenderer.invoke('update:check'),
+    download: (): Promise<{ success: boolean; message?: string }> => ipcRenderer.invoke('update:download'),
+    install: (): Promise<{ success: boolean }> => ipcRenderer.invoke('update:install'),
+    getStatus: (): Promise<UpdaterStatus> => ipcRenderer.invoke('update:getStatus'),
+    onEvent: (callback: (event: UpdaterEvent) => void): (() => void) => {
+      const listener = (_: unknown, event: UpdaterEvent): void => callback(event)
+      ipcRenderer.on('updater:event', listener)
+      return () => {
+        ipcRenderer.removeListener('updater:event', listener)
+      }
+    }
   }
 }
 

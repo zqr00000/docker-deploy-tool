@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Card, Button, message, Typography, Space, Modal, Row, Col, Segmented } from 'antd'
+import { Card, Button, message, Typography, Space, Modal, Row, Col, Segmented, Progress, Tag, Divider } from 'antd'
 import {
   ExportOutlined,
   ImportOutlined,
@@ -7,14 +7,24 @@ import {
   BgColorsOutlined,
   GlobalOutlined,
   InfoCircleOutlined,
-  CheckOutlined
+  CheckOutlined,
+  SyncOutlined,
+  RocketOutlined
 } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import i18n from '../../i18n'
+import type { UpdateReleaseInfo, UpdateProgressInfo, UpdaterStatus, UpdaterEvent } from '../../types/electron-api'
 
 const { Title, Text, Paragraph } = Typography
 
 type ThemeMode = 'system' | 'dark' | 'light'
+
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 MB'
+  const mb = bytes / (1024 * 1024)
+  if (mb >= 1) return `${mb.toFixed(1)} MB`
+  return `${(bytes / 1024).toFixed(0)} KB`
+}
 
 // 主题预览组件
 const ThemePreview: React.FC<{ mode: ThemeMode }> = ({ mode }) => {
@@ -42,10 +52,117 @@ const Settings: React.FC = () => {
   const [exportLoading, setExportLoading] = useState(false)
   const [importLoading, setImportLoading] = useState(false)
   const [currentTheme, setCurrentTheme] = useState<ThemeMode>('system')
+  const [version, setVersion] = useState('')
+  const [checking, setChecking] = useState(false)
+  const [updateInfo, setUpdateInfo] = useState<UpdateReleaseInfo | null>(null)
+  const [progress, setProgress] = useState<UpdateProgressInfo | null>(null)
+  const [updateStatus, setUpdateStatus] = useState<UpdaterStatus>('idle')
 
   useEffect(() => {
     setCurrentTheme((localStorage.getItem('themeMode') as ThemeMode) || 'system')
   }, [])
+
+  // ==================== 自动更新 ====================
+  useEffect(() => {
+    window.electronAPI.getAppVersion().then(setVersion)
+    window.electronAPI.updater.getStatus().then(setUpdateStatus)
+
+    const unsubscribe = window.electronAPI.updater.onEvent((event: UpdaterEvent) => {
+      logUpdaterEvent(event)
+      switch (event.type) {
+        case 'checking':
+          setUpdateStatus('checking')
+          break
+        case 'available':
+          setUpdateInfo(event.info)
+          setUpdateStatus('idle')
+          break
+        case 'not-available':
+          setUpdateStatus('idle')
+          break
+        case 'progress':
+          setProgress(event.progress)
+          setUpdateStatus('downloading')
+          break
+        case 'downloaded':
+          setProgress(null)
+          setUpdateStatus('downloaded')
+          message.success(t('settings.updater.downloadedReady'))
+          break
+        case 'error':
+          setUpdateStatus('error')
+          message.error(`${t('settings.updater.checkFailed')}: ${event.message}`)
+          break
+      }
+    })
+    return () => unsubscribe()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // 更新过程日志（主进程 electron-log 已持久化，此处仅控制台跟踪）
+  const logUpdaterEvent = (event: UpdaterEvent): void => {
+    switch (event.type) {
+      case 'progress':
+        console.log(`[updater] ${event.progress.percent.toFixed(1)}% (${formatBytes(event.progress.transferred)}/${formatBytes(event.progress.total)})`)
+        break
+      case 'available':
+        console.log(`[updater] available: v${event.info.version}`)
+        break
+      case 'error':
+        console.error(`[updater] error: ${event.message}`)
+        break
+      default:
+        console.log(`[updater] ${event.type}`)
+    }
+  }
+
+  const handleCheckUpdate = async () => {
+    try {
+      setChecking(true)
+      console.log('[updater] manual check started')
+      const result = await window.electronAPI.updater.check()
+      console.log(`[updater] check result: hasUpdate=${result.hasUpdate}, version=${result.version}, message=${result.message || '-'}`)
+      if (result.hasUpdate) {
+        setUpdateInfo({
+          version: result.version || '',
+          releaseNotes: result.releaseNotes,
+          releaseDate: result.releaseDate
+        })
+        message.success(t('settings.updater.newVersionFound', { version: result.version }))
+      } else if (result.message) {
+        message.warning(result.message)
+      } else {
+        message.info(t('settings.updater.latestVersion'))
+      }
+    } catch (error) {
+      console.error('[updater] check failed:', error)
+      message.error(`${t('settings.updater.checkFailed')}: ${(error as Error).message}`)
+    } finally {
+      setChecking(false)
+    }
+  }
+
+  const handleDownloadUpdate = async () => {
+    setUpdateStatus('downloading')
+    setProgress({ percent: 0, transferred: 0, total: 0, bytesPerSecond: 0 })
+    console.log('[updater] download started')
+    const result = await window.electronAPI.updater.download()
+    if (!result.success) {
+      setUpdateStatus('error')
+      console.error(`[updater] download failed: ${result.message}`)
+      message.error(result.message)
+    }
+  }
+
+  const handleInstallUpdate = () => {
+    Modal.confirm({
+      title: t('settings.updater.restartConfirmTitle'),
+      content: t('settings.updater.restartConfirmContent'),
+      okText: t('common.confirm'),
+      cancelText: t('common.cancel'),
+      onOk: () => window.electronAPI.updater.install()
+    })
+  }
 
   const applyTheme = (mode: ThemeMode) => {
     const root = document.documentElement
@@ -256,7 +373,7 @@ const Settings: React.FC = () => {
           </Card>
         </Col>
 
-        {/* About */}
+        {/* About & Updates */}
         <Col xs={24} md={12}>
           <Card title={
             <span style={{ fontWeight: 600 }}>
@@ -264,14 +381,93 @@ const Settings: React.FC = () => {
               {t('app.title')}
             </span>
           }>
-            <Space direction="vertical" size="small">
-              <Text>
-                <strong>{t('app.title')}</strong>
-              </Text>
-              <Text type="secondary">YunDuo</Text>
-              <Text type="secondary" style={{ fontSize: 12 }}>
-                v1.0.0
-              </Text>
+            <Space direction="vertical" size="small" style={{ width: '100%' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Space size="small">
+                  <Text><strong>{t('app.title')}</strong></Text>
+                  <Text type="secondary">YunDuo</Text>
+                </Space>
+                <Tag color="blue" style={{ marginRight: 0 }}>v{version || '...'}</Tag>
+              </div>
+
+              <Divider style={{ margin: '4px 0' }} />
+
+              <Space wrap>
+                <Button
+                  icon={<SyncOutlined />}
+                  onClick={handleCheckUpdate}
+                  loading={checking}
+                >
+                  {t('settings.updater.checkUpdate')}
+                </Button>
+                {updateInfo && updateStatus !== 'downloaded' && (
+                  <Button
+                    type="primary"
+                    icon={<RocketOutlined />}
+                    onClick={handleDownloadUpdate}
+                    loading={updateStatus === 'downloading'}
+                  >
+                    {t('settings.updater.downloadUpdate')}
+                  </Button>
+                )}
+                {updateStatus === 'downloaded' && (
+                  <Button
+                    type="primary"
+                    icon={<RocketOutlined />}
+                    onClick={handleInstallUpdate}
+                  >
+                    {t('settings.updater.installNow')}
+                  </Button>
+                )}
+              </Space>
+
+              {updateInfo && updateStatus !== 'downloaded' && (
+                <Space direction="vertical" size={4} style={{ width: '100%' }}>
+                  <Text>
+                    <Tag color="orange" style={{ marginRight: 4 }}>v{updateInfo.version}</Tag>
+                    {t('settings.updater.newVersionFound', { version: updateInfo.version })}
+                  </Text>
+                  {updateInfo.releaseDate && (
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      {t('settings.updater.releaseDate')}: {new Date(updateInfo.releaseDate).toLocaleString()}
+                    </Text>
+                  )}
+                  {updateInfo.releaseNotes && (
+                    <div
+                      style={{
+                        maxHeight: 160,
+                        overflow: 'auto',
+                        padding: '8px 12px',
+                        borderRadius: 8,
+                        background: 'var(--bg-secondary, rgba(128, 128, 128, 0.08))'
+                      }}
+                    >
+                      <Text strong style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
+                        {t('settings.updater.releaseNotes')}
+                      </Text>
+                      <Paragraph style={{ whiteSpace: 'pre-wrap', marginBottom: 0, fontSize: 12 }}>
+                        {updateInfo.releaseNotes}
+                      </Paragraph>
+                    </div>
+                  )}
+                </Space>
+              )}
+
+              {updateStatus === 'downloading' && progress && (
+                <div style={{ width: '100%' }}>
+                  <Progress percent={Math.min(100, Math.round(progress.percent))} size="small" />
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    {t('settings.updater.downloading')} · {formatBytes(progress.transferred)} / {formatBytes(progress.total)} · {formatBytes(progress.bytesPerSecond)}/s
+                  </Text>
+                </div>
+              )}
+
+              {updateStatus === 'downloaded' && (
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  <CheckOutlined style={{ color: '#34C759', marginRight: 4 }} />
+                  {t('settings.updater.downloadedReady')}
+                </Text>
+              )}
             </Space>
           </Card>
         </Col>

@@ -14,6 +14,29 @@ import { useTranslation } from 'react-i18next'
 
 const { Text } = Typography
 
+// 日志级别高亮规则：识别 FATAL/ERROR/WARN/INFO/DEBUG/TRACE 等关键词（模块级常量，避免每次渲染重新创建）
+const LOG_LEVEL_RE = /(FATAL|SEVERE|ERROR|ERR|WARN|WARNING|INFO|NOTICE|DEBUG|TRACE|VERBOSE|SUCCESS|OK)/gi
+const logLevelColor = (level: string): string => {
+  const l = level.toUpperCase()
+  if (/(FATAL|SEVERE|ERROR|ERR)/.test(l)) return '#ff6b6b' // 红色：致命/错误
+  if (/(WARN|WARNING)/.test(l)) return '#ffc107' // 橙黄：警告
+  if (/(INFO|NOTICE|SUCCESS|OK)/.test(l)) return '#52c7ff' // 蓝色：信息
+  return '#8b949e' // 灰色：调试
+}
+
+// 单行日志高亮：按行拆分（流式日志只重渲染变化行，避免整段文本反复 split 卡顿）
+const renderLogLine = (line: string, keyIndex: number): React.ReactNode => {
+  const parts = line.split(LOG_LEVEL_RE)
+  if (parts.length <= 1) return line
+  return parts.map((part, i) =>
+    i % 2 === 1 ? (
+      <span key={`${keyIndex}-${i}`} style={{ color: logLevelColor(part), fontWeight: 600 }}>
+        {part}
+      </span>
+    ) : part
+  )
+}
+
 interface ContainerInfo {
   id: string
   name: string
@@ -48,7 +71,6 @@ const LogViewer: React.FC<LogViewerProps> = ({
 }) => {
   const { t } = useTranslation()
   const [selectedContainer, setSelectedContainer] = useState<string | null>(defaultContainerId || null)
-  const [logs, setLogs] = useState<string>('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [lines, setLines] = useState(defaultLines)
@@ -69,36 +91,10 @@ const LogViewer: React.FC<LogViewerProps> = ({
     return logLines.filter(line => line.toLowerCase().includes(lowerFilter))
   }, [logLines, filterText])
 
-  // 日志级别高亮：识别 FATAL/ERROR/WARN/INFO/DEBUG/TRACE 等关键词
-  const LOG_LEVEL_RE = /(FATAL|SEVERE|ERROR|ERR|WARN|WARNING|INFO|NOTICE|DEBUG|TRACE|VERBOSE|SUCCESS|OK)/gi
-  const logLevelColor = (level: string): string => {
-    const l = level.toUpperCase()
-    if (/(FATAL|SEVERE|ERROR|ERR)/.test(l)) return '#ff6b6b' // 红色：致命/错误
-    if (/(WARN|WARNING)/.test(l)) return '#ffc107' // 橙黄：警告
-    if (/(INFO|NOTICE|SUCCESS|OK)/.test(l)) return '#52c7ff' // 蓝色：信息
-    return '#8b949e' // 灰色：调试
-  }
-  const highlightedLogs = useMemo(() => {
-    if (!logs) return null
-    const parts = logs.split(LOG_LEVEL_RE)
-    if (parts.length <= 1) return logs
-    return parts.map((part, i) => {
-      // split 带捕获组时，奇数索引是匹配到的级别词
-      if (i % 2 === 1) {
-        return (
-          <span key={i} style={{ color: logLevelColor(part), fontWeight: 600 }}>
-            {part}
-          </span>
-        )
-      }
-      return part
-    })
-  }, [logs])
-
   // 获取日志（非流式）
   const fetchLogs = useCallback(async () => {
     if (!selectedContainer || !serverId) {
-      setLogs('')
+      setLogLines([])
       return
     }
 
@@ -109,7 +105,6 @@ const LogViewer: React.FC<LogViewerProps> = ({
       const logsData = await window.electronAPI.app.getContainerLogs(serverId, selectedContainer, lines)
       const newLines = logsData ? logsData.split('\n').filter(l => l.trim()) : []
       setLogLines(newLines)
-      setLogs(logsData || t('app.logs.noLogs'))
     } catch (err) {
       setError((err as Error).message)
     } finally {
@@ -130,7 +125,6 @@ const LogViewer: React.FC<LogViewerProps> = ({
     setLoading(true)
     setError(null)
     setLogLines([])
-    setLogs('')
 
     const streamId = `${serverId}:${selectedContainer}`
     streamIdRef.current = streamId
@@ -202,14 +196,11 @@ const LogViewer: React.FC<LogViewerProps> = ({
     }
   }, [])
 
-  // 更新 logs 字符串
-  useEffect(() => {
-    if (filterText) {
-      setLogs(filteredLogs.join('\n'))
-    } else {
-      setLogs(logLines.join('\n'))
-    }
-  }, [logLines, filteredLogs, filterText])
+  // 当前展示文本（按需拼接：仅复制/下载时执行，避免每次日志更新都全量 join 卡顿）
+  const currentLogsText = useMemo(
+    () => (filterText ? filteredLogs : logLines).join('\n'),
+    [logLines, filteredLogs, filterText]
+  )
 
   // 初始加载
   useEffect(() => {
@@ -247,12 +238,11 @@ const LogViewer: React.FC<LogViewerProps> = ({
     if (autoScroll && logsRef.current) {
       logsRef.current.scrollTop = logsRef.current.scrollHeight
     }
-  }, [logs, autoScroll])
+  }, [logLines, autoScroll])
 
   // 处理容器切换
   const handleContainerChange = (value: string) => {
     setSelectedContainer(value)
-    setLogs('')
     setLogLines([])
     setIsFollowing(false)
     setIsStreaming(false)
@@ -278,7 +268,7 @@ const LogViewer: React.FC<LogViewerProps> = ({
   // 复制日志
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(logs)
+      await navigator.clipboard.writeText(currentLogsText)
       message.success(t('app.logs.copySuccess'))
     } catch {
       message.error(t('app.logs.copyFailed'))
@@ -287,7 +277,7 @@ const LogViewer: React.FC<LogViewerProps> = ({
 
   // 下载日志
   const handleDownload = () => {
-    const blob = new Blob([logs], { type: 'text/plain' })
+    const blob = new Blob([currentLogsText], { type: 'text/plain' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -300,7 +290,6 @@ const LogViewer: React.FC<LogViewerProps> = ({
 
   // 清空日志
   const handleClear = () => {
-    setLogs('')
     setLogLines([])
   }
 
@@ -415,13 +404,13 @@ const LogViewer: React.FC<LogViewerProps> = ({
             />
           </Tooltip>
           <Tooltip title={t('app.logs.copy')}>
-            <Button icon={<CopyOutlined />} onClick={handleCopy} disabled={!logs} />
+            <Button icon={<CopyOutlined />} onClick={handleCopy} disabled={logLines.length === 0} />
           </Tooltip>
           <Tooltip title={t('app.logs.download')}>
-            <Button icon={<DownloadOutlined />} onClick={handleDownload} disabled={!logs} />
+            <Button icon={<DownloadOutlined />} onClick={handleDownload} disabled={logLines.length === 0} />
           </Tooltip>
           <Tooltip title={t('app.logs.clear')}>
-            <Button icon={<ClearOutlined />} onClick={handleClear} disabled={!logs} />
+            <Button icon={<ClearOutlined />} onClick={handleClear} disabled={logLines.length === 0} />
           </Tooltip>
         </Space>
       }
@@ -478,7 +467,7 @@ const LogViewer: React.FC<LogViewerProps> = ({
         </Space>
       </div>
 
-      {/* 日志内容 */}
+      {/* 日志内容（按行渲染 + content-visibility，大日志滚动不卡） */}
       <pre
         ref={logsRef}
         style={{
@@ -495,7 +484,23 @@ const LogViewer: React.FC<LogViewerProps> = ({
           wordBreak: 'break-all'
         }}
       >
-        {loading && !logs ? t('common.loading') : highlightedLogs || t('app.logs.noLogs')}
+        {loading && logLines.length === 0 ? t('common.loading') : logLines.length === 0 ? t('app.logs.noLogs') : (
+          <div style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 20px' }}>
+            {filteredLogs.map((line, i) => (
+              <div
+                key={i}
+                style={{
+                  contentVisibility: 'auto',
+                  containIntrinsicSize: 'auto 19px',
+                  minHeight: 19,
+                  lineHeight: 1.6
+                }}
+              >
+                {renderLogLine(line, i)}
+              </div>
+            ))}
+          </div>
+        )}
       </pre>
     </Card>
   )

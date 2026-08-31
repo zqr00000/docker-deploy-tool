@@ -25,6 +25,7 @@ import { schedulerService } from './services/scheduler'
 import { healthCheckService } from './services/health-check'
 import { resourceReportsService } from './services/resource-reports'
 import { shellScriptService } from './services/shell-scripts'
+import { initUpdater } from './services/updater'
 import { createAIModel } from './services/ai-model'
 
 log.transports.file.level = 'info'
@@ -102,6 +103,7 @@ app.whenReady().then(() => {
   initDefaultTemplates()
   initDefaultShellScripts()
   registerIpcHandlers()
+  initUpdater()
   schedulerService.initialize()
 
   createWindow()
@@ -1736,11 +1738,11 @@ function registerIpcHandlers(): void {
     }
   })
 
-  // 读取本地文件（文本，超 2MB 拒绝）
+  // 读取本地文件（文本，超 50MB 拒绝：避免大文件读入内存导致卡顿/崩溃）
   ipcMain.handle('fileTrans:readLocal', async (_, filePath: string) => {
     try {
       const stat = fs.statSync(filePath)
-      if (stat.size > 2 * 1024 * 1024) return { success: false, message: '文件超过 2MB，请使用终端处理' }
+      if (stat.size > 50 * 1024 * 1024) return { success: false, message: '文件超过 50MB，请使用终端处理' }
       return { success: true, content: fs.readFileSync(filePath, 'utf-8') }
     } catch (error) {
       log.error('fileTrans:readLocal error:', error)

@@ -601,7 +601,22 @@
     "configImportSuccess": "配置导入成功",
     "configImportFailed": "配置导入失败",
     "configImportConfirmTitle": "确认导入配置",
-    "configImportConfirmContent": "导入配置将覆盖现有的同名服务器、模板和应用。此操作不可撤销，是否继续？"
+    "configImportConfirmContent": "导入配置将覆盖现有的同名服务器、模板和应用。此操作不可撤销，是否继续？",
+    "updater": {
+      "checkUpdate": "检查更新",
+      "currentVersion": "当前版本",
+      "newVersionFound": "发现新版本 v{{version}}",
+      "latestVersion": "当前已是最新版本",
+      "downloadUpdate": "下载更新",
+      "downloading": "正在下载更新",
+      "downloadedReady": "更新包下载完成，可重启安装",
+      "installNow": "立即重启安装",
+      "restartConfirmTitle": "安装更新",
+      "restartConfirmContent": "应用将退出并运行安装程序，安装完成后自动重启。是否继续？",
+      "checkFailed": "检查更新失败",
+      "releaseNotes": "更新日志",
+      "releaseDate": "发布日期"
+    }
   },
   "serverGroup": {
     "title": "服务器分组管理",
