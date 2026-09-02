@@ -47,10 +47,12 @@ class SSHService {
   private maxConcurrentCommands = 5
   private commandQueues: Map<string, Array<() => void>> = new Map()
   private activeCommands: Map<string, number> = new Map()
-  private maxReconnectAttempts = 3
+  private maxReconnectAttempts = 10
   private reconnectDelayBase = 2000
   private healthCheckInterval = 60000
-  private idleTimeout = 300000 // 5 minutes idle timeout
+  // 空闲超时：连接有 SSH keepalive(30s) + 健康检查(60s) 双保活，lastActivity 持续刷新，
+  // 正常情况下不会触发。仅当长时间既无命令也无健康检查心跳时才回收，避免误断活跃连接。
+  private idleTimeout = 1800000 // 30 minutes idle timeout
   private maxConnections = 20 // Maximum concurrent connections
   private idleCheckInterval = 60000 // Check idle connections every minute
   private idleCheckTimer?: NodeJS.Timeout
