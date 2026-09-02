@@ -2,6 +2,8 @@ import { Client, ConnectConfig } from 'ssh2'
 import log from 'electron-log'
 import { randomUUID } from 'crypto'
 import { readFileSync, existsSync } from 'fs'
+import { promises as fsp } from 'fs'
+import path from 'path'
 
 // 远端目录条目（XFTP 式浏览用）
 export interface RemoteDirEntry {
@@ -815,6 +817,202 @@ class SSHService {
             sftp.end()
             resolve({ success: false, message: 'Unknown op' })
         }
+      })
+    })
+  }
+
+  /**
+   * 递归上传本地目录/文件到远端（SFTP）。
+   * 自动创建远端目录结构；onFile 在每个文件开始/完成时回调（用于前端进度展示）。
+   */
+  async uploadPathRecursive(
+    serverId: string,
+    localPath: string,
+    remotePath: string,
+    onFile?: (info: { local: string; remote: string; status: 'start' | 'done' | 'error'; message?: string }) => void
+  ): Promise<{ success: boolean; message: string; fileCount: number }> {
+    const entry = this.connections.get(serverId)
+    if (!entry || !entry.authenticated) {
+      return { success: false, message: 'Not connected to server', fileCount: 0 }
+    }
+    if (!existsSync(localPath)) {
+      return { success: false, message: `Local path not found: ${localPath}`, fileCount: 0 }
+    }
+
+    return new Promise((resolve) => {
+      entry.client.sftp((err, sftp) => {
+        if (err) {
+          log.error(`SFTP connection error: ${err.message}`)
+          resolve({ success: false, message: err.message, fileCount: 0 })
+          return
+        }
+
+        let fileCount = 0
+        let failed = 0
+        let firstError: string | undefined
+
+        const ensureRemoteDir = (dir: string): Promise<void> => {
+          return new Promise((res) => {
+            sftp.stat(dir, (statErr) => {
+              if (!statErr) return res()
+              // 目录不存在：递归确保父级后创建
+              const parent = path.posix.dirname(dir)
+              if (parent === dir) return res()
+              ensureRemoteDir(parent).then(() => {
+                sftp.mkdir(dir, (mkdirErr) => {
+                  if (mkdirErr && !(mkdirErr as any).code?.includes('EXISTS')) {
+                    log.warn(`SFTP mkdir ${dir}: ${mkdirErr.message}`)
+                  }
+                  res()
+                })
+              })
+            })
+          })
+        }
+
+        const uploadOne = (l: string, r: string): Promise<void> => {
+          return new Promise((res) => {
+            onFile?.({ local: l, remote: r, status: 'start' })
+            sftp.fastPut(l, r, (putErr) => {
+              if (putErr) {
+                failed++
+                if (!firstError) firstError = putErr.message
+                onFile?.({ local: l, remote: r, status: 'error', message: putErr.message })
+                log.error(`SFTP fastPut ${r}: ${putErr.message}`)
+              } else {
+                fileCount++
+                onFile?.({ local: l, remote: r, status: 'done' })
+              }
+              res()
+            })
+          })
+        }
+
+        // 递归遍历本地目录
+        const walk = async (localDir: string, remoteDir: string): Promise<void> => {
+          let items
+          try {
+            items = await fsp.readdir(localDir, { withFileTypes: true })
+          } catch (e) {
+            failed++
+            if (!firstError) firstError = (e as Error).message
+            return
+          }
+          for (const item of items) {
+            const l = path.join(localDir, item.name)
+            const r = path.posix.join(remoteDir, item.name)
+            if (item.isDirectory()) {
+              await ensureRemoteDir(r)
+              await walk(l, r)
+            } else if (item.isFile()) {
+              await uploadOne(l, r)
+            }
+          }
+        }
+
+        ensureRemoteDir(remotePath).then(async () => {
+          const st = await fsp.stat(localPath)
+          if (st.isDirectory()) {
+            await walk(localPath, remotePath)
+          } else {
+            await uploadOne(localPath, remotePath)
+          }
+          sftp.end()
+          resolve({ success: failed === 0, message: firstError || `上传完成，共 ${fileCount} 个文件`, fileCount })
+        })
+      })
+    })
+  }
+
+  /**
+   * 递归下载远端目录/文件到本地（SFTP）。
+   * 自动创建本地目录结构；onFile 在每个文件开始/完成时回调。
+   */
+  async downloadPathRecursive(
+    serverId: string,
+    remotePath: string,
+    localPath: string,
+    onFile?: (info: { local: string; remote: string; status: 'start' | 'done' | 'error'; message?: string }) => void
+  ): Promise<{ success: boolean; message: string; fileCount: number }> {
+    const entry = this.connections.get(serverId)
+    if (!entry || !entry.authenticated) {
+      return { success: false, message: 'Not connected to server', fileCount: 0 }
+    }
+
+    return new Promise((resolve) => {
+      entry.client.sftp((err, sftp) => {
+        if (err) {
+          log.error(`SFTP connection error: ${err.message}`)
+          resolve({ success: false, message: err.message, fileCount: 0 })
+          return
+        }
+
+        let fileCount = 0
+        let failed = 0
+        let firstError: string | undefined
+
+        const ensureLocalDir = async (dir: string): Promise<void> => {
+          await fsp.mkdir(dir, { recursive: true })
+        }
+
+        const downloadOne = (r: string, l: string): Promise<void> => {
+          return new Promise((res) => {
+            onFile?.({ local: l, remote: r, status: 'start' })
+            sftp.fastGet(r, l, (getErr) => {
+              if (getErr) {
+                failed++
+                if (!firstError) firstError = getErr.message
+                onFile?.({ local: l, remote: r, status: 'error', message: getErr.message })
+                log.error(`SFTP fastGet ${r}: ${getErr.message}`)
+              } else {
+                fileCount++
+                onFile?.({ local: l, remote: r, status: 'done' })
+              }
+              res()
+            })
+          })
+        }
+
+        // 递归遍历远端目录
+        const walk = async (remoteDir: string, localDir: string): Promise<void> => {
+          const list: { filename: string; attrs: { isDirectory(): boolean } }[] = await new Promise((res) => {
+            sftp.readdir(remoteDir, (readErr, items) => {
+              if (readErr) {
+                res([])
+                return
+              }
+              res((items || []) as any)
+            })
+          })
+          for (const item of list) {
+            if (!item.filename || item.filename === '.' || item.filename === '..') continue
+            const r = path.posix.join(remoteDir, item.filename)
+            const l = path.join(localDir, item.filename)
+            if (item.attrs.isDirectory()) {
+              await ensureLocalDir(l)
+              await walk(r, l)
+            } else {
+              await downloadOne(r, l)
+            }
+          }
+        }
+
+        sftp.stat(remotePath, async (statErr, st) => {
+          if (statErr) {
+            sftp.end()
+            resolve({ success: false, message: statErr.message, fileCount: 0 })
+            return
+          }
+          if (st.isDirectory()) {
+            await ensureLocalDir(localPath)
+            await walk(remotePath, localPath)
+          } else {
+            await ensureLocalDir(path.dirname(localPath))
+            await downloadOne(remotePath, localPath)
+          }
+          sftp.end()
+          resolve({ success: failed === 0, message: firstError || `下载完成，共 ${fileCount} 个文件`, fileCount })
+        })
       })
     })
   }

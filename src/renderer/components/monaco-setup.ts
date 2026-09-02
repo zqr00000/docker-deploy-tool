@@ -1,11 +1,44 @@
 // Monaco 本地化配置：使用随应用打包的 monaco-editor（离线可用），而非从 CDN 加载
-import * as monaco from 'monaco-editor'
+// 按需引入：只加载编辑器核心 + 常用语言语法高亮，避免全量 editor.main 带来的巨大体积
+import * as monaco from 'monaco-editor/esm/vs/editor/editor.api.js'
 import { loader } from '@monaco-editor/react'
 
 import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker.js?worker'
+import JsonWorker from 'monaco-editor/esm/vs/language/json/json.worker.js?worker'
+
+// ==================== 按需加载语言语法高亮（basic-languages） ====================
+// 保持与 FileTransfer.tsx 的 langForFile 映射一致，覆盖全部可能打开的文件类型
+import 'monaco-editor/esm/vs/languages/definitions/shell/register.js'
+import 'monaco-editor/esm/vs/languages/definitions/ini/register.js'
+import 'monaco-editor/esm/vs/languages/definitions/yaml/register.js'
+import 'monaco-editor/esm/vs/languages/definitions/javascript/register.js'
+import 'monaco-editor/esm/vs/languages/definitions/typescript/register.js'
+import 'monaco-editor/esm/vs/languages/definitions/python/register.js'
+import 'monaco-editor/esm/vs/languages/definitions/markdown/register.js'
+import 'monaco-editor/esm/vs/languages/definitions/sql/register.js'
+import 'monaco-editor/esm/vs/languages/definitions/java/register.js'
+import 'monaco-editor/esm/vs/languages/definitions/go/register.js'
+import 'monaco-editor/esm/vs/languages/definitions/rust/register.js'
+import 'monaco-editor/esm/vs/languages/definitions/cpp/register.js'
+import 'monaco-editor/esm/vs/languages/definitions/php/register.js'
+import 'monaco-editor/esm/vs/languages/definitions/ruby/register.js'
+import 'monaco-editor/esm/vs/languages/definitions/swift/register.js'
+import 'monaco-editor/esm/vs/languages/definitions/kotlin/register.js'
+import 'monaco-editor/esm/vs/languages/definitions/lua/register.js'
+import 'monaco-editor/esm/vs/languages/definitions/dockerfile/register.js'
+import 'monaco-editor/esm/vs/languages/definitions/css/register.js'
+import 'monaco-editor/esm/vs/languages/definitions/less/register.js'
+import 'monaco-editor/esm/vs/languages/definitions/scss/register.js'
+import 'monaco-editor/esm/vs/languages/definitions/html/register.js'
+import 'monaco-editor/esm/vs/languages/definitions/xml/register.js'
+// JSON 语言（含语法高亮与校验）由语言服务提供，而非 basic-languages
+import 'monaco-editor/esm/vs/language/json/monaco.contribution.js'
 
 self.MonacoEnvironment = {
-  getWorker(): Worker {
+  getWorker(_moduleId: string, label: string): Worker {
+    if (label === 'json') {
+      return new JsonWorker()
+    }
     return new EditorWorker()
   }
 }

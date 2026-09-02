@@ -1,10 +1,11 @@
 import React, { useEffect, Suspense, lazy } from 'react'
-import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { HashRouter, Navigate } from 'react-router-dom'
 import { ConfigProvider, App as AntApp, theme, Spin } from 'antd'
 import { useTranslation } from 'react-i18next'
+import type { RouteObject } from 'react-router-dom'
 import LayoutComponent from './components/Layout'
 import ErrorBoundary from './components/ErrorBoundary'
-import PageTransition from './components/PageTransition'
+import KeepAliveRoutes from './components/KeepAliveRoutes'
 import { ServerProvider } from './context/ServerContext'
 import i18n from './i18n'
 
@@ -18,6 +19,7 @@ const AppDetail = lazy(() => import('./pages/deploy/AppDetail'))
 const Deploy = lazy(() => import('./pages/deploy/Deploy'))
 const BatchDeploy = lazy(() => import('./pages/deploy/BatchDeploy'))
 const Images = lazy(() => import('./pages/docker/Images'))
+const Containers = lazy(() => import('./pages/docker/Containers'))
 const Volumes = lazy(() => import('./pages/docker/Volumes'))
 const Networks = lazy(() => import('./pages/docker/Networks'))
 
@@ -41,6 +43,41 @@ const ShellScripts = lazy(() => import('./pages/ops/ShellScripts'))
 const FileTransfer = lazy(() => import('./pages/ops/FileTransfer'))
 
 type ThemeMode = 'system' | 'dark' | 'light'
+
+// 路由配置（供 KeepAliveRoutes 使用，保持页面状态缓存）
+const APP_ROUTES: RouteObject[] = [
+  { path: '/', element: <Navigate to="/dashboard" replace /> },
+  { path: '/dashboard', element: <Dashboard /> },
+  { path: '/servers', element: <ServerList /> },
+  { path: '/servers/:id', element: <ServerDetail /> },
+  { path: '/server-groups', element: <ServerGroups /> },
+  { path: '/templates', element: <Templates /> },
+  { path: '/apps', element: <Apps /> },
+  { path: '/apps/deploy', element: <Deploy /> },
+  { path: '/batch-deploy', element: <BatchDeploy /> },
+  { path: '/batch-operations', element: <BatchOperations /> },
+  { path: '/container-performance', element: <ContainerPerformance /> },
+  { path: '/backup-restore', element: <BackupRestore /> },
+  { path: '/security-scan', element: <SecurityScan /> },
+  { path: '/cicd', element: <CicdIntegration /> },
+  { path: '/agent-terminal', element: <AgentTerminal /> },
+  { path: '/apps/:id', element: <AppDetail /> },
+  { path: '/containers', element: <Containers /> },
+  { path: '/images', element: <Images /> },
+  { path: '/volumes', element: <Volumes /> },
+  { path: '/networks', element: <Networks /> },
+  { path: '/deploy-history', element: <DeployHistory /> },
+  { path: '/audit-logs', element: <AuditLog /> },
+  { path: '/alerts', element: <Alerts /> },
+  { path: '/scheduled-tasks', element: <ScheduledTasks /> },
+  { path: '/health-check', element: <HealthCheck /> },
+  { path: '/resource-reports', element: <ResourceReports /> },
+  { path: '/compose-editor', element: <ComposeEditor /> },
+  { path: '/shell-scripts', element: <ShellScripts /> },
+  { path: '/file-transfer', element: <FileTransfer /> },
+  { path: '/settings', element: <Settings /> },
+  { path: '/ai-model-config', element: <ModelConfig /> }
+]
 
 // 懒加载 fallback 组件 - Apple 风格加载动画
 const PageLoading: React.FC = () => (
@@ -190,41 +227,7 @@ const App: React.FC = () => {
             <HashRouter>
               <LayoutComponent>
                 <Suspense fallback={<PageLoading />}>
-                  <PageTransition>
-                    <Routes>
-                      <Route path="/" element={<Navigate to="/dashboard" replace />} />
-                      <Route path="/dashboard" element={<Dashboard />} />
-                      <Route path="/servers" element={<ServerList />} />
-                      <Route path="/servers/:id" element={<ServerDetail />} />
-                      <Route path="/server-groups" element={<ServerGroups />} />
-                      <Route path="/templates" element={<Templates />} />
-                      <Route path="/apps" element={<Apps />} />
-                      <Route path="/apps/deploy" element={<Deploy />} />
-                      <Route path="/batch-deploy" element={<BatchDeploy />} />
-                      <Route path="/batch-operations" element={<BatchOperations />} />
-                      <Route path="/container-performance" element={<ContainerPerformance />} />
-                      <Route path="/backup-restore" element={<BackupRestore />} />
-                      <Route path="/security-scan" element={<SecurityScan />} />
-                      <Route path="/cicd" element={<CicdIntegration />} />
-                      <Route path="/agent-terminal" element={<AgentTerminal />} />
-                      <Route path="/apps/:id" element={<AppDetail />} />
-                      <Route path="/images" element={<Images />} />
-                      <Route path="/volumes" element={<Volumes />} />
-                      <Route path="/networks" element={<Networks />} />
-
-                      <Route path="/deploy-history" element={<DeployHistory />} />
-                      <Route path="/audit-logs" element={<AuditLog />} />
-                      <Route path="/alerts" element={<Alerts />} />
-                      <Route path="/scheduled-tasks" element={<ScheduledTasks />} />
-                      <Route path="/health-check" element={<HealthCheck />} />
-                      <Route path="/resource-reports" element={<ResourceReports />} />
-                      <Route path="/compose-editor" element={<ComposeEditor />} />
-                      <Route path="/shell-scripts" element={<ShellScripts />} />
-                      <Route path="/file-transfer" element={<FileTransfer />} />
-                      <Route path="/settings" element={<Settings />} />
-                      <Route path="/ai-model-config" element={<ModelConfig />} />
-                    </Routes>
-                  </PageTransition>
+                  <KeepAliveRoutes routes={APP_ROUTES} />
                 </Suspense>
               </LayoutComponent>
             </HashRouter>

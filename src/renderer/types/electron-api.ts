@@ -883,6 +883,8 @@ export interface ElectronAPI {
     selectSavePath: (defaultName?: string) => Promise<{ success: boolean; canceled?: boolean; path?: string }>
     upload: (serverId: string, localPath: string, remotePath: string, taskId?: string) => Promise<{ success: boolean; message?: string }>
     download: (serverId: string, remotePath: string, localPath: string, taskId?: string) => Promise<{ success: boolean; message?: string }>
+    uploadPath: (serverId: string, localPath: string, remotePath: string, taskId?: string) => Promise<{ success: boolean; message?: string; fileCount?: number }>
+    downloadPath: (serverId: string, remotePath: string, localPath: string, taskId?: string) => Promise<{ success: boolean; message?: string; fileCount?: number }>
     listRemote: (serverId: string, remotePath: string) => Promise<{ success: boolean; entries?: Array<{ name: string; type: 'dir' | 'link' | 'file'; size: number; mtime: number; mode?: number }>; message?: string }>
     listLocal: (localPath: string) => Promise<{ success: boolean; entries?: Array<{ name: string; type: 'dir' | 'file'; size: number; mtime: number }>; message?: string }>
     homeLocal: () => Promise<{ success: boolean; path?: string; message?: string }>
@@ -894,6 +896,15 @@ export interface ElectronAPI {
     readRemote: (serverId: string, remotePath: string) => Promise<{ success: boolean; content?: string; message?: string }>
     writeRemote: (serverId: string, remotePath: string, content: string) => Promise<{ success: boolean; message?: string }>
     onProgress: (callback: (payload: { taskId: string; transferred: number; total: number }) => void) => () => void
+    onFileProgress: (callback: (payload: { taskId: string; local: string; remote: string; status: 'start' | 'done' | 'error'; message?: string }) => void) => () => void
+  }
+  container: {
+    getAll: (serverId: string) => Promise<ContainerInfo[]>
+    start: (serverId: string, containerId: string) => Promise<{ success: boolean; message?: string }>
+    stop: (serverId: string, containerId: string) => Promise<{ success: boolean; message?: string }>
+    restart: (serverId: string, containerId: string) => Promise<{ success: boolean; message?: string }>
+    remove: (serverId: string, containerId: string) => Promise<{ success: boolean; message?: string }>
+    getLogs: (serverId: string, containerId: string, lines?: number) => Promise<string>
   }
   logs: {
     start: (serverId: string, containerId: string, options?: { tail?: number; follow?: boolean }) => Promise<{ success: boolean; message?: string }>

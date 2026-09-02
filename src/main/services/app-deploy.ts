@@ -93,40 +93,49 @@ class AppDeployService {
     const dockerRes = await sshService.executeCommand(serverId, 'docker --version 2>/dev/null', 0, 500, 10000)
     const dockerVersion = dockerRes.success ? dockerRes.stdout.trim() : ''
 
-    // 优先检测 Compose V2 插件
+    // 优先检测 Compose V2 插件：要求命令真实可用（退出码 0）且输出确为 Compose 版本
     const v2Res = await sshService.executeCommand(
       serverId,
-      'docker compose version 2>/dev/null || docker compose --version 2>/dev/null',
+      'docker compose version 2>/dev/null; echo "EXIT:$?"',
       0,
       500,
       10000
     )
-    if (v2Res.success && v2Res.stdout.trim()) {
+    const v2Output = v2Res.stdout.trim()
+    const v2ExitMatch = v2Output.match(/EXIT:(\d+)/)
+    const v2Exit = v2ExitMatch ? Number(v2ExitMatch[1]) : -1
+    // docker compose version 正常输出形如 "Docker Compose version v2.x.y"；若为 0 但内容不含 compose 字样，视为 Docker 自身误回，跳过
+    const v2LooksValid = v2Exit === 0 && /compose/i.test(v2Output)
+    if (v2Res.success && v2LooksValid) {
       const info: ComposeEnvInfo = {
         type: 'v2',
         command: 'docker compose',
         dockerVersion,
-        composeVersion: this.parseComposeVersion(v2Res.stdout)
+        composeVersion: this.parseComposeVersion(v2Output)
       }
       this.composeEnvCache.set(serverId, { info, expiresAt: Date.now() + this.composeEnvCacheTtl })
       log.info(`Server ${serverId}: Docker Compose V2 detected (${info.composeVersion || 'unknown version'})`)
       return info
     }
 
-    // 再检测 Compose V1 独立版
+    // 再检测 Compose V1 独立版：同样要求退出码 0 且输出为 Compose 版本
     const v1Res = await sshService.executeCommand(
       serverId,
-      'docker-compose version 2>/dev/null || docker-compose --version 2>/dev/null',
+      'docker-compose version 2>/dev/null; echo "EXIT:$?"',
       0,
       500,
       10000
     )
-    if (v1Res.success && v1Res.stdout.trim()) {
+    const v1Output = v1Res.stdout.trim()
+    const v1ExitMatch = v1Output.match(/EXIT:(\d+)/)
+    const v1Exit = v1ExitMatch ? Number(v1ExitMatch[1]) : -1
+    const v1LooksValid = v1Exit === 0 && /compose/i.test(v1Output)
+    if (v1Res.success && v1LooksValid) {
       const info: ComposeEnvInfo = {
         type: 'v1',
         command: 'docker-compose',
         dockerVersion,
-        composeVersion: this.parseComposeVersion(v1Res.stdout)
+        composeVersion: this.parseComposeVersion(v1Output)
       }
       this.composeEnvCache.set(serverId, { info, expiresAt: Date.now() + this.composeEnvCacheTtl })
       log.info(`Server ${serverId}: Docker Compose V1 detected (${info.composeVersion || 'unknown version'})`)
@@ -141,13 +150,16 @@ class AppDeployService {
       composeVersion: ''
     }
     this.composeEnvCache.set(serverId, { info: fallback, expiresAt: Date.now() + this.composeEnvCacheTtl })
-    log.warn(`Server ${serverId}: compose command not detected, falling back to docker-compose`)
+    log.warn(`Server ${serverId}: compose command not detected (v2Exit=${v2Exit}, v1Exit=${v1Exit}), falling back to docker-compose`)
     return fallback
   }
 
   private parseComposeVersion(output: string): string {
-    const match = output.trim().match(/(\d+\.\d+\.\d+)/)
-    return match ? match[1] : output.trim()
+    // 优先匹配 Compose 版本（如 "Docker Compose version v2.27.1" / "docker-compose version 1.29.2"）
+    const composeMatch = output.match(/(?:docker-?compose|compose)[^\d]*v?(\d+\.\d+\.\d+)/i)
+    if (composeMatch) return composeMatch[1]
+    const fallback = output.match(/(\d+\.\d+\.\d+)/)
+    return fallback ? fallback[1] : output.trim()
   }
 
   private async getComposeCommand(serverId: string): Promise<string> {
@@ -680,6 +692,71 @@ class AppDeployService {
       return { success: false, message: `Failed to restart container: ${result.stderr}` }
     }
     return { success: true, message: 'Container restarted' }
+  }
+
+  /**
+   * 获取服务器上的全部容器（docker ps -a），用于容器资源管理模块
+   */
+  async getAllContainers(serverId: string): Promise<ContainerInfo[]> {
+    if (!sshService.isConnected(serverId)) {
+      return []
+    }
+
+    const psResult = await sshService.executeCommand(
+      serverId,
+      'docker ps -a --format "{{json .}}" --no-trunc'
+    )
+
+    if (!psResult.success || !psResult.stdout.trim()) {
+      return []
+    }
+
+    const containers: ContainerInfo[] = []
+    const lines = psResult.stdout.trim().split('\n')
+
+    for (const line of lines) {
+      try {
+        const parsed = JSON.parse(line)
+        containers.push({
+          id: parsed.ID || '',
+          name: (parsed.Names || '').replace(/^\//, ''),
+          image: parsed.Image || '',
+          status: parsed.Status || '',
+          ports: parsed.Ports ? parsed.Ports.split(',').filter(Boolean) : [],
+          created: parsed.CreatedAt || ''
+        })
+      } catch {
+        // 兜底：非 JSON 输出时按空格切分（ID 名称 镜像 状态 ...）
+        const parts = line.split(/\s+/)
+        if (parts.length >= 4) {
+          containers.push({
+            id: parts[0] || '',
+            name: parts[1] || '',
+            image: parts[2] || '',
+            status: parts.slice(3).join(' ') || '',
+            ports: [],
+            created: ''
+          })
+        }
+      }
+    }
+
+    return containers
+  }
+
+  /**
+   * 删除单个容器（docker rm），用于容器资源管理模块
+   */
+  async removeContainer(serverId: string, containerId: string): Promise<{ success: boolean; message: string }> {
+    if (!sshService.isConnected(serverId)) {
+      return { success: false, message: 'Server not connected' }
+    }
+
+    const result = await sshService.executeCommand(serverId, `docker rm -f ${containerId}`)
+    if (!result.success) {
+      return { success: false, message: `Failed to remove container: ${result.stderr}` }
+    }
+    return { success: true, message: 'Container removed' }
   }
 
   async getContainerLogs(serverId: string, containerId: string, lines: number = 100): Promise<string> {

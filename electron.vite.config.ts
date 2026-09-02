@@ -42,10 +42,12 @@ export default defineConfig({
     },
     resolve: {
       alias: [
-        // monaco-editor 0.56 的 exports 字段无法解析带 `?worker` 查询的导入，直接指向实际文件
+        // monaco-editor 0.56 的 exports 字段无法解析深路径导入（仅支持 ./esm/vs/*.js 一层），
+        // 统一直接指向 node_modules 内实际文件（含 languages/definitions、language/*、worker 等），保留 query（?worker）
         {
-          find: /^monaco-editor\/esm\/vs\/editor\/editor\.worker\.js(\?.*)$/,
-          replacement: resolve(__dirname, 'node_modules/monaco-editor/esm/vs/editor/editor.worker.js') + '$1'
+          find: /^monaco-editor\/(esm\/.+)(\?.*)?$/,
+          replacement: (_m: string, p1: string, p2: string) =>
+            resolve(__dirname, 'node_modules/monaco-editor', p1) + (p2 || '')
         },
         {
           find: '@renderer',

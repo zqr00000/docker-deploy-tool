@@ -44,7 +44,7 @@ import type { Server } from '../../types/server'
 // Monaco 本地化配置（side-effect：配置 loader 与 worker，必须在编辑器挂载前执行）
 import '../../components/monaco-setup'
 import Editor from '@monaco-editor/react'
-import * as monaco from 'monaco-editor'
+import * as monaco from 'monaco-editor/esm/vs/editor/editor.api.js'
 import * as yaml from 'js-yaml'
 
 const { Text, Title } = Typography
@@ -120,6 +120,7 @@ interface TransferTask {
   name: string
   local: string
   remote: string
+  isDir?: boolean
   status: TaskStatus
   progress: number
   message?: string
@@ -335,17 +336,48 @@ const FileTransfer: React.FC = () => {
     return remove
   }, [])
 
+  // 文件夹传输按文件粒度回调：展示当前传输中的文件名
+  useEffect(() => {
+    const remove = window.electronAPI.fileTransfer.onFileProgress(({ taskId, local, status, message }) => {
+      setTasks(prev => prev.map(x =>
+        x.id === taskId
+          ? {
+              ...x,
+              progress: status === 'done' ? 100 : x.progress,
+              message: status === 'start' ? `正在传输：${local.split('/').pop() || local}` : (status === 'error' ? message : x.message)
+            }
+          : x
+      ))
+    })
+    return remove
+  }, [])
+
   const runTask = useCallback(async (taskId: string) => {
     const task = tasksRef.current.find(x => x.id === taskId)
     if (!task) return
     setTasks(prev => prev.map(x => x.id === taskId ? { ...x, status: 'transferring' as TaskStatus, progress: 0, message: undefined } : x))
     try {
-      const r = task.type === 'upload'
-        ? await window.electronAPI.fileTransfer.upload(selectedServer!, task.local, task.remote, taskId)
-        : await window.electronAPI.fileTransfer.download(selectedServer!, task.remote, task.local, taskId)
+      const ft = window.electronAPI.fileTransfer
+      let r: { success: boolean; message?: string; fileCount?: number }
+      if (task.type === 'upload') {
+        r = task.isDir
+          ? await ft.uploadPath(selectedServer!, task.local, task.remote, taskId)
+          : await ft.upload(selectedServer!, task.local, task.remote, taskId)
+      } else {
+        r = task.isDir
+          ? await ft.downloadPath(selectedServer!, task.remote, task.local, taskId)
+          : await ft.download(selectedServer!, task.remote, task.local, taskId)
+      }
       setTasks(prev => prev.map(x =>
         x.id === taskId
-          ? { ...x, status: r.success ? 'success' as TaskStatus : 'error' as TaskStatus, progress: r.success ? 100 : x.progress, message: r.success ? undefined : (r.message || '未知错误') }
+          ? {
+              ...x,
+              status: r.success ? 'success' as TaskStatus : 'error' as TaskStatus,
+              progress: r.success ? 100 : x.progress,
+              message: r.success
+                ? (task.isDir ? `完成，共 ${r.fileCount || 0} 个文件` : undefined)
+                : (r.message || '未知错误')
+            }
           : x
       ))
     } catch (error) {
@@ -377,12 +409,16 @@ const FileTransfer: React.FC = () => {
     if (!selectedServer) { message.warning('请先选择服务器'); return }
     if (localSel.length === 0) { message.warning('请先在左侧选中要上传的文件'); return }
     const base = remotePath.endsWith('/') ? remotePath : remotePath + '/'
-    const newTasks: TransferTask[] = localSel.map(name => ({
-      id: genId(), type: 'upload', name,
-      local: joinPath(localPath, name),
-      remote: base + name,
-      status: 'queued', progress: 0
-    }))
+    const newTasks: TransferTask[] = localSel.map(name => {
+      const entry = localEntries.find(e => e.name === name)
+      return {
+        id: genId(), type: 'upload' as const, name,
+        isDir: entry?.type === 'dir',
+        local: joinPath(localPath, name),
+        remote: base + name,
+        status: 'queued' as const, progress: 0
+      }
+    })
     enqueue(newTasks)
     setLocalSel([])
   }
@@ -392,12 +428,16 @@ const FileTransfer: React.FC = () => {
     if (!selectedServer) { message.warning('请先选择服务器'); return }
     if (remoteSel.length === 0) { message.warning('请先在右侧选中要下载的文件'); return }
     const base = localPath.endsWith('/') ? localPath : localPath + '/'
-    const newTasks: TransferTask[] = remoteSel.map(name => ({
-      id: genId(), type: 'download', name,
-      local: base + name,
-      remote: joinPath(remotePath, name),
-      status: 'queued', progress: 0
-    }))
+    const newTasks: TransferTask[] = remoteSel.map(name => {
+      const entry = remoteEntries.find(e => e.name === name)
+      return {
+        id: genId(), type: 'download' as const, name,
+        isDir: entry?.type === 'dir',
+        local: base + name,
+        remote: joinPath(remotePath, name),
+        status: 'queued' as const, progress: 0
+      }
+    })
     enqueue(newTasks)
     setRemoteSel([])
   }
@@ -601,11 +641,11 @@ const FileTransfer: React.FC = () => {
         close()
         break
       case 'upload':
-        if (side === 'local') enqueue([{ id: genId(), type: 'upload', name: entry.name, local: full, remote: joinPath(remotePath, entry.name), status: 'queued', progress: 0 }])
+        if (side === 'local') enqueue([{ id: genId(), type: 'upload', name: entry.name, isDir: entry.type === 'dir', local: full, remote: joinPath(remotePath, entry.name), status: 'queued', progress: 0 }])
         close()
         break
       case 'download':
-        if (side === 'remote') enqueue([{ id: genId(), type: 'download', name: entry.name, local: joinPath(localPath, entry.name), remote: full, status: 'queued', progress: 0 }])
+        if (side === 'remote') enqueue([{ id: genId(), type: 'download', name: entry.name, isDir: entry.type === 'dir', local: joinPath(localPath, entry.name), remote: full, status: 'queued', progress: 0 }])
         close()
         break
       case 'rename':
@@ -630,6 +670,7 @@ const FileTransfer: React.FC = () => {
       items.push({ key: side === 'local' ? 'upload' : 'download', label: side === 'local' ? '上传到远程当前目录' : '下载到本地当前目录' })
     } else {
       items.push({ key: 'enter', label: '进入文件夹' })
+      items.push({ key: side === 'local' ? 'upload' : 'download', label: side === 'local' ? '上传文件夹到远程' : '下载文件夹到本地' })
     }
     items.push({ key: 'rename', label: '重命名' })
     items.push({ key: 'delete', label: '删除', danger: true })

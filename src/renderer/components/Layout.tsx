@@ -2,8 +2,10 @@ import React, { useState, useEffect, useCallback, useMemo, memo } from 'react'
 import { Menu, Typography, Grid, Button, Drawer, Input, Space, Tag, Tabs } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useLocation } from 'react-router-dom'
+import { releaseCache } from './KeepAliveRoutes'
 import {
   CloudServerOutlined,
+  ContainerOutlined,
   FileTextOutlined,
   AppstoreOutlined,
   SettingOutlined,
@@ -80,6 +82,7 @@ const MENU_ITEM_CONFIG: MenuItemConfig[] = [
     iconKey: 'HddOutlined',
     labelKey: 'menuGroups.container',
     children: [
+      { key: 'containers', iconKey: 'ContainerOutlined', labelKey: 'menu.containers' },
       { key: 'images', iconKey: 'HddOutlined', labelKey: 'menu.images' },
       { key: 'volumes', iconKey: 'DatabaseOutlined', labelKey: 'menu.volumes' },
       { key: 'networks', iconKey: 'ApiOutlined', labelKey: 'menu.networks' },
@@ -125,6 +128,7 @@ const MENU_ITEM_CONFIG: MenuItemConfig[] = [
 const ICON_MAP: Record<string, React.ReactNode> = {
   DashboardOutlined: <DashboardOutlined />,
   CloudServerOutlined: <CloudServerOutlined />,
+  ContainerOutlined: <ContainerOutlined />,
   FileTextOutlined: <FileTextOutlined />,
   AppstoreOutlined: <AppstoreOutlined />,
   HddOutlined: <HddOutlined />,
@@ -192,11 +196,13 @@ const LayoutComponent: React.FC<LayoutProps> = memo(({ children }) => {
   }, [location.pathname, findMenuByKey, t])
 
   // 关闭标签：若关闭的是当前激活标签，跳转到相邻标签；全部关闭则回仪表盘
+  // 同时释放 KeepAliveRoutes 中对应页面的缓存，避免关闭后仍驻留内存
   const closeTab = useCallback((key: string) => {
     const idx = openTabs.findIndex(x => x.key === key)
     if (idx === -1) return
     const next = openTabs.filter(x => x.key !== key)
     setOpenTabs(next)
+    releaseCache(`/${key}`)
     if (location.pathname === `/${key}`) {
       if (next.length === 0) {
         navigate('/dashboard')

@@ -887,6 +887,64 @@ function registerIpcHandlers(): void {
     }
   })
 
+  // ==================== 容器资源管理 ====================
+  // 获取服务器全部容器（docker ps -a）
+  ipcMain.handle('container:getAll', async (_, serverId: string) => {
+    try {
+      return await appDeployService.getAllContainers(serverId)
+    } catch (error) {
+      log.error('container:getAll error:', error)
+      return []
+    }
+  })
+
+  // 删除单个容器（docker rm -f）
+  ipcMain.handle('container:remove', async (_, serverId: string, containerId: string) => {
+    try {
+      return await appDeployService.removeContainer(serverId, containerId)
+    } catch (error) {
+      log.error('container:remove error:', error)
+      return { success: false, message: (error as Error).message }
+    }
+  })
+
+  // 启动/停止/重启容器（复用 app:startContainer / app:stopContainer / app:restartContainer）
+  ipcMain.handle('container:start', async (_, serverId: string, containerId: string) => {
+    try {
+      return await appDeployService.startContainer(serverId, containerId)
+    } catch (error) {
+      log.error('container:start error:', error)
+      return { success: false, message: (error as Error).message }
+    }
+  })
+
+  ipcMain.handle('container:stop', async (_, serverId: string, containerId: string) => {
+    try {
+      return await appDeployService.stopContainer(serverId, containerId)
+    } catch (error) {
+      log.error('container:stop error:', error)
+      return { success: false, message: (error as Error).message }
+    }
+  })
+
+  ipcMain.handle('container:restart', async (_, serverId: string, containerId: string) => {
+    try {
+      return await appDeployService.restartContainer(serverId, containerId)
+    } catch (error) {
+      log.error('container:restart error:', error)
+      return { success: false, message: (error as Error).message }
+    }
+  })
+
+  ipcMain.handle('container:getLogs', async (_, serverId: string, containerId: string, lines?: number) => {
+    try {
+      return await appDeployService.getContainerLogs(serverId, containerId, lines || 200)
+    } catch (error) {
+      log.error('container:getLogs error:', error)
+      return ''
+    }
+  })
+
   ipcMain.handle('config:export', async (_, filePath: string) => {
     try {
       const configData = configQueries.exportConfig()
@@ -1634,6 +1692,37 @@ function registerIpcHandlers(): void {
     } catch (error) {
       log.error('fileTrans:download error:', error)
       return { success: false, message: (error as Error).message }
+    }
+  })
+
+  // 递归上传本地文件/文件夹到服务器（SFTP，自动创建远端目录）
+  ipcMain.handle('fileTrans:uploadPath', async (event, serverId: string, localPath: string, remotePath: string, taskId?: string) => {
+    try {
+      const r = await sshService.uploadPathRecursive(serverId, localPath, remotePath, (info) => {
+        if (!event.sender.isDestroyed() && taskId) {
+          // 按文件进度推送：status 表示当前文件开始/完成/出错
+          event.sender.send('fileTrans:fileProgress', { taskId, ...info })
+        }
+      })
+      return { success: r.success, message: r.message || '', fileCount: r.fileCount }
+    } catch (error) {
+      log.error('fileTrans:uploadPath error:', error)
+      return { success: false, message: (error as Error).message, fileCount: 0 }
+    }
+  })
+
+  // 递归下载远端文件/文件夹到本地（SFTP，自动创建本地目录）
+  ipcMain.handle('fileTrans:downloadPath', async (event, serverId: string, remotePath: string, localPath: string, taskId?: string) => {
+    try {
+      const r = await sshService.downloadPathRecursive(serverId, remotePath, localPath, (info) => {
+        if (!event.sender.isDestroyed() && taskId) {
+          event.sender.send('fileTrans:fileProgress', { taskId, ...info })
+        }
+      })
+      return { success: r.success, message: r.message || '', fileCount: r.fileCount }
+    } catch (error) {
+      log.error('fileTrans:downloadPath error:', error)
+      return { success: false, message: (error as Error).message, fileCount: 0 }
     }
   })
 

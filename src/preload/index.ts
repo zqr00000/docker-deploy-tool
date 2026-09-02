@@ -160,6 +160,8 @@ const electronAPI: ElectronAPI = {
     selectSavePath: (defaultName?: string): Promise<{ success: boolean; canceled?: boolean; path?: string }> => ipcRenderer.invoke('fileTrans:selectSavePath', defaultName),
     upload: (serverId: string, localPath: string, remotePath: string, taskId?: string): Promise<{ success: boolean; message?: string }> => ipcRenderer.invoke('fileTrans:upload', serverId, localPath, remotePath, taskId),
     download: (serverId: string, remotePath: string, localPath: string, taskId?: string): Promise<{ success: boolean; message?: string }> => ipcRenderer.invoke('fileTrans:download', serverId, remotePath, localPath, taskId),
+    uploadPath: (serverId: string, localPath: string, remotePath: string, taskId?: string): Promise<{ success: boolean; message?: string; fileCount?: number }> => ipcRenderer.invoke('fileTrans:uploadPath', serverId, localPath, remotePath, taskId),
+    downloadPath: (serverId: string, remotePath: string, localPath: string, taskId?: string): Promise<{ success: boolean; message?: string; fileCount?: number }> => ipcRenderer.invoke('fileTrans:downloadPath', serverId, remotePath, localPath, taskId),
     listRemote: (serverId: string, remotePath: string): Promise<{ success: boolean; entries?: Array<{ name: string; type: 'dir' | 'link' | 'file'; size: number; mtime: number; mode?: number }>; message?: string }> => ipcRenderer.invoke('fileTrans:listRemote', serverId, remotePath),
     listLocal: (localPath: string): Promise<{ success: boolean; entries?: Array<{ name: string; type: 'dir' | 'file'; size: number; mtime: number }>; message?: string }> => ipcRenderer.invoke('fileTrans:listLocal', localPath),
     homeLocal: (): Promise<{ success: boolean; path?: string; message?: string }> => ipcRenderer.invoke('fileTrans:homeLocal'),
@@ -174,7 +176,20 @@ const electronAPI: ElectronAPI = {
       const listener = (_e: any, payload: { taskId: string; transferred: number; total: number }) => callback(payload)
       ipcRenderer.on('fileTrans:progress', listener)
       return () => ipcRenderer.removeListener('fileTrans:progress', listener)
+    },
+    onFileProgress: (callback: (payload: { taskId: string; local: string; remote: string; status: 'start' | 'done' | 'error'; message?: string }) => void): (() => void) => {
+      const listener = (_e: any, payload: { taskId: string; local: string; remote: string; status: 'start' | 'done' | 'error'; message?: string }) => callback(payload)
+      ipcRenderer.on('fileTrans:fileProgress', listener)
+      return () => ipcRenderer.removeListener('fileTrans:fileProgress', listener)
     }
+  },
+  container: {
+    getAll: (serverId: string): Promise<ContainerInfo[]> => ipcRenderer.invoke('container:getAll', serverId),
+    start: (serverId: string, containerId: string): Promise<{ success: boolean; message?: string }> => ipcRenderer.invoke('container:start', serverId, containerId),
+    stop: (serverId: string, containerId: string): Promise<{ success: boolean; message?: string }> => ipcRenderer.invoke('container:stop', serverId, containerId),
+    restart: (serverId: string, containerId: string): Promise<{ success: boolean; message?: string }> => ipcRenderer.invoke('container:restart', serverId, containerId),
+    remove: (serverId: string, containerId: string): Promise<{ success: boolean; message?: string }> => ipcRenderer.invoke('container:remove', serverId, containerId),
+    getLogs: (serverId: string, containerId: string, lines?: number): Promise<string> => ipcRenderer.invoke('container:getLogs', serverId, containerId, lines)
   },
   logs: {
     start: (serverId: string, containerId: string, options?: { tail?: number; follow?: boolean }): Promise<{ success: boolean; message?: string }> => ipcRenderer.invoke('logs:start', serverId, containerId, options),
