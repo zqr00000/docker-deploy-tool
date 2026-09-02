@@ -70,6 +70,11 @@ class SSHService {
     const toDisconnect: string[] = []
 
     for (const [serverId, entry] of this.connections.entries()) {
+      // 健康检查定时器存在的连接已有 SSH keepalive(30s)+健康检查(60s)双保活，
+      // 由心跳持续刷新 lastActivity，视为活跃连接，跳过 idle 清理避免误断。
+      if (entry.healthCheckTimer) {
+        continue
+      }
       const idleTime = now - entry.lastActivity.getTime()
       if (idleTime > this.idleTimeout && !this.activeCommands.get(serverId)) {
         toDisconnect.push(serverId)
@@ -776,7 +781,7 @@ class SSHService {
    */
   async remoteFileOp(
     serverId: string,
-    op: 'mkdir' | 'rename' | 'delete',
+    op: 'mkdir' | 'touch' | 'rename' | 'delete',
     target: string,
     to?: string
   ): Promise<{ success: boolean; message: string }> {
@@ -804,6 +809,17 @@ class SSHService {
         switch (op) {
           case 'mkdir':
             sftp.mkdir(target, (e) => done(e ?? undefined, '目录已创建'))
+            break
+          case 'touch':
+            // 先检查文件是否已存在，避免覆盖已有内容
+            sftp.stat(target, (statErr, stat) => {
+              if (!statErr && stat) {
+                sftp.end()
+                resolve({ success: false, message: '文件已存在' })
+                return
+              }
+              sftp.writeFile(target, '', 'utf8', (e) => done(e ?? undefined, '文件已创建'))
+            })
             break
           case 'rename':
             sftp.rename(target, to || '', (e) => done(e ?? undefined, '重命名成功'))

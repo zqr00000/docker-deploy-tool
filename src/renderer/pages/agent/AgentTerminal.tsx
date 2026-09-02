@@ -1521,7 +1521,7 @@ const AgentTerminalPage: React.FC = () => {
                     <MessageOutlined style={{ color: activeSessionId === s.id ? '#0A84FF' : '#8e8e93', fontSize: 12, flexShrink: 0 }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 12, color: activeSessionId === s.id ? '#f5f5f7' : '#aeaeb2', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</div>
-                      <div style={{ fontSize: 10, color: '#8e8e93' }}>{s.messages.length} t('agent.unitMessages')</div>
+                      <div style={{ fontSize: 10, color: '#8e8e93' }}>{s.messages.length} {t('agent.unitMessages')}</div>
                     </div>
                     <Space size={2} className="agent-sidebar-actions">
                       <Button size="small" type="text" icon={<CopyOutlined />} title={t('agent.copySession')} style={{ color: '#aeaeb2', padding: 0, width: 20, height: 20 }}
@@ -1587,8 +1587,8 @@ const AgentTerminalPage: React.FC = () => {
                 </div>
                 <Text strong style={{ color: '#f5f5f7', fontSize: 12 }}>{t('agent.terminal')}</Text>
                 <div style={{ display: 'flex', gap: 4, marginLeft: 8, background: '#000000', borderRadius: 6, padding: 2, border: '1px solid #3a3a3c' }}>
-                  <Button size="small" type="text" onClick={() => setTerminalMode('server')} style={terminalMode === 'server' ? { background: '#3a3a3c', color: '#0A84FF', borderRadius: 4, fontSize: 11 } : { color: '#aeaeb2', fontSize: 11, borderRadius: 4 }}>t('agent.serverTab')</Button>
-                  <Button size="small" type="text" onClick={() => setTerminalMode('container')} style={terminalMode === 'container' ? { background: '#3a3a3c', color: '#0A84FF', borderRadius: 4, fontSize: 11 } : { color: '#aeaeb2', fontSize: 11, borderRadius: 4 }}>t('agent.containerTab')</Button>
+                  <Button size="small" type="text" onClick={() => setTerminalMode('server')} style={terminalMode === 'server' ? { background: '#3a3a3c', color: '#0A84FF', borderRadius: 4, fontSize: 11 } : { color: '#aeaeb2', fontSize: 11, borderRadius: 4 }}>{t('agent.serverTab')}</Button>
+                  <Button size="small" type="text" onClick={() => setTerminalMode('container')} style={terminalMode === 'container' ? { background: '#3a3a3c', color: '#0A84FF', borderRadius: 4, fontSize: 11 } : { color: '#aeaeb2', fontSize: 11, borderRadius: 4 }}>{t('agent.containerTab')}</Button>
                 </div>
               </Space>
               <Space size="small">
@@ -1608,7 +1608,7 @@ const AgentTerminalPage: React.FC = () => {
                     }
                   }}
                   disabled={!selectedServer || (terminalMode === 'container' && containers.length === 0)}
-                  style={{ background: 'linear-gradient(135deg, #0A84FF 0%, #0051D5 100%)', borderColor: 'transparent', boxShadow: '0 2px 10px rgba(10,132,255,0.3)' }}>t('agent.newTerminal')</Button>
+                  style={{ background: 'linear-gradient(135deg, #0A84FF 0%, #0051D5 100%)', borderColor: 'transparent', boxShadow: '0 2px 10px rgba(10,132,255,0.3)' }}>{t('agent.newTerminal')}</Button>
               </Space>
             </div>
             
@@ -1840,7 +1840,7 @@ const AgentTerminalPage: React.FC = () => {
                   style={{ background: 'linear-gradient(135deg, #0A84FF 0%, #0051D5 100%)', borderColor: 'transparent', borderRadius: '0 8px 8px 0', boxShadow: '0 2px 10px rgba(10,132,255,0.2)', flexShrink: 0, display: 'flex', alignItems: 'center' }} />
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6, padding: '0 2px', gap: 8 }}>
-                <Text style={{ fontSize: 10, color: '#8e8e93', flexShrink: 0 }}>t('agent.enterToSend')</Text>
+                <Text style={{ fontSize: 10, color: '#8e8e93', flexShrink: 0 }}>{t('agent.enterToSend')}</Text>
                 <div style={{ flex: 1, minWidth: 0, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, overflow: 'hidden' }}>
                   {/* 会话级温度覆盖：仅影响当前会话，不写回全局配置 */}
                   <Select

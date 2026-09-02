@@ -1791,12 +1791,17 @@ function registerIpcHandlers(): void {
     }
   })
 
-  // 本地文件操作：新建目录 / 重命名 / 删除（文件或空目录）
-  ipcMain.handle('fileTrans:localOp', async (_, op: 'mkdir' | 'rename' | 'delete', target: string, to?: string) => {
+  // 本地文件操作：新建目录 / 新建文件 / 重命名 / 删除（文件或空目录）
+  ipcMain.handle('fileTrans:localOp', async (_, op: 'mkdir' | 'touch' | 'rename' | 'delete', target: string, to?: string) => {
     try {
       if (op === 'mkdir') {
         fs.mkdirSync(target, { recursive: false })
         return { success: true, message: '目录已创建' }
+      }
+      if (op === 'touch') {
+        // flag 'wx'：文件已存在时抛错，避免覆盖已有内容
+        fs.writeFileSync(target, '', { flag: 'wx' })
+        return { success: true, message: '文件已创建' }
       }
       if (op === 'rename') {
         if (!to) return { success: false, message: '目标名不能为空' }

@@ -889,8 +889,8 @@ export interface ElectronAPI {
     listLocal: (localPath: string) => Promise<{ success: boolean; entries?: Array<{ name: string; type: 'dir' | 'file'; size: number; mtime: number }>; message?: string }>
     homeLocal: () => Promise<{ success: boolean; path?: string; message?: string }>
     listDrives: () => Promise<{ success: boolean; drives?: string[]; message?: string }>
-    localOp: (op: 'mkdir' | 'rename' | 'delete', target: string, to?: string) => Promise<{ success: boolean; message?: string }>
-    remoteOp: (serverId: string, op: 'mkdir' | 'rename' | 'delete', target: string, to?: string) => Promise<{ success: boolean; message?: string }>
+    localOp: (op: 'mkdir' | 'touch' | 'rename' | 'delete', target: string, to?: string) => Promise<{ success: boolean; message?: string }>
+    remoteOp: (serverId: string, op: 'mkdir' | 'touch' | 'rename' | 'delete', target: string, to?: string) => Promise<{ success: boolean; message?: string }>
     readLocal: (filePath: string) => Promise<{ success: boolean; content?: string; message?: string }>
     writeLocal: (filePath: string, content: string) => Promise<{ success: boolean; message?: string }>
     readRemote: (serverId: string, remotePath: string) => Promise<{ success: boolean; content?: string; message?: string }>

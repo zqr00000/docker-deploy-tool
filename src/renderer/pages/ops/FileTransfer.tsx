@@ -36,6 +36,7 @@ import {
   CloudUploadOutlined,
   CloudDownloadOutlined,
   FolderAddOutlined,
+  FileAddOutlined,
   EditOutlined,
   DeleteOutlined,
   FileTextOutlined
@@ -205,20 +206,8 @@ const FileTransfer: React.FC = () => {
   const [servers, setServers] = useState<Server[]>([])
   const [selectedServer, setSelectedServer] = useState<string | undefined>(undefined)
 
-  // 页面固定高度：测量父容器（.app-content）实际高度，保证双窗格内部滚动链确定
-  const rootRef = useRef<HTMLDivElement>(null)
-  const [viewH, setViewH] = useState(0)
-  useEffect(() => {
-    const el = rootRef.current?.parentElement
-    if (!el) return
-    const measure = () => {
-      if (el.clientHeight > 0) setViewH(el.clientHeight)
-    }
-    measure()
-    const ro = new ResizeObserver(measure)
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
+  // 页面固定高度：高度链已通过 CSS flex 传递（.app-content min-height:0 → KeepAlive div height:100%），
+  // 根节点直接 height:'100%' 即可，无需 JS 测量（测量会读到被内容撑大后的错误高度）
 
   // 本地窗格
   const [localPath, setLocalPath] = useState('')
@@ -505,12 +494,12 @@ const FileTransfer: React.FC = () => {
     loadLocal(root)
   }
 
-  // 远端文件操作：新建目录 / 重命名 / 删除（文件或空目录）
-  const [opModal, setOpModal] = useState<{ side: 'local' | 'remote'; kind: 'mkdir' | 'rename'; target?: string } | null>(null)
+  // 远端文件操作：新建目录 / 新建文件 / 重命名 / 删除（文件或空目录）
+  const [opModal, setOpModal] = useState<{ side: 'local' | 'remote'; kind: 'mkdir' | 'touch' | 'rename'; target?: string } | null>(null)
   const [opName, setOpName] = useState('')
 
   // 执行本地/远端文件操作并刷新对应窗格
-  const runOp = async (op: 'mkdir' | 'rename' | 'delete', target: string, to?: string, side: 'local' | 'remote' = 'local') => {
+  const runOp = async (op: 'mkdir' | 'touch' | 'rename' | 'delete', target: string, to?: string, side: 'local' | 'remote' = 'local') => {
     const r = side === 'local'
       ? await window.electronAPI.fileTransfer.localOp(op, target, to)
       : await window.electronAPI.fileTransfer.remoteOp(selectedServer!, op, target, to)
@@ -524,6 +513,7 @@ const FileTransfer: React.FC = () => {
   }
 
   const openMkdir = (side: 'local' | 'remote') => { setOpName('新建文件夹'); setOpModal({ side, kind: 'mkdir' }) }
+  const openTouch = (side: 'local' | 'remote') => { setOpName('新建文件.txt'); setOpModal({ side, kind: 'touch' }) }
   const openRename = (side: 'local' | 'remote', name: string, target: string) => { setOpName(name); setOpModal({ side, kind: 'rename', target }) }
   const submitOp = async () => {
     if (!opModal) return
@@ -746,15 +736,15 @@ const FileTransfer: React.FC = () => {
   const columnsRemote = useMemo(() => makeColumns('remote'), [localPath, remotePath, selectedServer])
 
   return (
-    <div ref={rootRef} style={{ padding: 24, height: viewH > 0 ? viewH : '100%', display: 'flex', flexDirection: 'column', boxSizing: 'border-box', maxWidth: 1400, margin: '0 auto', width: '100%', minHeight: 0 }}>
+    <div style={{ padding: 24, height: '100%', display: 'flex', flexDirection: 'column', boxSizing: 'border-box', width: '100%', minHeight: 0, overflow: 'hidden' }}>
       <Title level={4} style={{ margin: '0 0 4px', flexShrink: 0 }}><SwapOutlined style={{ color: '#0A84FF', marginRight: 8 }} />文件传输</Title>
-      <Text type="secondary" style={{ display: 'block', marginBottom: 12, flexShrink: 0 }}>
+      <Text type="secondary" style={{ display: 'block', marginBottom: 12, flexShrink: 0, fontSize: 13 }}>
         双击文件或选中后点击箭头传输 · 双击文件夹进入 · 支持多选
       </Text>
 
       {/* 工具栏 */}
       <Card size="small" style={{ marginBottom: 12, borderRadius: 12, flexShrink: 0 }}>
-        <Space wrap>
+        <Space wrap size="middle">
           <Text style={{ fontSize: 13 }}>目标服务器</Text>
           <Select
             style={{ width: 300 }}
@@ -769,7 +759,7 @@ const FileTransfer: React.FC = () => {
               {servers.find(s => s.id === selectedServer)?.host}
             </Text>
           )}
-          <Space size={4}>
+          <Space size={6}>
             <Text style={{ fontSize: 12 }}>并发数</Text>
             <Select
               size="small" style={{ width: 70 }}
@@ -782,14 +772,19 @@ const FileTransfer: React.FC = () => {
         </Space>
       </Card>
 
-      {/* 双窗格 */}
+      {/* 主体：双窗格 + 右侧传输队列 */}
       <div style={{ flex: 1, minHeight: 0, display: 'flex', gap: 10 }}>
-        {/* 本地窗格 */}
-        <Card
-          size="small" style={{ flex: 1, minWidth: 0, borderRadius: 12, display: 'flex', flexDirection: 'column' }}
-          styles={{ body: { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: 12 } }}
-          title={<Space size={6}><Text style={{ fontSize: 13 }}>本地</Text>{dirName(localPath) && <Tag style={{ borderRadius: 999 }}>{dirName(localPath)}</Tag>}</Space>}
+        {/* 左侧：双窗格 */}
+        <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+          {/* 双窗格 */}
+          <div style={{ flex: 1, minHeight: 0, display: 'flex', gap: 10 }}>
+            {/* 本地窗格 */}
+            <Card
+              size="small" style={{ flex: 1, minWidth: 0, borderRadius: 12, display: 'flex', flexDirection: 'column' }}
+              styles={{ body: { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: 12 } }}
+              title={<Space size={6}><Text style={{ fontSize: 13 }}>本地</Text>{dirName(localPath) && <Tag style={{ borderRadius: 999 }}>{dirName(localPath)}</Tag>}</Space>}
           extra={<Space size={2}>
+            <Tooltip title="新建文件"><Button size="small" type="text" icon={<FileAddOutlined />} onClick={() => openTouch('local')} /></Tooltip>
             <Tooltip title="新建文件夹"><Button size="small" type="text" icon={<FolderAddOutlined />} onClick={() => openMkdir('local')} /></Tooltip>
             <Tooltip title="返回上级"><Button size="small" type="text" icon={<ArrowUpOutlined />} onClick={goLocalUp} /></Tooltip>
             <Tooltip title="主目录"><Button size="small" type="text" icon={<HomeOutlined />} onClick={async () => { const r = await window.electronAPI.fileTransfer.homeLocal(); if (r.success && r.path) { setLocalPath(r.path); loadLocal(r.path) } }} /></Tooltip>
@@ -836,6 +831,7 @@ const FileTransfer: React.FC = () => {
           styles={{ body: { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: 12 } }}
           title={<Space size={6}><Text style={{ fontSize: 13 }}>远程</Text>{dirName(remotePath) && <Tag style={{ borderRadius: 999 }}>{dirName(remotePath)}</Tag>}</Space>}
           extra={<Space size={2}>
+            <Tooltip title="新建文件"><Button size="small" type="text" icon={<FileAddOutlined />} onClick={() => openTouch('remote')} disabled={!selectedServer} /></Tooltip>
             <Tooltip title="新建文件夹"><Button size="small" type="text" icon={<FolderAddOutlined />} onClick={() => openMkdir('remote')} disabled={!selectedServer} /></Tooltip>
             <Tooltip title="返回上级"><Button size="small" type="text" icon={<ArrowUpOutlined />} onClick={goRemoteUp} disabled={!selectedServer} /></Tooltip>
             <Tooltip title="根目录"><Button size="small" type="text" icon={<HomeOutlined />} onClick={() => { if (selectedServer) { setRemotePath('/'); loadRemote(selectedServer, '/') } }} disabled={!selectedServer} /></Tooltip>
@@ -855,6 +851,68 @@ const FileTransfer: React.FC = () => {
             onDouble={handleRemoteDouble} onCtx={handleRemoteCtx}
             empty={!selectedServer ? <Empty description="请先选择服务器" style={{ padding: 40 }} /> : undefined}
           />
+        </Card>
+          </div>
+        </div>
+
+        {/* 右侧：传输队列（竖排占满高度） */}
+        <Card
+          size="small"
+          style={{ width: 300, flexShrink: 0, borderRadius: 12, display: 'flex', flexDirection: 'column' }}
+          styles={{ body: { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: '8px 10px' } }}
+          title={<Space><span style={{ fontSize: 13 }}>传输队列</span><Tag style={{ borderRadius: 999 }}>{tasks.length}</Tag></Space>}
+          extra={tasks.some(x => x.status === 'success' || x.status === 'error')
+            ? <Button size="small" type="text" icon={<ClearOutlined />} onClick={clearFinished} style={{ fontSize: 12 }}>清除已完成</Button>
+            : undefined}
+        >
+          {tasks.length === 0 ? (
+            <Empty description="暂无传输任务" style={{ padding: '12px 0' }} image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          ) : (
+            <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+              <List
+                size="small"
+                dataSource={tasks}
+                renderItem={(task) => (
+                  <List.Item
+                    style={{ padding: '6px 4px' }}
+                    actions={[
+                      task.status === 'error'
+                        ? <Button key="r" size="small" type="text" icon={<ReloadOutlined />} onClick={() => retryTask(task.id)}>重试</Button>
+                        : task.status === 'success'
+                          ? <Button key="d" size="small" type="text" icon={<CloseCircleOutlined />} onClick={() => removeTask(task.id)} />
+                          : null
+                    ]}
+                  >
+                    <List.Item.Meta
+                      avatar={task.status === 'transferring'
+                        ? <LoadingOutlined style={{ fontSize: 15, color: '#0A84FF' }} spin />
+                        : task.status === 'success'
+                          ? <CheckCircleOutlined style={{ fontSize: 15, color: '#30D158' }} />
+                          : task.status === 'error'
+                            ? <CloseCircleOutlined style={{ fontSize: 15, color: '#FF453A' }} />
+                            : <ClockCircleOutlined style={{ fontSize: 15, color: '#8e8e93' }} />}
+                      title={<Space size={6}>
+                        <span style={{ fontSize: 12 }}>{task.type === 'upload' ? <CloudUploadOutlined /> : <CloudDownloadOutlined />} {task.name}</span>
+                        <Tag color={statusMeta[task.status].color} style={{ borderRadius: 999, fontSize: 10, margin: 0 }}>{statusMeta[task.status].label}</Tag>
+                      </Space>}
+                      description={<div style={{ width: '100%' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 2 }}>
+                          <span style={{ color: '#8e8e93', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginRight: 8 }}>
+                            <Tooltip title={task.remote}>{task.remote}</Tooltip>
+                          </span>
+                          <span style={{ color: '#8e8e93', flexShrink: 0 }}>{task.progress}%</span>
+                        </div>
+                        {(task.status === 'queued' || task.status === 'transferring') && (
+                          <Progress percent={task.progress} size="small" showInfo={false} strokeColor={task.status === 'transferring' ? '#0A84FF' : '#8e8e93'} />
+                        )}
+                        {task.status === 'error' && task.message && <Text style={{ fontSize: 11, color: '#FF453A' }}>{task.message}</Text>}
+                      </div>}
+                    />
+                  </List.Item>
+                )}
+              />
+            </div>
+          )}
         </Card>
       </div>
 
@@ -931,9 +989,9 @@ const FileTransfer: React.FC = () => {
         )}
       </Modal>
 
-      {/* 新建文件夹 / 重命名 弹窗 */}
+      {/* 新建文件夹 / 新建文件 / 重命名 弹窗 */}
       <Modal
-        title={opModal?.kind === 'rename' ? '重命名' : '新建文件夹'}
+        title={opModal?.kind === 'rename' ? '重命名' : opModal?.kind === 'touch' ? '新建文件' : '新建文件夹'}
         open={!!opModal}
         onOk={submitOp}
         onCancel={() => setOpModal(null)}
@@ -948,62 +1006,6 @@ const FileTransfer: React.FC = () => {
           autoFocus
         />
       </Modal>
-
-      {/* 任务队列 */}
-      <Card
-        size="small" style={{ marginTop: 12, borderRadius: 12, flexShrink: 0, maxHeight: 220, overflow: 'auto' }}
-        title={<Space><span style={{ fontSize: 13 }}>传输队列</span><Tag style={{ borderRadius: 999 }}>{tasks.length}</Tag></Space>}
-        extra={tasks.some(x => x.status === 'success' || x.status === 'error')
-          ? <Button size="small" type="text" icon={<ClearOutlined />} onClick={clearFinished} style={{ fontSize: 12 }}>清除已完成</Button>
-          : undefined}
-      >
-        {tasks.length === 0 ? (
-          <Empty description="暂无传输任务" style={{ padding: '12px 0' }} image={Empty.PRESENTED_IMAGE_SIMPLE} />
-        ) : (
-          <List
-            size="small"
-            dataSource={tasks}
-            renderItem={(task) => (
-              <List.Item
-                style={{ padding: '4px 4px' }}
-                actions={[
-                  task.status === 'error'
-                    ? <Button key="r" size="small" type="text" icon={<ReloadOutlined />} onClick={() => retryTask(task.id)}>重试</Button>
-                    : task.status === 'success'
-                      ? <Button key="d" size="small" type="text" icon={<CloseCircleOutlined />} onClick={() => removeTask(task.id)} />
-                      : null
-                ]}
-              >
-                <List.Item.Meta
-                  avatar={task.status === 'transferring'
-                    ? <LoadingOutlined style={{ fontSize: 15, color: '#0A84FF' }} spin />
-                    : task.status === 'success'
-                      ? <CheckCircleOutlined style={{ fontSize: 15, color: '#30D158' }} />
-                      : task.status === 'error'
-                        ? <CloseCircleOutlined style={{ fontSize: 15, color: '#FF453A' }} />
-                        : <ClockCircleOutlined style={{ fontSize: 15, color: '#8e8e93' }} />}
-                  title={<Space size={6}>
-                    <span style={{ fontSize: 12 }}>{task.type === 'upload' ? <CloudUploadOutlined /> : <CloudDownloadOutlined />} {task.name}</span>
-                    <Tag color={statusMeta[task.status].color} style={{ borderRadius: 999, fontSize: 10, margin: 0 }}>{statusMeta[task.status].label}</Tag>
-                  </Space>}
-                  description={<div style={{ width: '100%' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 2 }}>
-                      <span style={{ color: '#8e8e93', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginRight: 12 }}>
-                        <Tooltip title={task.remote}>{task.remote}</Tooltip>
-                      </span>
-                      <span style={{ color: '#8e8e93', flexShrink: 0 }}>{task.progress}%</span>
-                    </div>
-                    {(task.status === 'queued' || task.status === 'transferring') && (
-                      <Progress percent={task.progress} size="small" showInfo={false} strokeColor={task.status === 'transferring' ? '#0A84FF' : '#8e8e93'} />
-                    )}
-                    {task.status === 'error' && task.message && <Text style={{ fontSize: 11, color: '#FF453A' }}>{task.message}</Text>}
-                  </div>}
-                />
-              </List.Item>
-            )}
-          />
-        )}
-      </Card>
     </div>
   )
 }

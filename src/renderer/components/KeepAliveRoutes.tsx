@@ -58,7 +58,15 @@ const KeepAliveRoutes: React.FC<KeepAliveRoutesProps> = ({ routes }) => {
   return (
     <>
       {Array.from(cacheMap.entries()).map(([path, node]) => (
-        <div key={path} style={{ display: path === key ? undefined : 'none' }}>
+        <div
+          key={path}
+          style={{
+            // 非激活页隐藏；激活页撑满父容器高度，保证 FileTransfer 等固定高度页面正常布局
+            display: path === key ? undefined : 'none',
+            height: '100%',
+            minHeight: 0
+          }}
+        >
           {node}
         </div>
       ))}
