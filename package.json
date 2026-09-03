@@ -71,7 +71,8 @@
     "publish": {
         "provider": "github",
         "owner": "zqr00000",
-        "repo": "docker-deploy-tool"
+        "repo": "docker-deploy-tool",
+        "releaseType": "release"
       },
     "files": [
       "dist/**/*",
