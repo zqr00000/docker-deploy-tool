@@ -64,7 +64,7 @@
   },
   "build": {
     "appId": "com.yunduo.app",
-    "productName": "云舵",
+    "productName": "YunDuo",
     "directories": {
       "output": "release"
     },
@@ -112,7 +112,7 @@
       "deleteAppDataOnUninstall": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Docker Deploy Tool",
+      "shortcutName": "YunDuo",
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico"
     },
