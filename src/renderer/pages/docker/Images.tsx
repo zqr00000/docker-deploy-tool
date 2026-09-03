@@ -339,8 +339,10 @@ const Images: React.FC = () => {
         const cleanName = String(name).replace(/^sha256:/, '')
         if (cleanName === repoTag) return true
         // 仅当镜像无 <none> 时才做 ID 级比对（不同仓库同名不会再互相误标）
+        // ID 级比对：inspect 返回完整 64 位 sha256，镜像列表为 12 位短 ID，需双向前缀匹配
+        // （cleanName 64 位时用 cleanName.startsWith(cleanId)；cleanName 为短 ID 时用 cleanId.startsWith(cleanName)）
         if (cleanName === cleanId) return true
-        if (cleanName.length >= 12 && cleanId.startsWith(cleanName)) return true
+        if (cleanName.length >= 12 && (cleanId.startsWith(cleanName) || cleanName.startsWith(cleanId))) return true
         // digest 引用（repo@sha256:xxx）
         const digIdx = cleanName.indexOf('@sha256:')
         if (digIdx >= 0) {

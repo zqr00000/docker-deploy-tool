@@ -68,9 +68,10 @@
       "output": "release"
     },
     "publish": {
-      "provider": "generic",
-      "url": "https://gitee.com/z_q_r/docker-deploy-tool/releases/download/stable/"
-    },
+        "provider": "github",
+        "owner": "zqr00000",
+        "repo": "docker-deploy-tool"
+      },
     "files": [
       "dist/**/*",
       "package.json"
