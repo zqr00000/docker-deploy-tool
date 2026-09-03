@@ -13,7 +13,8 @@
     "package": "electron-builder --win --config",
     "package:dir": "electron-builder --win dir --config",
     "package:nsis": "electron-builder --win nsis --config",
-    "package:msi": "electron-builder --win msi --config"
+    "package:msi": "electron-builder --win msi --config",
+    "release": "npm run clean && npm run build && electron-builder --win nsis --config -p always"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.38",
