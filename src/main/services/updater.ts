@@ -31,32 +31,12 @@ export interface UpdaterCheckResult {
 
 type UpdaterStatus = 'idle' | 'checking' | 'downloading' | 'downloaded' | 'error'
 
-// ==================== 更新源（按顺序尝试，首个成功者生效） ====================
-// Gitee：国内下载快，需维护固定 tag `stable` 的 Release 附件
-// GitHub：迁移/兜底源，使用 latest/download 固定地址（自动指向最新 Release）
-interface UpdateSource {
-  name: 'gitee' | 'github'
-  url: string
-  useMultipleRangeRequest?: boolean
-}
-
-const UPDATE_SOURCES: UpdateSource[] = [
-  {
-    name: 'gitee',
-    url: 'https://gitee.com/z_q_r/docker-deploy-tool/releases/download/stable/',
-    // Gitee 附件直链对多 range 请求支持不稳定，禁用差分下载（失败时自动回退整包下载）
-    useMultipleRangeRequest: false
-  },
-  {
-    // 迁移 GitHub 时仅需将 YOUR_GITHUB_OWNER 替换为实际用户名/组织名
-    name: 'github',
-    url: 'https://github.com/YOUR_GITHUB_OWNER/docker-deploy-tool/releases/latest/download/'
-  }
-]
+// ==================== 更新源 ====================
+// 更新源由 electron-builder 打包时生成的 app-update.yml 提供
+// （provider: github, owner: zqr00000, repo: docker-deploy-tool, releaseType: release）
+// electron-updater 默认读取该文件，无需 setFeedURL 硬编码
 
 let status: UpdaterStatus = 'idle'
-// 多源尝试过程中的中间失败不向渲染进程推送，仅最后一个源失败才报错
-let suppressErrorEvent = false
 
 function sendEvent(event: UpdaterEvent): void {
   try {
@@ -136,10 +116,6 @@ export function initUpdater(): void {
   }
 
   autoUpdater.on('error', (error: Error) => {
-    if (suppressErrorEvent) {
-      log.warn('updater: suppressed intermediate error:', error.message)
-      return
-    }
     status = 'error'
     log.error('updater: error:', error)
     sendEvent({ type: 'error', message: error.message })
@@ -150,38 +126,22 @@ export function initUpdater(): void {
     if (!app.isPackaged) {
       return { hasUpdate: false, message: '开发模式下不可更新' }
     }
-    // 逐源尝试：Gitee 优先（国内快），失败自动切换 GitHub 兜底
-    let lastError: Error | null = null
-    suppressErrorEvent = true
     try {
-      for (const source of UPDATE_SOURCES) {
-        try {
-          autoUpdater.setFeedURL({
-            provider: 'generic',
-            url: source.url,
-            useMultipleRangeRequest: source.useMultipleRangeRequest
-          })
-          log.info(`updater: checking source [${source.name}]: ${source.url}`)
-          const result = await autoUpdater.checkForUpdates()
-          const info = result?.updateInfo
-          const hasUpdate = info ? info.version !== app.getVersion() : false
-          log.info(`updater: source [${source.name}] ok, hasUpdate=${hasUpdate}, latest=${info?.version}`)
-          return {
-            hasUpdate,
-            version: info?.version,
-            releaseNotes: normalizeReleaseNotes(info?.releaseNotes),
-            releaseDate: info?.releaseDate
-          }
-        } catch (error) {
-          lastError = error as Error
-          log.warn(`updater: source [${source.name}] failed, trying next:`, error)
-        }
+      log.info('updater: checking for update...')
+      const result = await autoUpdater.checkForUpdates()
+      const info = result?.updateInfo
+      const hasUpdate = info ? info.version !== app.getVersion() : false
+      log.info(`updater: check ok, hasUpdate=${hasUpdate}, latest=${info?.version}`)
+      return {
+        hasUpdate,
+        version: info?.version,
+        releaseNotes: normalizeReleaseNotes(info?.releaseNotes),
+        releaseDate: info?.releaseDate
       }
-    } finally {
-      suppressErrorEvent = false
+    } catch (error) {
+      log.error('updater: check failed:', error)
+      return { hasUpdate: false, message: (error as Error).message || '更新源不可达' }
     }
-    log.error('updater: all sources failed:', lastError)
-    return { hasUpdate: false, message: lastError?.message || '所有更新源均不可达' }
   })
 
   ipcMain.handle('update:download', async (): Promise<{ success: boolean; message?: string }> => {
