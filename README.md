@@ -1,6 +1,10 @@
-# Docker Deploy Tool
+# 云舵 (YunDuo) — Docker Deploy Tool
 
-现代化的 Docker 部署管理工具，支持通过 SSH 远程管理 Docker 容器和应用部署。
+现代化的 Docker 部署管理与 AI 运维助手，支持通过 SSH 远程管理 Docker 容器、应用部署、文件传输，并内置可配置主流大模型的 AI 运维终端。
+
+> 📦 下载安装包：[GitHub Releases](https://github.com/zqr00000/docker-deploy-tool/releases/latest)
+>
+> 🔄 安装版应用内置自动更新（基于 GitHub Releases），无需手动下载升级
 
 ## 功能特性
 
@@ -169,6 +173,8 @@
 - **运行时**: Electron 32
 - **数据库**: better-sqlite3
 - **SSH**: ssh2
+- **AI 框架**: Mastra + Vercel AI SDK（多提供商模型支持）
+- **自动更新**: electron-updater（GitHub Releases）
 - **日志**: electron-log
 - **定时任务**: node-cron
 
@@ -239,7 +245,7 @@ docker-deploy-tool/
 
 1. 克隆项目
 ```bash
-git clone <repository-url>
+git clone https://github.com/zqr00000/docker-deploy-tool.git
 cd docker-deploy-tool
 ```
 
@@ -457,6 +463,12 @@ A: 按下 `Ctrl + K`（Windows）或 `Cmd + K`（Mac）打开搜索框，输入�
 
 ### Q: 如何批量操作容器？
 A: 进入「批量操作」页面，筛选容器后选择操作类型，支持保存为模板以便下次复用。
+
+### Q: Windows 安装时提示「Windows 已保护你的电脑」（SmartScreen）？
+A: 软件目前未做代码签名，属正常现象。点击「更多信息」→「仍要运行」即可继续安装。
+
+### Q: 应用内检查更新失败 / 提示 404？
+A: 自动更新基于 GitHub Releases，请确认本机可以访问 github.com。命令行工具（git、npm 等）不读取 Windows 系统代理，需要时为其单独配置代理或使用镜像源。
 
 ## 开发指南
 
