@@ -847,6 +847,23 @@ body {
   border-top: 1px solid var(--app-border-color) !important;
 }
 
+/* Modal 文字颜色跟随主题（修复深色主题下确认框黑字黑底不可读） */
+.ant-modal-title {
+  color: var(--app-text-color) !important;
+}
+
+.ant-modal-confirm-title {
+  color: var(--app-text-color) !important;
+}
+
+.ant-modal-confirm-content {
+  color: var(--app-text-secondary) !important;
+}
+
+.ant-modal .ant-modal-body {
+  color: var(--app-text-color) !important;
+}
+
 /* ====== Form Enhancement — Apple ====== */
 .ant-form-item-label > label {
   color: var(--app-text-color) !important;
