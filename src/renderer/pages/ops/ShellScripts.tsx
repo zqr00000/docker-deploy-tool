@@ -637,7 +637,7 @@ const ShellScripts: React.FC = () => {
                         {t('shellScript.refresh')}
                       </Button>
                       <Button icon={<QuestionCircleOutlined />} onClick={() => setHelpOpen(true)}>
-                        {t('shellScript.help')}
+                        {t('shellScript.helpButton')}
                       </Button>
                       <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
                         {t('shellScript.addScript')}
