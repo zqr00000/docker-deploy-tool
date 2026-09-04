@@ -158,13 +158,14 @@ class SSHService {
     return connectConfig
   }
 
-  async connect(config: SSHServerConfig): Promise<{ success: boolean; message: string }> {
+  async connect(config: SSHServerConfig): Promise<{ success: boolean; message: string; alreadyConnected?: boolean }> {
     const { id: serverId } = config
 
     if (this.connections.has(serverId)) {
       const existing = this.connections.get(serverId)!
       if (existing.authenticated) {
-        return { success: true, message: 'Already connected' }
+        // 已认证的重复连接请求直接复用（alreadyConnected 供上层跳过重复审计日志）
+        return { success: true, message: 'Already connected', alreadyConnected: true }
       }
       this.disconnect(serverId)
     }

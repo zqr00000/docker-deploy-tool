@@ -263,15 +263,18 @@ function registerIpcHandlers(): void {
       const result = await sshService.connect(server)
       if (result.success) {
         serverQueries.updateStatus(server.id, 'online')
-        auditLogService.log({
-          action: 'server_connect',
-          targetType: 'server',
-          targetId: server.id,
-          targetName: server.name,
-          status: 'success',
-          details: `Connected to ${server.host}:${server.port}`,
-          serverId: server.id
-        })
+        // 复用已有连接（alreadyConnected）不重复记审计日志，避免开发模式 StrictMode 双调用产生重复记录
+        if (!result.alreadyConnected) {
+          auditLogService.log({
+            action: 'server_connect',
+            targetType: 'server',
+            targetId: server.id,
+            targetName: server.name,
+            status: 'success',
+            details: `Connected to ${server.host}:${server.port}`,
+            serverId: server.id
+          })
+        }
       } else {
         serverQueries.updateStatus(server.id, 'error')
         auditLogService.log({

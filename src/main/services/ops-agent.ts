@@ -39,6 +39,10 @@ export interface AgentModelConfig {
   enableWebSearch?: boolean
   enableRouting?: boolean
   routing?: Record<string, { provider?: string; model?: string; baseUrl?: string; apiKey?: string }>
+  // 回复语言：auto=跟随用户（默认）；zh=始终中文；en=始终英文
+  replyLanguage?: 'auto' | 'zh' | 'en'
+  // 回复风格：standard=标准（默认）；concise=简洁；detailed=详细
+  replyStyle?: 'standard' | 'concise' | 'detailed'
 }
 
 export interface ChatCallbacks {
