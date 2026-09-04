@@ -17,6 +17,7 @@ import { dockerImagesService } from './services/docker-images'
 import { securityScanService } from './services/security-scan'
 import { dockerNetworksService } from './services/docker-networks'
 import { auditLogService } from './services/audit-log'
+import { fetchPromotions } from './services/promo'
 import { deployHistoryService } from './services/deploy-history'
 import { batchOperationsService } from './services/batch-operations'
 import { containerTerminalService } from './services/container-terminal'
@@ -2704,6 +2705,16 @@ function registerIpcHandlers(): void {
     try {
       if (!safeStorage.isEncryptionAvailable()) return { success: false }
       return { success: true, data: safeStorage.decryptString(Buffer.from(cipher, 'base64')) }
+    } catch (error) {
+      return { success: false, error: (error as Error).message }
+    }
+  })
+
+  // AI 厂商福利活动自动抓取（主进程请求官方页，规避渲染进程 CORS）
+  ipcMain.handle('promo:fetch', async (): Promise<{ success: boolean; data?: any[]; error?: string }> => {
+    try {
+      const data = await fetchPromotions()
+      return { success: true, data }
     } catch (error) {
       return { success: false, error: (error as Error).message }
     }

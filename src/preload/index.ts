@@ -265,6 +265,9 @@ const electronAPI: ElectronAPI = {
     encrypt: (text: string): Promise<{ success: boolean; data?: string; error?: string }> => ipcRenderer.invoke('secure:encrypt', text),
     decrypt: (cipher: string): Promise<{ success: boolean; data?: string; error?: string }> => ipcRenderer.invoke('secure:decrypt', cipher)
   },
+  promo: {
+    fetch: (): Promise<{ success: boolean; data?: { name: string; url: string; title: string; items: string[] }[]; error?: string }> => ipcRenderer.invoke('promo:fetch')
+  },
   opsAgent: {
     setConfig: (config: any): Promise<{ success: boolean; error?: string }> => ipcRenderer.invoke('opsAgent:setConfig', config),
     getConfig: (): Promise<{ success: boolean; data?: any; error?: string }> => ipcRenderer.invoke('opsAgent:getConfig'),
