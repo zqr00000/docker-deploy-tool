@@ -421,11 +421,6 @@ const LayoutComponent: React.FC<LayoutProps> = memo(({ children }) => {
       <header className="app-header app-header-topnav" style={headerStyle}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
           <Logo size={isMd ? 26 : 30} />
-          {isXl && (
-            <Title level={4} style={{ margin: 0, color: '#007AFF', fontWeight: 700, whiteSpace: 'nowrap' }}>
-              {t('app.title')}
-            </Title>
-          )}
         </div>
 
         {/* 顶部水平导航菜单：支持键盘导航与 aria 标注 */}

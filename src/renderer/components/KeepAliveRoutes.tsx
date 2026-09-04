@@ -55,8 +55,23 @@ const KeepAliveRoutes: React.FC<KeepAliveRoutesProps> = ({ routes }) => {
   // 暴露释放缓存给 Layout 使用
   dropCacheRef = dropCache
 
+  // 不缓存的路径（详情路由等）：不放进缓存 Map，但必须直接渲染当前 element，否则会整页空白/黑屏
+  const shouldRenderDirect = !shouldCache(key) && !!element
+
   return (
     <>
+      {shouldRenderDirect && (
+        <div
+          key={key}
+          style={{
+            display: 'block',
+            height: '100%',
+            minHeight: 0
+          }}
+        >
+          {element}
+        </div>
+      )}
       {Array.from(cacheMap.entries()).map(([path, node]) => (
         <div
           key={path}
