@@ -24,7 +24,7 @@ interface PromoSource {
 
 // 首批厂商官方源（可增删调整，URL 尽量使用官方主域/活动页）
 const PROMO_SOURCES: PromoSource[] = [
-  { id: 'qoder', name: 'Qoder', url: 'https://www.qoder.com/' },
+  { id: 'qoder', name: 'Qoder', url: 'https://docs.qoder.cn/events' },
   { id: 'lingma', name: '通义灵码', url: 'https://lingma.aliyun.com/' },
   { id: 'trae', name: 'Trae', url: 'https://www.trae.ai/' },
   { id: 'doubao', name: '豆包', url: 'https://www.doubao.com/' },
