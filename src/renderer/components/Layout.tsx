@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, memo } from 'react'
-import { Menu, Typography, Grid, Button, Drawer, Input, Space, Tag, Tabs, Modal, List, Empty, Alert } from 'antd'
+import { Menu, Typography, Grid, Button, Drawer, Input, Space, Tag, Tabs } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { releaseCache } from './KeepAliveRoutes'
@@ -30,8 +30,7 @@ import {
   CodeOutlined,
   RobotOutlined,
   CloudUploadOutlined,
-  SwapOutlined,
-  GiftOutlined
+  SwapOutlined
 } from '@ant-design/icons'
 import type { MenuProps } from 'antd'
 import LanguageSwitcher from './LanguageSwitcher'
@@ -160,31 +159,7 @@ const LayoutComponent: React.FC<LayoutProps> = memo(({ children }) => {
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false)
   const [searchVisible, setSearchVisible] = useState(false)
   const [onboardingVisible, setOnboardingVisible] = useState(false)
-  const [promoVisible, setPromoVisible] = useState(false)
-  const [promos, setPromos] = useState<{ name: string; url: string; title: string; items: string[] }[] | null>(null)
-  const [promoLoading, setPromoLoading] = useState(false)
-  const [promoError, setPromoError] = useState(false)
   const [openKeys, setOpenKeys] = useState<string[]>([])
-
-  // 打开福利弹窗时调用主进程抓取各厂商官网福利
-  const loadPromos = useCallback(async () => {
-    setPromoLoading(true)
-    setPromoError(false)
-    try {
-      const res = await window.electronAPI.promo.fetch()
-      if (res.success && res.data) {
-        setPromos(res.data)
-      } else {
-        setPromos([])
-        setPromoError(true)
-      }
-    } catch {
-      setPromos([])
-      setPromoError(true)
-    } finally {
-      setPromoLoading(false)
-    }
-  }, [])
 
   // ===== 标签页工作区：openTabs 记录已打开的页面标签（同一菜单只保留一个）=====
   interface OpenTab { key: string; label: string }
@@ -446,6 +421,11 @@ const LayoutComponent: React.FC<LayoutProps> = memo(({ children }) => {
       <header className="app-header app-header-topnav" style={headerStyle}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
           <Logo size={isMd ? 26 : 30} />
+          {isXl && (
+            <Title level={4} style={{ margin: 0, color: '#007AFF', fontWeight: 700, whiteSpace: 'nowrap' }}>
+              {t('app.title')}
+            </Title>
+          )}
         </div>
 
         {/* 顶部水平导航菜单：支持键盘导航与 aria 标注 */}
@@ -487,13 +467,6 @@ const LayoutComponent: React.FC<LayoutProps> = memo(({ children }) => {
             title={t('onboarding.helpButton')}
             aria-label={t('onboarding.helpButton')}
           />
-          <Button
-            type="text"
-            icon={<GiftOutlined style={{ color: '#FF9500' }} />}
-            onClick={() => { setPromoVisible(true); loadPromos() }}
-            title={t('promo.title')}
-            aria-label={t('promo.title')}
-          />
           <LanguageSwitcher />
         </Space>
       </header>
@@ -513,60 +486,6 @@ const LayoutComponent: React.FC<LayoutProps> = memo(({ children }) => {
 
       {/* Onboarding Guide Modal */}
       <OnboardingGuide visible={onboardingVisible} onClose={() => setOnboardingVisible(false)} />
-
-      {/* AI 厂商福利活动 Modal */}
-      <Modal
-        open={promoVisible}
-        onCancel={() => setPromoVisible(false)}
-        footer={null}
-        title={
-          <Space size={8}>
-            <GiftOutlined style={{ color: '#FF9500' }} />
-            {t('promo.title')}
-          </Space>
-        }
-        width={520}
-      >
-        <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
-          {t('promo.subtitle')}
-        </Typography.Paragraph>
-        {promoError && (
-          <Alert type="warning" showIcon message={t('promo.fetchError')} style={{ marginBottom: 12 }} />
-        )}
-        <List
-          loading={promoLoading}
-          dataSource={promos || []}
-          locale={{ emptyText: <Empty description={t('promo.empty')} /> }}
-          renderItem={(item) => (
-            <List.Item key={item.url || item.name} style={{ padding: '12px 0' }}>
-              <Space direction="vertical" style={{ width: '100%' }} size={4}>
-                <Space>
-                  <Tag color="orange" style={{ marginRight: 0, flexShrink: 0 }}>{item.name}</Tag>
-                  {item.url && (
-                    <Typography.Link href={item.url} target="_blank" rel="noreferrer" style={{ fontSize: 12 }}>
-                      {item.title || item.url}
-                    </Typography.Link>
-                  )}
-                </Space>
-                {item.items.length ? (
-                  <ul style={{ margin: 0, paddingLeft: 18, color: 'var(--app-text-color)' }}>
-                    {item.items.map((s, i) => (
-                      <li key={i} style={{ lineHeight: 1.7, fontSize: 12 }}>{s}</li>
-                    ))}
-                  </ul>
-                ) : (
-                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                    {t('promo.unavailable')}
-                  </Typography.Text>
-                )}
-              </Space>
-            </List.Item>
-          )}
-        />
-        <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12, marginTop: 4 }}>
-          {t('promo.footer')}
-        </Typography.Text>
-      </Modal>
     </div>
   )
 })

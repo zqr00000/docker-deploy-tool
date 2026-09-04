@@ -1,12 +1,4 @@
 {
-  "promo": {
-    "title": "AI Provider Promotions",
-    "subtitle": "Auto-fetched from AI providers' official sites · loading",
-    "empty": "No promotions available at the moment",
-    "unavailable": "No public promotion info parsed from the official page (may be dynamically rendered)",
-    "fetchError": "Failed to fetch promotions, please try again later",
-    "footer": "Content is auto-fetched from each provider's official website; refer to the official site for details."
-  },
   "app": {
     "title": "Application Management",
     "list": "Application List",
