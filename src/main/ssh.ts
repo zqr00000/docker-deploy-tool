@@ -43,6 +43,8 @@ interface ConnectionEntry {
 
 class SSHService {
   private connections: Map<string, ConnectionEntry> = new Map()
+  // 进行中的拨号请求：同一服务器的并发 connect 合并为一次真实拨号（防 StrictMode 双调用/双击产生双连接）
+  private pendingConnects: Map<string, Promise<{ success: boolean; message: string; alreadyConnected?: boolean; duplicate?: boolean }>> = new Map()
   private connectionTimeout = 30000
   private maxConcurrentCommands = 5
   private commandQueues: Map<string, Array<() => void>> = new Map()
@@ -158,7 +160,7 @@ class SSHService {
     return connectConfig
   }
 
-  async connect(config: SSHServerConfig): Promise<{ success: boolean; message: string; alreadyConnected?: boolean }> {
+  async connect(config: SSHServerConfig): Promise<{ success: boolean; message: string; alreadyConnected?: boolean; duplicate?: boolean }> {
     const { id: serverId } = config
 
     if (this.connections.has(serverId)) {
@@ -169,6 +171,22 @@ class SSHService {
       }
       this.disconnect(serverId)
     }
+
+    // 并发去重：同一服务器正在进行拨号时，后续请求等待同一结果并标记 duplicate（跳过审计日志）
+    const pending = this.pendingConnects.get(serverId)
+    if (pending) {
+      return pending.then(r => ({ ...r, duplicate: true }))
+    }
+
+    const p = this.doConnect(config).finally(() => {
+      this.pendingConnects.delete(serverId)
+    })
+    this.pendingConnects.set(serverId, p)
+    return p
+  }
+
+  private doConnect(config: SSHServerConfig): Promise<{ success: boolean; message: string }> {
+    const { id: serverId } = config
 
     return new Promise((resolve) => {
       const client = this.createClient(config)

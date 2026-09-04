@@ -263,8 +263,8 @@ function registerIpcHandlers(): void {
       const result = await sshService.connect(server)
       if (result.success) {
         serverQueries.updateStatus(server.id, 'online')
-        // 复用已有连接（alreadyConnected）不重复记审计日志，避免开发模式 StrictMode 双调用产生重复记录
-        if (!result.alreadyConnected) {
+        // 复用已有连接（alreadyConnected）或并发合并请求（duplicate）不重复记审计日志
+        if (!result.alreadyConnected && !result.duplicate) {
           auditLogService.log({
             action: 'server_connect',
             targetType: 'server',
@@ -275,7 +275,7 @@ function registerIpcHandlers(): void {
             serverId: server.id
           })
         }
-      } else {
+      } else if (!result.duplicate) {
         serverQueries.updateStatus(server.id, 'error')
         auditLogService.log({
           action: 'server_connect',
