@@ -1,6 +1,6 @@
 {
   "name": "docker-deploy-tool",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Docker Deploy Tool - 现代化的 Docker 部署管理工具",
   "main": "dist/main/index.js",
   "author": "Docker Deploy Tool Team",
