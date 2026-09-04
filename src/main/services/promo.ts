@@ -1,9 +1,12 @@
 // ============================================================
 // AI 厂商福利活动自动抓取服务
 // 运行时访问各厂商官方页面，提取与促销/福利相关的文本片段。
-// 官方页面为动态渲染或无促销内容时返回空 items，由前端展示"官方暂无公开可解析活动"。
+// 使用 Electron net.request（走 Chromium 网络栈，跟随系统代理），
+// 规避渲染进程 CORS 与 Node fetch 直连现状；反爬/动态渲染仍可能抓不到，
+// 此时返回空 items，由前端展示"官方暂无公开可解析活动"。
 // 本服务不编造活动内容，一切以官方页面实际可抓取文本为准。
 // ============================================================
+import { net } from 'electron'
 import log from 'electron-log'
 
 interface PromoItem {
@@ -67,43 +70,63 @@ function splitSentences(text: string): string[] {
     .filter(s => s.length >= 6 && s.length <= 180)
 }
 
-async function fetchPromo(source: PromoSource): Promise<PromoItem> {
-  const result: PromoItem = { name: source.name, url: source.url, title: '', items: [] }
-  try {
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 9000)
-    const res = await fetch(source.url, {
-      signal: controller.signal,
+// 基于 Electron net.request 的 GET（走 Chromium 网络栈并跟随系统代理）
+function httpGet(url: string): Promise<{ ok: boolean; status: number; text: string }> {
+  return new Promise((resolve) => {
+    const req = net.request({
+      method: 'GET',
+      url,
       headers: {
         'User-Agent': UA,
         Accept: 'text/html,application/xhtml+xml',
         'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8'
       }
-    }).finally(() => clearTimeout(timer))
+    })
+    const timer = setTimeout(() => {
+      try { req.abort() } catch { /* ignore */ }
+      resolve({ ok: false, status: 0, text: '' })
+    }, 9000)
 
-    if (!res.ok) {
-      log.warn(`[promo] ${source.name} HTTP ${res.status}`)
-      return result
-    }
+    let status = 0
+    let body = ''
+    req.on('response', (res) => {
+      status = res.statusCode
+      res.on('data', (chunk) => { body += chunk.toString('utf8') })
+      res.on('end', () => {
+        clearTimeout(timer)
+        resolve({ ok: status >= 200 && status < 300, status, text: body })
+      })
+    })
+    req.on('error', () => {
+      clearTimeout(timer)
+      resolve({ ok: false, status: 0, text: '' })
+    })
+    req.end()
+  })
+}
 
-    const html = await res.text()
-    result.title = extractTitle(html)
-    const text = htmlToText(html)
-
-    // 命中促销关键词的句子去重缓存
-    const seen = new Set<string>()
-    for (const sentence of splitSentences(text)) {
-      if (result.items.length >= 5) break
-      if (!PROMO_KEYWORDS.some(k => sentence.toLowerCase().includes(k.toLowerCase()))) continue
-      const key = sentence.toLowerCase()
-      if (seen.has(key)) continue
-      seen.add(key)
-      result.items.push(sentence)
-    }
-    log.info(`[promo] ${source.name}: title="${result.title}", matched=${result.items.length}`)
-  } catch (error) {
-    log.warn(`[promo] ${source.name} fetch failed: ${(error as Error).message}`)
+async function fetchPromo(source: PromoSource): Promise<PromoItem> {
+  const result: PromoItem = { name: source.name, url: source.url, title: '', items: [] }
+  const res = await httpGet(source.url)
+  if (!res.ok) {
+    log.warn(`[promo] ${source.name} HTTP ${res.status || 'fail'}`)
+    return result
   }
+
+  result.title = extractTitle(res.text)
+  const text = htmlToText(res.text)
+
+  // 命中促销关键词的句子去重缓存
+  const seen = new Set<string>()
+  for (const sentence of splitSentences(text)) {
+    if (result.items.length >= 5) break
+    if (!PROMO_KEYWORDS.some(k => sentence.toLowerCase().includes(k.toLowerCase()))) continue
+    const key = sentence.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    result.items.push(sentence)
+  }
+  log.info(`[promo] ${source.name}: title="${result.title}", matched=${result.items.length}`)
   return result
 }
 
