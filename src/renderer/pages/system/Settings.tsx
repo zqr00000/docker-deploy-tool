@@ -284,7 +284,8 @@ const Settings: React.FC = () => {
         </div>
       </div>
 
-      <Row gutter={[16, 16]}>
+      {/* antd 的 align="stretch" 无对应 CSS，需内联 alignItems 实现 Col 等高拉伸 */}
+      <Row gutter={[16, 16]} style={{ alignItems: 'stretch' }}>
         {/* Appearance */}
         <Col xs={24} md={24}>
           <Card title={
@@ -341,13 +342,16 @@ const Settings: React.FC = () => {
         </Col>
 
         {/* Config Management */}
-        <Col xs={24} md={12}>
-          <Card title={
-            <span style={{ fontWeight: 600 }}>
-              <ImportOutlined style={{ marginRight: 8, color: '#34C759' }} />
-              {t('settings.configManagement')}
-            </span>
-          }>
+        <Col xs={24} md={12} style={{ display: 'flex' }}>
+          <Card
+            title={
+              <span style={{ fontWeight: 600 }}>
+                <ImportOutlined style={{ marginRight: 8, color: '#34C759' }} />
+                {t('settings.configManagement')}
+              </span>
+            }
+            style={{ flex: 1 }}
+          >
             <Space direction="vertical" style={{ width: '100%' }} size="middle">
               <Paragraph type="secondary" style={{ marginBottom: 0 }}>
                 {t('settings.configManagementDesc')}
@@ -374,13 +378,16 @@ const Settings: React.FC = () => {
         </Col>
 
         {/* About & Updates */}
-        <Col xs={24} md={12}>
-          <Card title={
-            <span style={{ fontWeight: 600 }}>
-              <InfoCircleOutlined style={{ marginRight: 8, color: '#5AC8FA' }} />
-              {t('app.title')}
-            </span>
-          }>
+        <Col xs={24} md={12} style={{ display: 'flex' }}>
+          <Card
+            title={
+              <span style={{ fontWeight: 600 }}>
+                <InfoCircleOutlined style={{ marginRight: 8, color: '#5AC8FA' }} />
+                {t('app.title')}
+              </span>
+            }
+            style={{ flex: 1 }}
+          >
             <Space direction="vertical" size="small" style={{ width: '100%' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Space size="small">

@@ -104,11 +104,11 @@ const AiModelConfigPanel: React.FC<AiModelConfigPanelProps> = ({ selectedServer 
   const [configTab, setConfigTab] = useState<'connection' | 'runtime' | 'agent' | 'appearance'>('connection')
   const [terminalThemeId, setTerminalThemeId] = useState(() => localStorage.getItem('agentTerminalTheme') || 'github-dark')
 
-  // Config state
+  // Config state（已存配置与默认值合并，保证新增配置项始终有默认值）
   const [modelConfig, setModelConfig] = useState<ModelConfig>(() => {
     const saved = localStorage.getItem(CONFIG_KEY)
-    const parsed = saved ? JSON.parse(saved) : DEFAULT_MODEL_CONFIG
-    return ensureProfiles(parsed)
+    const parsed = saved ? JSON.parse(saved) : {}
+    return ensureProfiles({ ...DEFAULT_MODEL_CONFIG, ...parsed })
   })
   const [configSaved, setConfigSaved] = useState(false)
   const [editingPrompt, setEditingPrompt] = useState(false)
@@ -363,46 +363,46 @@ const AiModelConfigPanel: React.FC<AiModelConfigPanelProps> = ({ selectedServer 
                 { key: 'appearance', label: '外观', icon: <BulbOutlined /> }
               ].map(item => (
                 <div key={item.key} className={`agent-config-nav ${configTab === item.key ? 'active' : ''}`} onClick={() => setConfigTab(item.key as any)}
-                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 10px', borderRadius: 8, cursor: 'pointer', fontSize: 12 }}>
-                  {item.icon}
+                  style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 14px', borderRadius: 10, cursor: 'pointer', fontSize: 14 }}>
+                  <span style={{ fontSize: 15, display: 'flex' }}>{item.icon}</span>
                   <span>{item.label}</span>
                 </div>
               ))}
             </div>
 
-            {/* 右侧分组内容 */}
-            <div style={{ flex: 1, minWidth: 0, overflow: 'auto', display: 'flex', justifyContent: 'center' }}>
-              <div style={{ width: '100%', maxWidth: 1060, minWidth: 0 }}>
+            {/* 右侧分组内容（flex 纵向布局，把高度传递给各标签页内容，使卡片可撑满） */}
+            <div style={{ flex: 1, minWidth: 0, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ width: '100%', minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column' }}>
                 {configTab === 'connection' && (
-                  <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+                  <div style={{ display: 'flex', gap: 14, alignItems: 'stretch', flex: 1, minHeight: 0 }}>
                     {/* 提供商档案列表（参考 Netcatty 多提供商管理） */}
-                    <div style={{ width: 150, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <div style={{ width: 280, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
                       {(modelConfig.providerProfiles || []).map(p => {
                         const meta = PROVIDER_OPTIONS.find(x => x.provider === p.provider)
                         const isActive = modelConfig.activeProfileId === p.id
                         return (
                           <div key={p.id} className={`provider-chip ${isActive ? 'active' : ''}`} onClick={() => activateProfile(p.id)}
-                            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 8px', borderRadius: 8, cursor: 'pointer' }}>
-                            <span className="provider-dot" style={{ background: meta?.color || '#0A84FF', color: meta?.color || '#0A84FF' }} />
+                            style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 14px', borderRadius: 12, cursor: 'pointer' }}>
+                            <span className="provider-dot" style={{ background: meta?.color || '#0A84FF', color: meta?.color || '#0A84FF', width: 11, height: 11 }} />
                             <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: 11, color: isActive ? 'var(--app-text-color)' : 'var(--app-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
-                              <div style={{ fontSize: 10, color: 'var(--app-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.model || meta?.name || p.provider}</div>
+                              <div style={{ fontSize: 15, fontWeight: 500, color: isActive ? 'var(--app-text-color)' : 'var(--app-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
+                              <div style={{ fontSize: 13, color: 'var(--app-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.model || meta?.name || p.provider}</div>
                             </div>
-                            {isActive && <CheckCircleOutlined style={{ color: '#0A84FF', fontSize: 11, flexShrink: 0 }} />}
+                            {isActive && <CheckCircleOutlined style={{ color: '#0A84FF', fontSize: 15, flexShrink: 0 }} />}
                             {(modelConfig.providerProfiles || []).length > 1 && (
                               <Button size="small" type="text" danger icon={<DeleteOutlined />} title="删除配置"
-                                style={{ padding: 0, width: 16, height: 16, fontSize: 10, flexShrink: 0 }}
+                                style={{ padding: 0, width: 20, height: 20, fontSize: 13, flexShrink: 0 }}
                                 onClick={(e) => { e.stopPropagation(); removeProfile(p.id) }} />
                             )}
                           </div>
                         )
                       })}
                       <Button size="small" type="dashed" icon={<PlusOutlined />} onClick={addProfile}
-                        style={{ borderRadius: 8, borderColor: 'var(--app-border-color)', color: '#0A84FF', fontSize: 11 }}>添加配置</Button>
+                        style={{ borderRadius: 12, borderColor: 'var(--app-border-color)', color: '#0A84FF', fontSize: 14, height: 40 }}>添加配置</Button>
                     </div>
 
-                    {/* 激活档案表单 */}
-                    <div className="config-card" style={{ flex: 1, minWidth: 0 }}>
+                    {/* 激活档案表单（高度撑满，内容超高时内部滚动） */}
+                    <div className="config-card" style={{ flex: 1, minWidth: 0, overflowY: 'auto' }}>
                       <div className="config-card-title"><ApiOutlined style={{ color: '#0A84FF' }} />{activeProfile?.name || '模型连接'}</div>
 
                       {/* 档案名称 */}
@@ -553,32 +553,64 @@ const AiModelConfigPanel: React.FC<AiModelConfigPanelProps> = ({ selectedServer 
                     )}
 
                     {/* 命令超时 */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 18, gap: 12 }}>
                       <div style={{ minWidth: 0 }}>
-                        <Text style={{ color: 'var(--app-text-color)', fontSize: 12 }}>命令超时</Text>
-                        <Text style={{ color: 'var(--app-text-secondary)', fontSize: 10, display: 'block' }}>AI 执行远程命令的最长等待时间</Text>
+                        <Text style={{ color: 'var(--app-text-color)', fontSize: 13 }}>命令超时</Text>
+                        <Text style={{ color: 'var(--app-text-secondary)', fontSize: 11, display: 'block' }}>AI 执行远程命令的最长等待时间</Text>
                       </div>
-                      <InputNumber value={modelConfig.commandTimeout} onChange={v => setModelConfig({ ...modelConfig, commandTimeout: (v as number) || 30000 })}
-                        min={5000} max={120000} step={5000} size="small" style={{ width: 110, background: 'var(--app-bg-color)', border: '1px solid var(--app-border-color)', color: 'var(--app-text-color)', borderRadius: 6 }} />
-                      <Text style={{ fontSize: 10, color: 'var(--app-text-secondary)', marginLeft: 4, flexShrink: 0 }}>ms</Text>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                        <InputNumber value={modelConfig.commandTimeout} onChange={v => setModelConfig({ ...modelConfig, commandTimeout: (v as number) || 30000 })}
+                          min={5000} max={120000} step={5000} size="small" style={{ width: 130, background: 'var(--app-bg-color)', border: '1px solid var(--app-border-color)', color: 'var(--app-text-color)', borderRadius: 6 }} />
+                        <Text style={{ fontSize: 11, color: 'var(--app-text-secondary)' }}>ms</Text>
+                      </div>
                     </div>
 
                     {/* 最大迭代步骤 */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 18, gap: 12 }}>
                       <div style={{ minWidth: 0 }}>
-                        <Text style={{ color: 'var(--app-text-color)', fontSize: 12 }}>最大迭代步骤</Text>
-                        <Text style={{ color: 'var(--app-text-secondary)', fontSize: 10, display: 'block' }}>一次任务中最多连续工具调用步数</Text>
+                        <Text style={{ color: 'var(--app-text-color)', fontSize: 13 }}>最大迭代步骤</Text>
+                        <Text style={{ color: 'var(--app-text-secondary)', fontSize: 11, display: 'block' }}>一次任务中最多连续工具调用步数</Text>
                       </div>
-                      <InputNumber value={modelConfig.maxIterations} onChange={v => setModelConfig({ ...modelConfig, maxIterations: (v as number) || 15 })}
-                        min={1} max={50} size="small" style={{ width: 80, background: 'var(--app-bg-color)', border: '1px solid var(--app-border-color)', color: 'var(--app-text-color)', borderRadius: 6 }} />
-                      <Text style={{ fontSize: 10, color: 'var(--app-text-secondary)', marginLeft: 4, flexShrink: 0 }}>步</Text>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                        <InputNumber value={modelConfig.maxIterations} onChange={v => setModelConfig({ ...modelConfig, maxIterations: (v as number) || 15 })}
+                          min={1} max={50} size="small" style={{ width: 100, background: 'var(--app-bg-color)', border: '1px solid var(--app-border-color)', color: 'var(--app-text-color)', borderRadius: 6 }} />
+                        <Text style={{ fontSize: 11, color: 'var(--app-text-secondary)' }}>步</Text>
+                      </div>
+                    </div>
+
+                    {/* 回复语言 / 风格 */}
+                    <div style={{ marginTop: 18, display: 'flex', gap: 20 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={{ color: 'var(--app-text-color)', fontSize: 13 }}>回复语言</Text>
+                        <Text style={{ color: 'var(--app-text-secondary)', fontSize: 11, display: 'block' }}>AI 回复使用的语言</Text>
+                        <Select size="small" style={{ width: '100%', marginTop: 6 }}
+                          value={modelConfig.replyLanguage || 'auto'}
+                          onChange={v => setModelConfig({ ...modelConfig, replyLanguage: v })}
+                          options={[
+                            { value: 'auto', label: '跟随用户语言' },
+                            { value: 'zh', label: '始终中文' },
+                            { value: 'en', label: '始终英文' }
+                          ]} />
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={{ color: 'var(--app-text-color)', fontSize: 13 }}>回复风格</Text>
+                        <Text style={{ color: 'var(--app-text-secondary)', fontSize: 11, display: 'block' }}>控制回答的详细程度</Text>
+                        <Select size="small" style={{ width: '100%', marginTop: 6 }}
+                          value={modelConfig.replyStyle || 'standard'}
+                          onChange={v => setModelConfig({ ...modelConfig, replyStyle: v })}
+                          options={[
+                            { value: 'standard', label: '标准' },
+                            { value: 'concise', label: '简洁（结论优先）' },
+                            { value: 'detailed', label: '详细（含推理与验证步骤）' }
+                          ]} />
+                      </div>
                     </div>
 
                     {/* 自动批准高危操作 */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 }}>
                       <div style={{ minWidth: 0 }}>
-                        <Text style={{ color: 'var(--app-text-color)', fontSize: 12 }}>自动批准高危操作</Text>
-                        <Text style={{ color: 'var(--app-text-secondary)', fontSize: 10, display: 'block' }}>开启后高危命令无需人工确认（谨慎使用）</Text>
+                        <Text style={{ color: 'var(--app-text-color)', fontSize: 13 }}>自动批准高危操作</Text>
+                        <Text style={{ color: 'var(--app-text-secondary)', fontSize: 11, display: 'block' }}>开启后高危命令无需人工确认（谨慎使用，黑名单仍拦截）</Text>
                       </div>
                       <Switch size="small" checked={modelConfig.approvalMode === 'auto'}
                         onChange={v => setModelConfig({ ...modelConfig, approvalMode: v ? 'auto' : 'manual' })} />
@@ -598,8 +630,8 @@ const AiModelConfigPanel: React.FC<AiModelConfigPanelProps> = ({ selectedServer 
                     <div style={{ marginTop: 16 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div style={{ minWidth: 0 }}>
-                          <Text style={{ color: 'var(--app-text-color)', fontSize: 12 }}>多模型路由</Text>
-                          <Text style={{ color: 'var(--app-text-secondary)', fontSize: 10, display: 'block' }}>按任务类型路由到不同模型（复杂分析用强模型，日常用轻量模型）</Text>
+                          <Text style={{ color: 'var(--app-text-color)', fontSize: 13 }}>多模型路由</Text>
+                          <Text style={{ color: 'var(--app-text-secondary)', fontSize: 11, display: 'block' }}>按任务类型路由到不同模型（复杂分析用强模型，日常用轻量模型）</Text>
                         </div>
                         <Switch size="small" checked={modelConfig.enableRouting}
                           onChange={v => setModelConfig({ ...modelConfig, enableRouting: v })} />
@@ -651,8 +683,8 @@ const AiModelConfigPanel: React.FC<AiModelConfigPanelProps> = ({ selectedServer 
 
                     {/* 快捷消息 */}
                     <div style={{ marginTop: 16 }}>
-                      <Text style={{ color: 'var(--app-text-color)', fontSize: 12 }}>快捷消息</Text>
-                      <Text style={{ color: 'var(--app-text-secondary)', fontSize: 10, display: 'block', marginBottom: 6 }}>空状态页显示的快捷命令，回车添加</Text>
+                      <Text style={{ color: 'var(--app-text-color)', fontSize: 13 }}>快捷消息</Text>
+                      <Text style={{ color: 'var(--app-text-secondary)', fontSize: 11, display: 'block', marginBottom: 6 }}>空状态页显示的快捷命令，回车添加</Text>
                       <Select mode="tags" value={modelConfig.quickMessages} onChange={v => setModelConfig({ ...modelConfig, quickMessages: v })}
                         placeholder="输入快捷命令文案" size="small" tokenSeparators={[',']} style={{ width: '100%' }} />
                     </div>

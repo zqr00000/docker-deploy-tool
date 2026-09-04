@@ -66,6 +66,10 @@ export interface ModelConfig {
   // 多模型路由：不同任务类型路由到不同模型（简单任务用轻量模型、分析任务用强模型）
   enableRouting?: boolean
   routing?: ModelRouting
+  // 回复语言：auto=跟随用户（默认）；zh=始终中文；en=始终英文
+  replyLanguage?: 'auto' | 'zh' | 'en'
+  // 回复风格：standard=标准（默认）；concise=简洁；detailed=详细
+  replyStyle?: 'standard' | 'concise' | 'detailed'
   // 多提供商档案：当前激活档案 id + 档案列表（扁平字段为激活档案的镜像）
   activeProfileId?: string
   providerProfiles?: ProviderProfile[]
@@ -498,6 +502,9 @@ export const DEFAULT_MODEL_CONFIG: ModelConfig = {
   ],
   approvalMode: 'manual',
   enableWebSearch: false,
+  // 回复语言/风格默认值
+  replyLanguage: 'auto',
+  replyStyle: 'standard',
   activeProfileId: 'profile-default',
   providerProfiles: [
     {

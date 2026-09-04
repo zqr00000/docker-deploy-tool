@@ -92,6 +92,21 @@ export function getAgentConfig(): AgentModelConfig | null {
   return currentConfig ? { ...currentConfig } : null
 }
 
+// 回复语言/风格指令：追加到系统提示词末尾（不覆盖用户自定义提示词，仅追加约束）
+function buildReplyDirectives(cfg?: AgentModelConfig | null): string {
+  const parts: string[] = []
+  if (cfg?.replyLanguage === 'zh') parts.push('Always respond in Simplified Chinese (简体中文回复).')
+  else if (cfg?.replyLanguage === 'en') parts.push('Always respond in English.')
+  // replyLanguage=auto 时不追加语言指令，跟随用户输入语言
+  if (cfg?.replyStyle === 'concise') {
+    parts.push('Response style: concise and to the point. Give the conclusion or commands first, minimal explanation, no filler phrases.')
+  } else if (cfg?.replyStyle === 'detailed') {
+    parts.push('Response style: detailed and thorough. Explain your reasoning, include caveats, relevant command flags and verification steps.')
+  }
+  // replyStyle=standard 时不追加风格指令
+  return parts.length ? '\n\n' + parts.join(' ') : ''
+}
+
 // ==================== 人工审批 ====================
 
 type ApprovalSender = (payload: { id: string; action: string; riskLevel: string }) => void
@@ -806,7 +821,7 @@ async function getAgent(route: AgentRoute = 'execution'): Promise<any> {
 
   const agent = new Agent({
     name: `ops-agent-${route}`,
-    instructions: cfg.systemPrompt || DEFAULT_INSTRUCTIONS,
+    instructions: (cfg.systemPrompt || DEFAULT_INSTRUCTIONS) + buildReplyDirectives(cfg),
     model,
     tools,
     memory: memoryInstance
