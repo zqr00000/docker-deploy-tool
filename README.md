@@ -188,47 +188,45 @@
 docker-deploy-tool/
 ├── src/
 │   ├── main/                     # Electron 主进程
-│   │   ├── index.ts              # 主进程入口
+│   │   ├── index.ts              # 主进程入口（IPC 注册）
 │   │   ├── database.ts           # 数据库操作
 │   │   ├── ssh.ts                # SSH 服务（含连接池管理）
 │   │   ├── system-check.ts       # 系统环境检测
-│   │   ├── app-deploy.ts         # 应用部署服务
-│   │   ├── docker-images.ts      # 镜像管理
-│   │   ├── docker-volumes.ts     # 数据卷管理
-│   │   ├── docker-networks.ts    # 网络管理
-│   │   ├── container-terminal.ts # 容器终端
-│   │   ├── deploy-history.ts     # 部署历史
-│   │   ├── batch-operations.ts   # 批量操作
-│   │   ├── scheduler.ts          # 定时任务调度
-│   │   ├── alert-service.ts      # 告警服务
-│   │   ├── health-check.ts       # 健康检查
-│   │   ├── resource-reports.ts   # 资源报表
-│   │   ├── audit-log.ts          # 审计日志
-│   │   └── install-service.ts    # 自动安装
+│   │   ├── services/             # 业务服务
+│   │   │   ├── ops-agent.ts      # AI 运维 Agent（Mastra）
+│   │   │   ├── ai-model.ts       # 模型调用
+│   │   │   ├── updater.ts        # 应用自动更新
+│   │   │   ├── shell-scripts.ts  # 脚本库
+│   │   │   ├── app-deploy.ts     # 应用部署服务
+│   │   │   ├── docker-images.ts  # 镜像管理
+│   │   │   ├── docker-volumes.ts # 数据卷管理
+│   │   │   ├── docker-networks.ts# 网络管理
+│   │   │   ├── scheduler.ts      # 定时任务调度
+│   │   │   ├── alert-service.ts  # 告警服务
+│   │   │   ├── health-check.ts   # 健康检查
+│   │   │   └── ...
 │   ├── preload/                  # 预加载脚本
 │   │   └── index.ts
 │   └── renderer/                 # 渲染进程（前端）
 │       ├── components/           # React 组件
+│       │   ├── AiModelConfigPanel.tsx # AI 模型配置面板
 │       │   ├── GlobalSearch.tsx  # 全局搜索组件
 │       │   ├── LogViewer.tsx     # 日志查看器
-│       │   ├── MultiContainerLogs.tsx # 多容器日志
-│       │   ├── OnboardingGuide.tsx # 操作引导
-│       │   ├── VirtualList.tsx   # 虚拟滚动列表
 │       │   └── ...
-│       ├── pages/                # 页面组件
-│       │   ├── BackupRestore.tsx # 备份恢复
-│       │   ├── CicdIntegration.tsx # CI/CD 集成
-│       │   ├── ContainerPerformance.tsx # 容器性能
-│       │   ├── SecurityScan.tsx  # 安全扫描
+│       ├── pages/                # 页面组件（按模块分组）
+│       │   ├── agent/            # AI 运维终端
+│       │   ├── apps/             # 应用部署
+│       │   ├── docker/           # 容器/镜像/数据卷/网络
+│       │   ├── system/           # 设置 / 模型配置
+│       │   ├── FileTransfer.tsx  # 文件传输
 │       │   └── ...
-│       ├── context/              # React Context
-│       ├── types/                # TypeScript 类型定义
+│       ├── agent/                # Agent 前端类型与配置
 │       ├── locales/              # 国际化语言文件
 │       └── styles.css            # 全局样式
-├── build/                        # 构建资源
-│   └── icon.svg                  # 应用图标
+├── build/                        # 构建资源（应用图标）
 ├── dist/                         # 构建输出目录
 ├── release/                      # 打包输出目录
+├── .env                          # GH_TOKEN 等本地配置（不入库）
 ├── electron.vite.config.ts       # electron-vite 配置
 ├── package.json
 └── tsconfig.json
@@ -282,6 +280,22 @@ npm run package:dir
 ```
 
 3. 打包产物位于 `release/` 目录
+
+### 发布新版本（维护者）
+
+1. 在项目根目录创建 `.env` 文件（已在 `.gitignore` 中忽略，不会入库）：
+```bash
+GH_TOKEN=你的GitHub Personal Access Token
+```
+> Token 在 GitHub → Settings → Developer settings → Personal access tokens 生成，勾选 `repo` 权限即可。
+
+2. 修改 `package.json` 中的 `version`（必须高于当前已发布版本）
+
+3. 一键发布：
+```bash
+npm run release
+```
+该命令自动完成：清理 → 构建 → 打包 NSIS → 创建/更新 GitHub Release 并上传 `exe / latest.yml / blockmap`（`releaseType: release`，直接覆盖正式版附件）。已安装用户在应用内即可收到更新推送。
 
 ## 使用说明
 
