@@ -28,6 +28,7 @@ import {
   EditOutlined,
   DeleteOutlined,
   HistoryOutlined,
+  ClockCircleOutlined,
   CopyOutlined,
   QuestionCircleOutlined,
   ReloadOutlined,
@@ -161,6 +162,12 @@ const ShellScripts: React.FC = () => {
       loadHistory()
     }
   }, [activeTab, loadHistory])
+
+  // 查看某脚本的执行历史：切换到执行历史 Tab 并自动按该脚本过滤
+  const handleViewScriptHistory = useCallback((script: ShellScript) => {
+    setHistoryScriptFilter(script.id)
+    setActiveTab('history')
+  }, [])
 
   // ========== 筛选与统计 ==========
   const filteredScripts = useMemo(() => {
