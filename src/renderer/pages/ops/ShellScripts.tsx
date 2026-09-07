@@ -1075,6 +1075,7 @@ const ShellScripts: React.FC = () => {
           </Button>
         }
         width={680}
+        styles={{ body: { maxHeight: 'calc(80vh - 110px)', overflowY: 'auto' } }}
       >
         <Space direction="vertical" style={{ width: '100%' }} size={12}>
           <Paragraph>
