@@ -1118,6 +1118,7 @@
     "searchPlaceholder": "搜索脚本名称/描述...",
     "allCategories": "全部分类",
     "addScript": "新建脚本",
+    "helpButton": "使用帮助",
     "help": {
       "introTitle": "功能简介",
       "intro": "Shell 脚本库用于集中管理可复用的运维脚本，支持一键在单台或多台服务器上执行，并自动记录每次执行的输出与状态，便于统一管理与排查。",

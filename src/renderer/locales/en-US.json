@@ -1103,6 +1103,7 @@
     "searchPlaceholder": "Search by name/description...",
     "allCategories": "All Categories",
     "addScript": "New Script",
+    "helpButton": "Help",
     "help": {
       "introTitle": "Overview",
       "intro": "The Shell Script Library centrally manages reusable operations scripts, runs them on one or multiple servers with one click, and automatically records output and status of every run for unified management and troubleshooting.",
