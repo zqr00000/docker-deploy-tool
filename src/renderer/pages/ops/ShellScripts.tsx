@@ -458,7 +458,7 @@ const ShellScripts: React.FC = () => {
     {
       title: t('shellScript.actions'),
       key: 'actions',
-      width: 460,
+      width: 560,
       render: (_, record) => (
         <Space size={4} wrap>
           <Button
@@ -482,6 +482,13 @@ const ShellScripts: React.FC = () => {
             onClick={() => handleVersionsClick(record)}
           >
             {t('shellScript.versions')}
+          </Button>
+          <Button
+            size="small"
+            icon={<ClockCircleOutlined />}
+            onClick={() => handleViewScriptHistory(record)}
+          >
+            {t('shellScript.history')}
           </Button>
           <Button
             size="small"
