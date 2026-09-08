@@ -19,6 +19,10 @@ export interface AlertRule {
   notifyChannels: NotifyChannel[]
   /** 规则级静默窗口（分钟）：同一目标在窗口内不重复触发 */
   silenceMinutes?: number
+  /** cron 表达式：控制该规则的检查时机，默认每分钟 */
+  cronExpr?: string
+  /** 多选目标服务器 ID（优先于 serverId）；为空时按 serverId 或全局生效 */
+  serverIds?: string[]
   createdAt: string
   updatedAt: string
 }
@@ -43,6 +47,10 @@ export interface AlertRuleFormData {
   threshold?: number
   enabled?: boolean
   notifyChannels?: NotifyChannel[]
+  /** cron 表达式：控制该规则的检查时机，默认每分钟 */
+  cronExpr?: string
+  /** 多选目标服务器 ID（优先于 serverId） */
+  serverIds?: string[]
 }
 
 export interface ContainerCheckData {
@@ -64,6 +72,98 @@ export interface ResourceCheckData {
   cpuPercent: number
   memoryPercent: number
   diskPercent?: number
+}
+
+// ==================== cron 匹配 ====================
+// 支持标准 5 段 cron（分 时 日 月 周），含 * 、列表 、范围 、步进
+function matchCronField(pattern: string, value: number, min: number, max: number): boolean {
+  const segments = pattern.split(',')
+  for (let seg of segments) {
+    seg = seg.trim()
+    if (!seg) continue
+    if (seg === '*') return true
+
+    let step = 1
+    if (seg.includes('/')) {
+      const slashIdx = seg.indexOf('/')
+      const stepStr = seg.slice(slashIdx + 1)
+      if (!/^\d+$/.test(stepStr) || Number(stepStr) <= 0) continue
+      step = Number(stepStr)
+      seg = seg.slice(0, slashIdx)
+      if (seg === '*') seg = `${min}-${max}`
+    }
+
+    let start: number
+    let end: number
+    if (seg.includes('-')) {
+      const [s, e] = seg.split('-')
+      if (!/^\d+$/.test(s) || !/^\d+$/.test(e)) continue
+      start = Number(s)
+      end = Number(e)
+    } else if (/^\d+$/.test(seg)) {
+      start = Number(seg)
+      end = Number(seg)
+    } else {
+      continue
+    }
+
+    for (let v = start; v <= end; v += step) {
+      if (v === value) return true
+    }
+  }
+  return false
+}
+
+// 判断某条规则的 cron 表达式在指定时刻是否应执行
+function matchCron(expr: string | undefined, date: Date): boolean {
+  const parts = (expr || '* * * * *').trim().split(/\s+/)
+  if (parts.length !== 5) return true // 非法表达式按每分钟执行处理
+  const [min, hour, dom, month, dow] = parts
+  return (
+    matchCronField(min, date.getMinutes(), 0, 59) &&
+    matchCronField(hour, date.getHours(), 0, 23) &&
+    matchCronField(dom, date.getDate(), 1, 31) &&
+    matchCronField(month, date.getMonth() + 1, 1, 12) &&
+    matchCronField(dow, date.getDay(), 0, 6)
+  )
+}
+
+// 逐段填充可校验字符串：直接透过字段匹配函数判断合法性（供验证表达式用）
+export function isValidCron(expr: string): boolean {
+  const parts = expr.trim().split(/\s+/)
+  if (parts.length !== 5) return false
+  const [min, hour, dom, month, dow] = parts
+  const ok = (p: string, min: number, max: number): boolean => {
+    for (const seg of p.split(',')) {
+      if (seg === '*') continue
+      if (seg.includes('/')) {
+        const idx = seg.indexOf('/')
+        if (!/^\d+$/.test(seg.slice(idx + 1))) return false
+        const range = seg.slice(0, idx)
+        if (range !== '*' && !isValidRange(range, min, max)) return false
+      } else if (!isValidRange(seg, min, max)) {
+        return false
+      }
+    }
+    return true
+  }
+  return ok(min, 0, 59) && ok(hour, 0, 23) && ok(dom, 1, 31) && ok(month, 1, 12) && ok(dow, 0, 6)
+}
+
+function isValidRange(seg: string, min: number, max: number): boolean {
+  if (seg === '*') return true
+  if (seg.includes('-')) {
+    const [s, e] = seg.split('-')
+    if (!/^\d+$/.test(s) || !/^\d+$/.test(e)) return false
+    const sn = Number(s)
+    const en = Number(e)
+    return sn >= min && en <= max && sn <= en
+  }
+  if (/^\d+$/.test(seg)) {
+    const n = Number(seg)
+    return n >= min && n <= max
+  }
+  return false
 }
 
 class AlertService {
@@ -88,6 +188,8 @@ class AlertService {
       notifyChannels: JSON.parse(row.notifyChannels) as NotifyChannel[],
       // 规则级静默窗口（分钟），未配置时回退到默认 5 分钟
       silenceMinutes: row.silenceMinutes ?? 5,
+      cronExpr: row.cronExpr || '* * * * *',
+      serverIds: (JSON.parse(row.serverIds || '[]') as string[]) || [],
       createdAt: row.createdAt,
       updatedAt: row.updatedAt
     }
@@ -129,6 +231,15 @@ class AlertService {
     }
   }
 
+  // 校验并规范化 cron 表达式：非法时抛错，避免规则静默退回每分钟执行
+  private normalizeCron(expr?: string): string {
+    const value = (expr || '* * * * *').trim()
+    if (!isValidCron(value)) {
+      throw new Error(`Invalid cron expression: ${value}`)
+    }
+    return value
+  }
+
   // 创建告警规则
   createRule(data: AlertRuleFormData): AlertRule {
     const id = generateId()
@@ -140,7 +251,9 @@ class AlertService {
       appId: data.appId || null,
       threshold: data.threshold ?? null,
       enabled: data.enabled !== false ? 1 : 0,
-      notifyChannels: JSON.stringify(data.notifyChannels || ['system'])
+      notifyChannels: JSON.stringify(data.notifyChannels || ['system']),
+      cronExpr: this.normalizeCron(data.cronExpr),
+      serverIds: JSON.stringify(data.serverIds || [])
     })
     return this.getRuleById(id)!
   }
@@ -154,6 +267,12 @@ class AlertService {
       }
       if (updates.notifyChannels !== undefined) {
         processedUpdates.notifyChannels = JSON.stringify(updates.notifyChannels)
+      }
+      if (updates.cronExpr !== undefined) {
+        processedUpdates.cronExpr = this.normalizeCron(updates.cronExpr)
+      }
+      if (updates.serverIds !== undefined) {
+        processedUpdates.serverIds = JSON.stringify(updates.serverIds)
       }
       alertRuleQueries.update(id, processedUpdates as Partial<AlertRuleRow>)
       return this.getRuleById(id)
@@ -375,28 +494,6 @@ class AlertService {
     }
   }
 
-  // 检查容器状态
-  checkContainer(data: ContainerCheckData): void {
-    const rules = alertRuleQueries.getEnabled()
-    
-    for (const ruleRow of rules) {
-      const rule = this.rowToRule(ruleRow)
-      
-      // 检查规则是否适用于此服务器/应用
-      if (rule.serverId && rule.serverId !== data.serverId) continue
-      if (rule.appId && rule.appId !== data.appId) continue
-
-      switch (rule.ruleType) {
-        case 'container_exit':
-          this.checkContainerExit(rule, data)
-          break
-        case 'container_restart_loop':
-          this.checkRestartLoop(rule, data)
-          break
-      }
-    }
-  }
-
   // 检查容器退出
   private checkContainerExit(rule: AlertRule, data: ContainerCheckData): void {
     if (data.status === 'exited' || data.status === 'dead') {
@@ -444,16 +541,51 @@ class AlertService {
     }
   }
 
+  // 规则适用性判断：cron 时机 + 服务器（多选/单值）+ 应用
+  private isRuleApplicable(rule: AlertRule, serverId: string | undefined, appId: string | undefined, now: Date = new Date()): boolean {
+    // cron 时机：只有当前检查轮命中该规则的 cron 才检查
+    if (!matchCron(rule.cronExpr, now)) return false
+    // 服务器匹配：多选 serverIds 优先，其次单值 serverId，都为空则全局生效
+    if (rule.serverIds && rule.serverIds.length > 0) {
+      if (!serverId || !rule.serverIds.includes(serverId)) return false
+    } else if (rule.serverId) {
+      if (rule.serverId !== serverId) return false
+    }
+    // 应用匹配
+    if (rule.appId && rule.appId !== appId) return false
+    return true
+  }
+
+  // 检查容器状态
+  checkContainer(data: ContainerCheckData): void {
+    const rules = alertRuleQueries.getEnabled()
+
+    for (const ruleRow of rules) {
+      const rule = this.rowToRule(ruleRow)
+
+      // 规则适用性：cron 时机 + 服务器（多选/单值）+ 应用
+      if (!this.isRuleApplicable(rule, data.serverId, data.appId)) continue
+
+      switch (rule.ruleType) {
+        case 'container_exit':
+          this.checkContainerExit(rule, data)
+          break
+        case 'container_restart_loop':
+          this.checkRestartLoop(rule, data)
+          break
+      }
+    }
+  }
+
   // 检查资源使用
   checkResource(data: ResourceCheckData): void {
     const rules = alertRuleQueries.getEnabled()
-    
+
     for (const ruleRow of rules) {
       const rule = this.rowToRule(ruleRow)
-      
-      // 检查规则是否适用于此服务器/应用
-      if (rule.serverId && rule.serverId !== data.serverId) continue
-      if (rule.appId && rule.appId !== data.appId) continue
+
+      // 规则适用性：cron 时机 + 服务器（多选/单值）+ 应用
+      if (!this.isRuleApplicable(rule, data.serverId, data.appId)) continue
 
       const threshold = rule.threshold || this.getDefaultThreshold(rule.ruleType)
 

@@ -11,7 +11,6 @@ import {
   Select,
   InputNumber,
   Switch,
-  Checkbox,
   message,
   Typography,
   Row,
@@ -36,6 +35,9 @@ import {
 } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import type { ColumnsType } from 'antd/es/table'
+import type { Server } from '../../types/server'
+import CronEditor from '../../components/CronEditor'
+import { isValidCronExpr } from '../../utils/cron'
 
 const { Title, Text } = Typography
 const { Option } = Select
@@ -49,6 +51,10 @@ interface AlertRule {
   threshold?: number
   enabled: boolean
   notifyChannels: string[]
+  /** cron 表达式：控制该规则的检查时机，默认每分钟 */
+  cronExpr?: string
+  /** 多选目标服务器 ID；为空则全局生效 */
+  serverIds?: string[]
   createdAt: string
   updatedAt: string
 }
@@ -100,11 +106,23 @@ const severityLabels: Record<string, string> = {
   critical: '严重'
 }
 
+// 校验 cron 表达式：5 段合法格式（分 时 日 月 周）
+const validateCronExpr = (_: unknown, value?: string) => {
+  if (!value || !value.trim()) {
+    return Promise.reject(new Error('请输入检查时机 (cron) 表达式'))
+  }
+  if (!isValidCronExpr(value)) {
+    return Promise.reject(new Error('cron 表达式格式不正确，需为 5 段：分 时 日 月 周'))
+  }
+  return Promise.resolve()
+}
+
 const Alerts: React.FC = () => {
   const { t } = useTranslation()
   const [loading, setLoading] = useState(false)
   const [rules, setRules] = useState<AlertRule[]>([])
   const [history, setHistory] = useState<AlertHistoryEntry[]>([])
+  const [servers, setServers] = useState<Server[]>([])
   const [stats, setStats] = useState<AlertStats>({ totalRules: 0, activeRules: 0, activeAlerts: 0, totalAlerts: 0 })
   const [modalVisible, setModalVisible] = useState(false)
   const [editingRule, setEditingRule] = useState<AlertRule | null>(null)
@@ -138,14 +156,23 @@ const Alerts: React.FC = () => {
     }
   }, [])
 
+  const fetchServers = useCallback(async () => {
+    try {
+      const result = await window.electronAPI.server.getAll()
+      setServers(result)
+    } catch (error) {
+      // silent
+    }
+  }, [])
+
   const fetchAll = useCallback(async () => {
     setLoading(true)
     try {
-      await Promise.all([fetchRules(), fetchHistory(), fetchStats()])
+      await Promise.all([fetchRules(), fetchHistory(), fetchStats(), fetchServers()])
     } finally {
       setLoading(false)
     }
-  }, [fetchRules, fetchHistory, fetchStats])
+  }, [fetchRules, fetchHistory, fetchStats, fetchServers])
 
   useEffect(() => {
     fetchAll()
@@ -158,7 +185,9 @@ const Alerts: React.FC = () => {
       enabled: true,
       notifyChannels: ['system'],
       ruleType: 'high_cpu',
-      threshold: 80
+      threshold: 80,
+      cronExpr: '* * * * *',
+      serverIds: []
     })
     setModalVisible(true)
   }
@@ -287,16 +316,36 @@ const Alerts: React.FC = () => {
       }
     },
     {
-      title: '通知渠道',
-      dataIndex: 'notifyChannels',
-      key: 'notifyChannels',
-      width: 150,
-      render: (value: string[]) => (
-        <Space>
-          {value?.includes('system') && <Tag color="blue">系统通知</Tag>}
-          {value?.includes('webhook') && <Tag color="green">Webhook</Tag>}
-        </Space>
+      title: '检查时机',
+      dataIndex: 'cronExpr',
+      key: 'cronExpr',
+      width: 160,
+      render: (value: string) => (
+        <Tooltip title={`cron: ${value || '* * * * *'}`}>
+          <Tag style={{ fontFamily: 'monospace' }}>{value || '* * * * *'}</Tag>
+        </Tooltip>
       )
+    },
+    {
+      title: '目标服务器',
+      dataIndex: 'serverIds',
+      key: 'serverIds',
+      width: 180,
+      render: (_: string[], record: AlertRule) => {
+        const ids = record.serverIds && record.serverIds.length > 0 ? record.serverIds : []
+        if (ids.length === 0 && !record.serverId) {
+          return <Tag>全部服务器</Tag>
+        }
+        const targetIds = ids.length > 0 ? ids : [record.serverId!]
+        return (
+          <Space size={4} wrap>
+            {targetIds.map(id => {
+              const server = servers.find(s => s.id === id)
+              return server ? <Tag key={id} color="blue">{server.name}</Tag> : <Tag key={id}>{id}</Tag>
+            })}
+          </Space>
+        )
+      }
     },
     {
       title: '状态',
@@ -486,7 +535,7 @@ const Alerts: React.FC = () => {
                 showTotal: (total) => `共 ${total} 条规则`
               }}
               size="middle"
-              scroll={{ x: 900 }}
+              scroll={{ x: 1080 }}
             />
           )}
         </div>
@@ -674,14 +723,32 @@ const Alerts: React.FC = () => {
           )}
 
           <Form.Item
-            label="通知渠道"
-            name="notifyChannels"
-            rules={[{ required: true, message: '请选择通知渠道' }]}
+            label="检查时机 (cron)"
+            name="cronExpr"
+            rules={[{ validator: validateCronExpr }]}
+            extra="支持手动输入，也可点击「可视化配置」逐字段设置，并实时预览接下来 5 次执行时间"
           >
-            <Checkbox.Group>
-              <Checkbox value="system">系统通知</Checkbox>
-              <Checkbox value="webhook">Webhook</Checkbox>
-            </Checkbox.Group>
+            <CronEditor />
+          </Form.Item>
+
+          <Form.Item
+            label="目标服务器"
+            name="serverIds"
+            extra="不选择服务器时，规则对所有服务器生效"
+          >
+            <Select
+              mode="multiple"
+              placeholder="选择目标服务器（可多选，留空则全部）"
+              allowClear
+              maxTagCount="responsive"
+              optionFilterProp="children"
+            >
+              {servers.map(server => (
+                <Option key={server.id} value={server.id}>
+                  {server.name}（{server.host}）
+                </Option>
+              ))}
+            </Select>
           </Form.Item>
 
           <Form.Item

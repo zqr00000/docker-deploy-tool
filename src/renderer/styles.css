@@ -864,6 +864,17 @@ body {
   color: var(--app-text-color) !important;
 }
 
+/* 全局弹窗内容内部滚动：内容超高时在弹窗 body 内滚动，避免溢出屏幕遮挡 footer/标题 */
+.ant-modal .ant-modal-body {
+  max-height: calc(80vh - 110px) !important;
+  overflow-y: auto !important;
+}
+
+/* 全屏/定制高度弹窗豁免：通过 body 内联样式 max-height 覆盖该约束（React 序列化后无空格） */
+.ant-modal .ant-modal-body[style*="max-height:none"] {
+  max-height: none !important;
+}
+
 /* ====== Form Enhancement — Apple ====== */
 .ant-form-item-label > label {
   color: var(--app-text-color) !important;

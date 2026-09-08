@@ -1482,7 +1482,7 @@ const ShellScriptEditorModal: React.FC<EditorModalProps> = ({ open, script, savi
         width="100vw"
         style={{ top: 0, padding: 0, maxWidth: '100vw', height: '100vh' }}
         title={isEdit ? t('shellScript.editTitle') : t('shellScript.createTitle')}
-        styles={{ body: { height: 'calc(100vh - 55px)', padding: 0, background: '#1e1e1e' } }}
+        styles={{ body: { height: 'calc(100vh - 55px)', maxHeight: 'none', padding: 0, background: '#1e1e1e' } }}
       >
         <Editor
           height="100%"

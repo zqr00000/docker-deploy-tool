@@ -554,6 +554,10 @@ export interface AlertRule {
   notifyChannels: NotifyChannel[]
   /** 规则级静默窗口（分钟）：同一目标在窗口内不重复触发 */
   silenceMinutes?: number
+  /** cron 表达式：控制该规则的检查时机，默认每分钟 */
+  cronExpr?: string
+  /** 多选目标服务器 ID（优先于 serverId）；为空则全局生效 */
+  serverIds?: string[]
   createdAt: string
   updatedAt: string
 }

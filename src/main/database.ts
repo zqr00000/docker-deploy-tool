@@ -55,7 +55,7 @@ const UPDATABLE_COLUMNS = {
   servers: ['name', 'host', 'port', 'username', 'authType', 'password', 'privateKey', 'status'],
   templates: ['name', 'description', 'category', 'dockerCompose', 'isBuiltIn', 'envSchema'],
   apps: ['name', 'templateId', 'serverId', 'projectPath', 'status', 'containerIds'],
-  alert_rules: ['name', 'ruleType', 'serverId', 'appId', 'threshold', 'enabled', 'notifyChannels', 'silenceMinutes'],
+  alert_rules: ['name', 'ruleType', 'serverId', 'appId', 'threshold', 'enabled', 'notifyChannels', 'silenceMinutes', 'cronExpr', 'serverIds'],
   scheduled_tasks: ['name', 'description', 'taskType', 'cronExpression', 'serverId', 'appId', 'enabled'],
   health_check_configs: ['autoRestart', 'maxRestarts', 'restartWindow', 'notifyOnRestart'],
   server_groups: ['name', 'description'],
@@ -199,6 +199,8 @@ function createTables(): void {
       threshold REAL,
       enabled INTEGER NOT NULL DEFAULT 1,
       notifyChannels TEXT NOT NULL DEFAULT '[]',
+      cronExpr TEXT NOT NULL DEFAULT '* * * * *',
+      serverIds TEXT NOT NULL DEFAULT '[]',
       createdAt TEXT NOT NULL,
       updatedAt TEXT NOT NULL
     );
@@ -459,6 +461,13 @@ function migrateAlertRulesTable(): void {
     // 规则级静默窗口（分钟）：同一目标在窗口内不重复触发，0 表示每轮都触发
     if (!columnNames.includes('silenceMinutes')) {
       db.exec('ALTER TABLE alert_rules ADD COLUMN silenceMinutes INTEGER DEFAULT 5')
+    }
+    // cron 检查时机 / 多选目标服务器
+    if (!columnNames.includes('cronExpr')) {
+      db.exec("ALTER TABLE alert_rules ADD COLUMN cronExpr TEXT NOT NULL DEFAULT '* * * * *'")
+    }
+    if (!columnNames.includes('serverIds')) {
+      db.exec("ALTER TABLE alert_rules ADD COLUMN serverIds TEXT NOT NULL DEFAULT '[]'")
     }
 
     log.info('Alert rules table migration completed')
@@ -1312,6 +1321,10 @@ export interface AlertRuleRow {
   notifyChannels: string
   /** 规则级静默窗口（分钟）：同一目标在窗口内不重复触发，0 表示每轮都触发 */
   silenceMinutes?: number | null
+  /** cron 表达式：控制该规则的检查时机，默认每分钟 */
+  cronExpr?: string | null
+  /** 多选目标服务器（JSON 数组字符串）；为空时按 serverId 或全局生效 */
+  serverIds?: string | null
   createdAt: string
   updatedAt: string
 }
@@ -1348,8 +1361,8 @@ export const alertRuleQueries = {
     const db = getDatabase()
     const now = new Date().toISOString()
     db.prepare(`
-      INSERT INTO alert_rules (id, name, ruleType, serverId, appId, threshold, enabled, notifyChannels, createdAt, updatedAt)
-      VALUES (@id, @name, @ruleType, @serverId, @appId, @threshold, @enabled, @notifyChannels, @createdAt, @updatedAt)
+      INSERT INTO alert_rules (id, name, ruleType, serverId, appId, threshold, enabled, notifyChannels, cronExpr, serverIds, createdAt, updatedAt)
+      VALUES (@id, @name, @ruleType, @serverId, @appId, @threshold, @enabled, @notifyChannels, @cronExpr, @serverIds, @createdAt, @updatedAt)
     `).run({ ...rule, createdAt: now, updatedAt: now })
   },
 
