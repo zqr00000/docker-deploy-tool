@@ -128,7 +128,35 @@
     "variableNamePlaceholder": "Enter variable name",
     "variableValue": "Variable Value",
     "variableValuePlaceholder": "Enter variable value",
-    "confirmDeleteEnvVariable": "Are you sure you want to delete this environment variable?"
+    "confirmDeleteEnvVariable": "Are you sure you want to delete this environment variable?",
+    "imageCheck": {
+      "title": "Pre-deploy Image Check",
+      "desc": "Images have been checked on the target server. Choose how to handle each service's image.",
+      "checking": "Checking images...",
+      "failed": "Image check failed. Please verify the server connection and Compose config.",
+      "startDeploy": "Start Deploy",
+      "uploadRequired": "Please upload the image package for services marked as UPLOAD first",
+      "exists": "Exists",
+      "missing": "Missing",
+      "unchecked": "Not checked",
+      "modePull": "Pull Online",
+      "modeUpload": "Upload",
+      "upload": "Upload Package",
+      "uploadSuccess": "Image uploaded and loaded successfully",
+      "uploadFailed": "Image upload failed",
+      "uploaded": "Uploaded",
+      "batchUpload": "Batch Upload",
+      "batchUploadImported": "Successfully imported {{count}} image package(s)",
+      "batchUploadFailed": "{{count}} image package(s) failed to import",
+      "allPull": "All Pull Online",
+      "allUpload": "All Upload",
+      "table": {
+        "service": "Service",
+        "image": "Image",
+        "status": "Status",
+        "mode": "Action"
+      }
+    }
   },
   "menu": {
     "mainNav": "Main navigation",

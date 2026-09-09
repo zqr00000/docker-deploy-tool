@@ -3,6 +3,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type {
   ServerFormData, Server, DockerCheckResult, EnvVariableSchema, Template, TemplateFormData,
   ServerConnectionResult, CommandExecutionResult, App, EnvVariable, DeployOptions, DeployResult,
+  ComposeImageCheckItem, CheckComposeImagesResult,
   ContainerInfo, SystemInfo, DiskPartition, HardwareInfo, NetworkInfo, PortInfo,
   DebugLogEntry, SystemCheckResult, HardwareRequirements, ContainerStats, VolumeInfo, VolumeDetail,
   PruneResult, ConfigImportResult, DialogResult, DockerImage, ScanVulnerability, ScanSummary,
@@ -63,6 +64,8 @@ const electronAPI: ElectronAPI = {
     update: (id: string, app: Partial<App>): Promise<void> => ipcRenderer.invoke('app:update', id, app),
     delete: (id: string): Promise<void> => ipcRenderer.invoke('app:delete', id),
     deploy: (options: DeployOptions): Promise<DeployResult> => ipcRenderer.invoke('app:deploy', options),
+    // 部署前镜像校验：解析 compose 各服务镜像并检查远端是否存在
+    checkImages: (payload: { serverId: string; dockerCompose: string; envVariables?: EnvVariable[] }): Promise<CheckComposeImagesResult> => ipcRenderer.invoke('app:checkImages', payload),
     // 部署进度事件（app:deploy 执行期间分阶段推送）
     onDeployProgress: (callback: (payload: { appName: string; percent: number; stage: string; message: string }) => void): (() => void) => {
       const listener = (_e: any, payload: { appName: string; percent: number; stage: string; message: string }) => callback(payload)
@@ -100,6 +103,7 @@ const electronAPI: ElectronAPI = {
     import: (serverId: string, localFilePath: string): Promise<{ success: boolean; message: string }> => ipcRenderer.invoke('image:import', serverId, localFilePath),
     showSaveDialog: (defaultName?: string): Promise<DialogResult> => ipcRenderer.invoke('image:showSaveDialog', defaultName),
     showOpenDialog: (): Promise<DialogResult> => ipcRenderer.invoke('image:showOpenDialog'),
+    showOpenDialogMulti: (): Promise<DialogResult> => ipcRenderer.invoke('image:showOpenDialogMulti'),
     getUsedImageNames: (serverId: string): Promise<string[]> => ipcRenderer.invoke('image:getUsedImageNames', serverId)
   },
   security: {

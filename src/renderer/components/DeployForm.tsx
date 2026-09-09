@@ -13,14 +13,16 @@ import {
   Typography,
   Alert,
   Table,
-  Tag,
-  Popconfirm
+  Popconfirm,
+  Modal,
+  Tooltip
 } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
-import { UploadOutlined, FileTextOutlined, PlusOutlined, DeleteOutlined } from '@ant-design/icons'
+import { UploadOutlined, FileTextOutlined, PlusOutlined, DeleteOutlined, CheckCircleFilled, CloseCircleFilled, QuestionCircleFilled } from '@ant-design/icons'
 import type { Server } from '../types/server'
 import type { Template, EnvVariableSchema } from '../types/template'
+import type { ComposeImageCheckItem } from '../types/electron-api'
 
 interface EnvVariable {
   name: string
@@ -43,6 +45,7 @@ interface DeployFormProps {
     dockerCompose: string
     projectPath: string
     envVariables: EnvVariable[]
+    pullServices?: string[]
   }) => Promise<{ success: boolean; message: string }>
 }
 
@@ -84,6 +87,22 @@ const DeployForm: React.FC<DeployFormProps> = ({
   const [deploying, setDeploying] = useState(false)
   const [deployProgress, setDeployProgress] = useState('')
   const [envVariables, setEnvVariables] = useState<EnvVariable[]>([])
+  // 部署前镜像检查弹窗
+  const [imageCheckModalOpen, setImageCheckModalOpen] = useState(false)
+  const [imageCheckLoading, setImageCheckLoading] = useState(false)
+  const [checkItems, setCheckItems] = useState<ComposeImageCheckItem[]>([])
+  // 每个服务选择的处理方式：pull=在线拉取，upload=自行上传
+  const [imageModes, setImageModes] = useState<Record<string, 'pull' | 'upload'>>({})
+  // 每个服务「自行上传」的上传状态
+  const [uploadStates, setUploadStates] = useState<Record<string, { status: 'idle' | 'uploading' | 'success' | 'error'; message?: string }>>({})
+  // 暂存表单校验通过的值，用户在弹窗确认「开始部署」时使用
+  const [pendingDeployValues, setPendingDeployValues] = useState<{
+    serverId: string
+    appName: string
+    templateId?: string
+    dockerCompose: string
+    projectPath?: string
+  } | null>(null)
 
   const onlineServers = servers.filter(s => s.status === 'online')
 
@@ -169,18 +188,82 @@ const DeployForm: React.FC<DeployFormProps> = ({
         return
       }
 
+      const serverId = values.serverId
+      if (!serverId) {
+        message.error(t('app.selectServerRequired'))
+        return
+      }
+
       const projectPath = values.projectPath || `/opt/docker-apps/${values.appName}`
 
-      setDeploying(true)
-      setDeployProgress(t('app.deploying'))
+      // 部署前镜像存在性校验：解析 compose 各服务的镜像并检查远端是否存在，供用户逐服务选择处理方式
+      setImageCheckLoading(true)
+      try {
+        const result = await window.electronAPI.app.checkImages({
+          serverId,
+          dockerCompose: values.dockerCompose,
+          envVariables
+        })
 
+        if (!result.success) {
+          message.error(result.message || t('app.imageCheck.failed'))
+          return
+        }
+
+        if (result.services.length === 0) {
+          // 无可检查的镜像服务（如仅 build 型），直接部署
+          await performDeploy({ ...values, projectPath }, [])
+          return
+        }
+
+        // 初始化每个服务的处理方式（默认在线拉取）与上传状态
+        const modes: Record<string, 'pull' | 'upload'> = {}
+        const uploads: Record<string, { status: 'idle' | 'uploading' | 'success' | 'error'; message?: string }> = {}
+        result.services.forEach(item => {
+          modes[item.service] = 'pull'
+          uploads[item.service] = { status: 'idle' }
+        })
+        setCheckItems(result.services)
+        setImageModes(modes)
+        setUploadStates(uploads)
+        setPendingDeployValues({ ...values, projectPath })
+        setImageCheckModalOpen(true)
+      } catch (error) {
+        console.error('Image check failed:', error)
+        message.error(t('app.imageCheck.failed'))
+      } finally {
+        setImageCheckLoading(false)
+      }
+    } catch (error) {
+      console.error('Validation failed:', error)
+    }
+  }
+
+  // 实际执行部署（镜像检查弹窗确认后调用）
+  const performDeploy = async (
+    values: {
+      serverId: string
+      appName: string
+      templateId?: string
+      dockerCompose: string
+      projectPath: string
+    },
+    pullServices: string[]
+  ) => {
+    const projectPath = values.projectPath || `/opt/docker-apps/${values.appName}`
+
+    setDeploying(true)
+    setDeployProgress(t('app.deploying'))
+
+    try {
       const result = await onDeploy({
         serverId: values.serverId,
         appName: values.appName,
         templateId: values.templateId,
         dockerCompose: values.dockerCompose,
         projectPath,
-        envVariables
+        envVariables,
+        pullServices
       })
 
       if (result.success) {
@@ -189,17 +272,144 @@ const DeployForm: React.FC<DeployFormProps> = ({
       } else {
         message.error(result.message)
       }
-    } catch (error) {
-      console.error('Validation failed:', error)
     } finally {
       setDeploying(false)
       setDeployProgress('')
     }
   }
 
+  // 镜像检查弹窗确认：校验「自行上传」服务已完成上传后开始部署
+  const handleStartDeploy = async () => {
+    if (!pendingDeployValues) return
+
+    const unfinishedUploads = checkItems.filter(item =>
+      imageModes[item.service] === 'upload' && uploadStates[item.service]?.status !== 'success'
+    )
+    if (unfinishedUploads.length > 0) {
+      message.warning(t('app.imageCheck.uploadRequired'))
+      return
+    }
+
+    // 汇总选择「在线拉取」的服务名；其余（自行上传）服务跳过拉取
+    const pullServices = checkItems
+      .filter(item => imageModes[item.service] === 'pull')
+      .map(item => item.service)
+
+    setImageCheckModalOpen(false)
+    await performDeploy(pendingDeployValues, pullServices)
+  }
+
+  // 「自行上传」：选择本地镜像包并上传到服务器（docker load）
+  const handleUploadImage = async (service: string) => {
+    const serverId = pendingDeployValues?.serverId || form.getFieldValue('serverId')
+    if (!serverId) return
+
+    setUploadStates(prev => ({ ...prev, [service]: { status: 'uploading' } }))
+    try {
+      const dialogResult = await window.electronAPI.image.showOpenDialog()
+      if (dialogResult.canceled || !dialogResult.filePath) {
+        setUploadStates(prev => ({ ...prev, [service]: { status: 'idle' } }))
+        return
+      }
+
+      const result = await window.electronAPI.image.import(serverId, dialogResult.filePath)
+      if (result.success) {
+        setUploadStates(prev => ({ ...prev, [service]: { status: 'success' } }))
+        message.success(t('app.imageCheck.uploadSuccess'))
+      } else {
+        setUploadStates(prev => ({ ...prev, [service]: { status: 'error', message: result.message } }))
+        message.error(result.message || t('app.imageCheck.uploadFailed'))
+      }
+    } catch (error) {
+      console.error('Image upload failed:', error)
+      setUploadStates(prev => ({ ...prev, [service]: { status: 'error', message: (error as Error).message } }))
+      message.error(t('app.imageCheck.uploadFailed'))
+    }
+  }
+
+  // 批量上传：可多选镜像包一次上传（一个 tar 内可能包含多个镜像），上传后重新校验镜像是否就绪
+  const handleBatchUpload = async () => {
+    const serverId = pendingDeployValues?.serverId || form.getFieldValue('serverId')
+    const compose = pendingDeployValues?.dockerCompose
+    if (!serverId || !compose) return
+
+    const uploadServices = checkItems.filter(item => imageModes[item.service] === 'upload').map(item => item.service)
+    if (uploadServices.length === 0) return
+
+    // 全部标记为上传中
+    setUploadStates(prev => {
+      const next = { ...prev }
+      uploadServices.forEach(s => { next[s] = { status: 'uploading' } })
+      return next
+    })
+
+    try {
+      const dialogResult = await window.electronAPI.image.showOpenDialogMulti()
+      const files = (dialogResult.filePaths || []).filter(Boolean)
+      if (dialogResult.canceled || files.length === 0) {
+        setUploadStates(prev => {
+          const next = { ...prev }
+          uploadServices.forEach(s => { next[s] = { status: 'idle' } })
+          return next
+        })
+        return
+      }
+
+      let successCount = 0
+      let failCount = 0
+      for (const file of files) {
+        const result = await window.electronAPI.image.import(serverId, file)
+        if (result.success) {
+          successCount += 1
+        } else {
+          failCount += 1
+          console.warn(`Failed to import image package ${file}: ${result.message}`)
+        }
+      }
+      if (successCount > 0) message.success(t('app.imageCheck.batchUploadImported', { count: successCount }))
+      if (failCount > 0) message.error(t('app.imageCheck.batchUploadFailed', { count: failCount }))
+
+      // 重新校验镜像存在性：已就绪的「自行上传」服务自动标记为已上传
+      const recheck = await window.electronAPI.app.checkImages({
+        serverId,
+        dockerCompose: compose,
+        envVariables
+      })
+      const existsMap = new Map(recheck.services.map(item => [item.service, item.exists]))
+      setUploadStates(prev => {
+        const next = { ...prev }
+        uploadServices.forEach(s => {
+          next[s] = existsMap.get(s) ? { status: 'success' } : { status: 'idle' }
+        })
+        return next
+      })
+    } catch (error) {
+      console.error('Batch image upload failed:', error)
+      setUploadStates(prev => {
+        const next = { ...prev }
+        uploadServices.forEach(s => { next[s] = { status: 'idle' } })
+        return next
+      })
+      message.error(t('app.imageCheck.uploadFailed'))
+    }
+  }
+
+  // 一键统一所有服务的处理方式
+  const setAllImageModes = (mode: 'pull' | 'upload') => {
+    const next: Record<string, 'pull' | 'upload'> = {}
+    checkItems.forEach(item => { next[item.service] = mode })
+    setImageModes(next)
+  }
+
   const handleCancel = () => {
     navigate('/apps')
   }
+
+  // 是否存在选择「自行上传」的服务、是否正处于批量上传中
+  const hasUploadMode = checkItems.some(item => imageModes[item.service] === 'upload')
+  const isBatchUploading = checkItems.some(item =>
+    imageModes[item.service] === 'upload' && uploadStates[item.service]?.status === 'uploading'
+  )
 
   return (
     <div>
@@ -451,11 +661,11 @@ const DeployForm: React.FC<DeployFormProps> = ({
               <Button
                 type="primary"
                 onClick={handleDeploy}
-                loading={deploying}
+                loading={deploying || imageCheckLoading}
                 disabled={onlineServers.length === 0}
                 icon={<FileTextOutlined />}
               >
-                {deploying ? t('app.deploying') : t('app.deploy')}
+                {imageCheckLoading ? t('app.imageCheck.checking') : deploying ? t('app.deploying') : t('app.deploy')}
               </Button>
               <Button onClick={handleCancel} disabled={deploying}>
                 {t('common.cancel')}
@@ -464,6 +674,142 @@ const DeployForm: React.FC<DeployFormProps> = ({
           </Form.Item>
         </Form>
       </Card>
+
+      {/* 部署前镜像校验弹窗：逐服务选择「在线拉取 / 自行上传」 */}
+      <Modal
+        title={t('app.imageCheck.title')}
+        open={imageCheckModalOpen}
+        width={900}
+        maskClosable={false}
+        onCancel={() => setImageCheckModalOpen(false)}
+        onOk={handleStartDeploy}
+        okText={t('app.imageCheck.startDeploy')}
+        cancelText={t('common.cancel')}
+        okButtonProps={{ loading: deploying }}
+      >
+        <Alert
+          type="info"
+          showIcon
+          message={t('app.imageCheck.desc')}
+          style={{ marginBottom: 12 }}
+        />
+        {/* 批量操作：一键统一处理方式 + 批量上传镜像包 */}
+        <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 12 }}>
+          <Space size={8}>
+            <Button size="small" onClick={() => setAllImageModes('pull')}>{t('app.imageCheck.allPull')}</Button>
+            <Button size="small" onClick={() => setAllImageModes('upload')}>{t('app.imageCheck.allUpload')}</Button>
+          </Space>
+          {hasUploadMode && (
+            <Button
+              size="small"
+              type="primary"
+              ghost
+              icon={<UploadOutlined />}
+              onClick={handleBatchUpload}
+              loading={isBatchUploading}
+            >
+              {t('app.imageCheck.batchUpload')}
+            </Button>
+          )}
+        </Space>
+        <Table
+          dataSource={checkItems}
+          rowKey={(record) => record.service}
+          pagination={false}
+          size="small"
+          bordered
+          columns={[
+            {
+              title: t('app.imageCheck.table.service'),
+              dataIndex: 'service',
+              width: 150,
+              ellipsis: true
+            },
+            {
+              title: t('app.imageCheck.table.image'),
+              dataIndex: 'image',
+              ellipsis: true,
+              render: (_, record) => (
+                <Tooltip title={record.image}>
+                  <Text style={{ fontFamily: 'Monaco, Consolas, "Courier New", monospace', fontSize: 12 }} ellipsis>
+                    {record.image}
+                  </Text>
+                </Tooltip>
+              )
+            },
+            {
+              title: t('app.imageCheck.table.status'),
+              width: 130,
+              render: (_, record) => {
+                if (!record.checked) {
+                  return (
+                    <Tooltip title={record.reason}>
+                      <Space size={4}>
+                        <QuestionCircleFilled style={{ color: '#8c8c8c' }} />
+                        <Text type="secondary">{t('app.imageCheck.unchecked')}</Text>
+                      </Space>
+                    </Tooltip>
+                  )
+                }
+                return record.exists ? (
+                  <Space size={4}>
+                    <CheckCircleFilled style={{ color: '#52c41a' }} />
+                    <Text style={{ color: '#52c41a' }}>{t('app.imageCheck.exists')}</Text>
+                  </Space>
+                ) : (
+                  <Space size={4}>
+                    <CloseCircleFilled style={{ color: '#ff4d4f' }} />
+                    <Text style={{ color: '#ff4d4f' }}>{t('app.imageCheck.missing')}</Text>
+                  </Space>
+                )
+              }
+            },
+            {
+              title: t('app.imageCheck.table.mode'),
+              width: 210,
+              render: (_, record) => (
+                <Radio.Group
+                  size="small"
+                  value={imageModes[record.service] || 'pull'}
+                  onChange={(e) => setImageModes(prev => ({ ...prev, [record.service]: e.target.value }))}
+                  disabled={!record.checked || deploying}
+                >
+                  <Radio.Button value="pull">{t('app.imageCheck.modePull')}</Radio.Button>
+                  <Radio.Button value="upload">{t('app.imageCheck.modeUpload')}</Radio.Button>
+                </Radio.Group>
+              )
+            },
+            {
+              title: t('common.actions'),
+              width: 170,
+              render: (_, record) => {
+                if (imageModes[record.service] !== 'upload') return null
+                const state = uploadStates[record.service] || { status: 'idle' }
+                if (state.status === 'uploading') {
+                  return <Spin size="small" />
+                }
+                if (state.status === 'success') {
+                  return (
+                    <Space size={4}>
+                      <CheckCircleFilled style={{ color: '#52c41a' }} />
+                      <Text style={{ color: '#52c41a' }}>{t('app.imageCheck.uploaded')}</Text>
+                    </Space>
+                  )
+                }
+                return (
+                  <Button
+                    size="small"
+                    icon={<UploadOutlined />}
+                    onClick={() => handleUploadImage(record.service)}
+                  >
+                    {t('app.imageCheck.upload')}
+                  </Button>
+                )
+              }
+            }
+          ]}
+        />
+      </Modal>
     </div>
   )
 }

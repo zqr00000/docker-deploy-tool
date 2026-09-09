@@ -67,6 +67,7 @@ const Deploy: React.FC = () => {
     dockerCompose: string
     projectPath: string
     envVariables: { name: string; value: string }[]
+    pullServices?: string[]
   }) => {
     setDeployProgress({ percent: 5, message: '开始部署' })
     try {
@@ -76,7 +77,8 @@ const Deploy: React.FC = () => {
         dockerCompose: values.dockerCompose,
         projectPath: values.projectPath || `/opt/docker-apps/${values.appName}`,
         templateId: values.templateId,
-        envVariables: values.envVariables
+        envVariables: values.envVariables,
+        pullServices: values.pullServices
       })
     } finally {
       setDeployProgress(null)

@@ -1,8 +1,9 @@
 import log from 'electron-log'
+import * as yaml from 'js-yaml'
 import { sshService } from '../ssh'
 import { appQueries, serverQueries } from '../database'
 import { randomUUID } from 'crypto'
-import { shQuote, validatePath, validateEnvName, assertSafe } from '../utils/shell'
+import { shQuote, validatePath, validateEnvName, assertSafe, validateDockerRef } from '../utils/shell'
 
 export interface EnvVariable {
   name: string
@@ -16,6 +17,8 @@ export interface DeployOptions {
   projectPath: string
   templateId?: string
   envVariables?: EnvVariable[]
+  /** 需要在线拉取镜像的服务名列表；为空数组则跳过拉取；不传则拉取全部服务（兼容旧调用） */
+  pullServices?: string[]
 }
 
 export interface DeployResult {
@@ -23,6 +26,28 @@ export interface DeployResult {
   appId?: string
   message: string
   containerIds?: string[]
+}
+
+/** 部署前镜像校验：compose 中单个服务的镜像检查结果 */
+export interface ComposeImageCheckItem {
+  /** compose 服务名 */
+  service: string
+  /** 环境变量替换后的镜像引用（用于远端存在性检查与展示） */
+  image: string
+  /** compose 中原始的 image 值 */
+  originalImage: string
+  /** 是否为可检查的有效镜像引用（解析成功且通过安全校验） */
+  checked: boolean
+  /** 远端服务器上是否存在该镜像 */
+  exists: boolean
+  /** 检查失败/跳过原因（checked=false 时） */
+  reason?: string
+}
+
+export interface CheckComposeImagesResult {
+  success: boolean
+  services: ComposeImageCheckItem[]
+  message?: string
 }
 
 export interface ContainerInfo {
@@ -73,6 +98,28 @@ export function normalizeComposeContent(content: string, type: ComposeEnvInfo['t
     return `version: "3.8"\n${content}`
   }
   return content
+}
+
+/**
+ * 将字符串中的 ${VAR:-default} / ${VAR} 占位符替换为环境变量值。
+ * 返回替换结果；存在未提供的变量时返回其名称列表（保留占位符原样）。
+ * 仅作纯文本替换，不做类型强转，用于解析 compose 中的 image 引用。
+ */
+function resolveComposeEnv(
+  value: string,
+  envMap: Map<string, string>
+): { value: string; containsUnresolved: boolean; unresolvedNames: string[] } {
+  const unresolvedNames: string[] = []
+  const result = value.replace(/\$\{([^}]+)\}/g, (match, expr: string) => {
+    const parts = expr.split(':-')
+    const name = parts[0].trim()
+    const def = parts.length > 1 ? parts.slice(1).join(':-') : undefined
+    if (envMap.has(name)) return envMap.get(name) ?? ''
+    if (def !== undefined) return def
+    unresolvedNames.push(name)
+    return match // 保留占位符，表示未解析
+  })
+  return { value: result, containsUnresolved: unresolvedNames.length > 0, unresolvedNames }
 }
 
 class AppDeployService {
@@ -167,6 +214,115 @@ class AppDeployService {
     return env.command
   }
 
+  /**
+   * 部署前镜像校验：解析 compose 中各服务的 image（替换 ${VAR} 占位符），
+   * 批量调用 docker image inspect 校验远端是否存在，供用户逐服务决定「在线拉取」或「自行上传」。
+   */
+  async checkComposeImages(
+    serverId: string,
+    dockerCompose: string,
+    envVariables?: EnvVariable[]
+  ): Promise<CheckComposeImagesResult> {
+    if (!sshService.isConnected(serverId)) {
+      return { success: false, services: [], message: '服务器未连接，请先连接服务器' }
+    }
+
+    let doc: unknown
+    try {
+      // 剔除顶层 version 键后再解析（V1 模板兼容；js-yaml 对重复键会抛错，天然拦截非法 compose）
+      const yamlText = dockerCompose.replace(/^version:\s*["']?\d+(?:\.\d+)*["']?\s*$/m, '')
+      doc = yaml.load(yamlText)
+    } catch (parseError) {
+      log.error('Failed to parse docker-compose for image check:', parseError)
+      return { success: false, services: [], message: `docker-compose 解析失败: ${(parseError as Error).message}` }
+    }
+
+    const root = (doc && typeof doc === 'object' ? doc as Record<string, unknown> : null)
+    const services = root?.services
+    if (!services || typeof services !== 'object' || Array.isArray(services)) {
+      return { success: false, services: [], message: 'docker-compose 中未找到 services 配置' }
+    }
+
+    // 环境变量合并：用户显式值优先，其次由 compose 中的 ${VAR:-default} 兜底
+    const envMap = new Map<string, string>()
+    for (const v of envVariables || []) {
+      if (v && v.name) envMap.set(v.name, v.value || '')
+    }
+
+    const items: ComposeImageCheckItem[] = []
+    const checkList: Array<{ item: ComposeImageCheckItem; image: string }> = []
+
+    for (const [serviceName, svc] of Object.entries(services as Record<string, unknown>)) {
+      if (!svc || typeof svc !== 'object') continue
+      const rawImage = (svc as Record<string, unknown>).image
+      if (typeof rawImage !== 'string' || !rawImage.trim()) continue // build 型 / 无镜像服务跳过
+      const originalImage = rawImage.trim()
+
+      const item: ComposeImageCheckItem = {
+        service: serviceName,
+        image: originalImage,
+        originalImage,
+        checked: false,
+        exists: false
+      }
+
+      // 替换环境变量占位符后生成实际镜像引用
+      const resolved = resolveComposeEnv(originalImage, envMap)
+      if (resolved.containsUnresolved) {
+        item.reason = `未提供环境变量 ${resolved.unresolvedNames.join(', ')} 的值，无法检查该镜像`
+        items.push(item)
+        continue
+      }
+      const imageRef = resolved.value.trim()
+      if (!imageRef) {
+        item.reason = '环境变量替换后镜像名为空，跳过检查'
+        items.push(item)
+        continue
+      }
+
+      const invalid = validateDockerRef(imageRef, `服务 ${serviceName} 的镜像`)
+      if (invalid) {
+        item.reason = invalid
+        items.push(item)
+        continue
+      }
+
+      item.image = imageRef
+      item.checked = true
+      items.push(item)
+      checkList.push({ item, image: imageRef })
+    }
+
+    // 批量检查镜像存在性（单次 SSH 往返，避免逐镜像串行）；引用均已通过 validateDockerRef 白名单校验
+    if (checkList.length > 0) {
+      let batchCmd = ''
+      for (const c of checkList) {
+        batchCmd += `docker image inspect ${c.image} >/dev/null 2>&1 && echo "EXISTS|${c.image}" || echo "MISSING|${c.image}"; `
+      }
+      const result = await sshService.executeCommand(serverId, batchCmd, 0, 500, 60000)
+      const statusMap = new Map<string, boolean>()
+      for (const line of result.stdout.trim().split('\n').filter(l => l.trim())) {
+        const sep = line.indexOf('|')
+        if (sep <= 0) continue
+        const status = line.slice(0, sep)
+        const ref = line.slice(sep + 1)
+        if (status === 'EXISTS') statusMap.set(ref, true)
+        else if (status === 'MISSING') statusMap.set(ref, false)
+      }
+      for (const c of checkList) {
+        c.item.exists = statusMap.get(c.image) === true
+      }
+    }
+
+    const existedCount = items.filter(i => i.checked && i.exists).length
+    const missingCount = items.filter(i => i.checked && !i.exists).length
+    const uncheckedCount = items.filter(i => !i.checked).length
+    log.info(
+      `Image check on server ${serverId}: ${items.length} services checked, exists=${existedCount}, missing=${missingCount}, unchecked=${uncheckedCount}`
+    )
+    return { success: true, services: items }
+  }
+
   /** 校验项目路径（防命令注入/路径穿越），不合法直接抛错 */
   private assertProjectPath(path: string): void {
     assertSafe(validatePath(path, '项目路径'))
@@ -259,7 +415,22 @@ class AppDeployService {
 
       report(55, 'pull', '拉取 Docker 镜像（可能需要较长时间）')
       log.info(`Pulling Docker images for ${appName}`)
-      const pullResult = await sshService.executeCommand(serverId, `cd ${shQuote(projectPath)} && ${composeEnv.command} --env-file .env pull 2>/dev/null || ${composeEnv.command} pull`)
+      // 部署前已校验镜像：只拉取用户选择「在线拉取」的服务，选择「自行上传」的服务跳过，
+      // 避免离线环境下 compose pull 因缺少远程镜像导致整个拉取命令失败
+      let pullResult: { success: boolean; stdout: string; stderr: string }
+      if (options.pullServices === undefined) {
+        pullResult = await sshService.executeCommand(serverId, `cd ${shQuote(projectPath)} && ${composeEnv.command} --env-file .env pull 2>/dev/null || ${composeEnv.command} pull`)
+      } else {
+        // 服务名白名单：字母数字、点、下划线、连字符，杜绝注入
+        const servicesToPull = (options.pullServices || []).filter(s => /^[a-zA-Z0-9_.-]+$/.test(s))
+        if (servicesToPull.length === 0) {
+          log.info(`Skipping docker pull for ${appName}: all services use uploaded or existing images`)
+          pullResult = { success: true, stdout: '', stderr: '' }
+        } else {
+          const pullServicesArg = servicesToPull.join(' ')
+          pullResult = await sshService.executeCommand(serverId, `cd ${shQuote(projectPath)} && ${composeEnv.command} --env-file .env pull ${pullServicesArg} 2>/dev/null || ${composeEnv.command} pull ${pullServicesArg}`)
+        }
+      }
       if (!pullResult.success) {
         log.warn(`Docker pull warning: ${pullResult.stderr}`)
       }

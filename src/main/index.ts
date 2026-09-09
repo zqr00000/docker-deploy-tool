@@ -700,6 +700,16 @@ function registerIpcHandlers(): void {
     }
   })
 
+  // 部署前镜像校验：解析 compose 中各服务镜像并检查远端是否存在，供用户逐服务选择「在线拉取/自行上传」
+  ipcMain.handle('app:checkImages', async (event, payload: { serverId: string; dockerCompose: string; envVariables?: { name: string; value: string }[] }) => {
+    try {
+      return await appDeployService.checkComposeImages(payload.serverId, payload.dockerCompose, payload.envVariables)
+    } catch (error) {
+      log.error('app:checkImages error:', error)
+      return { success: false, services: [], message: (error as Error).message }
+    }
+  })
+
   ipcMain.handle('app:start', async (_, appId: string) => {
     try {
       const appInfo = appQueries.getById(appId)
@@ -1104,6 +1114,17 @@ function registerIpcHandlers(): void {
         { name: '所有文件', extensions: ['*'] }
       ],
       properties: ['openFile']
+    })
+  })
+
+  ipcMain.handle('image:showOpenDialogMulti', async () => {
+    return await dialog.showOpenDialog({
+      title: '导入镜像（可多选）',
+      filters: [
+        { name: 'Docker 镜像包', extensions: ['tar', 'tar.gz'] },
+        { name: '所有文件', extensions: ['*'] }
+      ],
+      properties: ['openFile', 'multiSelections']
     })
   })
 

@@ -128,7 +128,35 @@
     "variableNamePlaceholder": "请输入变量名",
     "variableValue": "变量值",
     "variableValuePlaceholder": "请输入变量值",
-    "confirmDeleteEnvVariable": "确定删除该环境变量吗？"
+    "confirmDeleteEnvVariable": "确定删除该环境变量吗？",
+    "imageCheck": {
+      "title": "部署前镜像检查",
+      "desc": "已校验各服务镜像在目标服务器上的存在情况，请为每个服务选择处理方式",
+      "checking": "正在检查镜像...",
+      "failed": "镜像检查失败，请检查服务器连接与 Compose 配置",
+      "startDeploy": "开始部署",
+      "uploadRequired": "请先为选择「自行上传」的服务上传镜像包",
+      "exists": "已存在",
+      "missing": "不存在",
+      "unchecked": "无法检查",
+      "modePull": "在线拉取",
+      "modeUpload": "自行上传",
+      "upload": "上传镜像包",
+      "uploadSuccess": "镜像上传并加载成功",
+      "uploadFailed": "镜像上传失败",
+      "uploaded": "已上传",
+      "batchUpload": "批量上传镜像包",
+      "batchUploadImported": "成功导入 {{count}} 个镜像包",
+      "batchUploadFailed": "{{count}} 个镜像包导入失败",
+      "allPull": "全部在线拉取",
+      "allUpload": "全部自行上传",
+      "table": {
+        "service": "服务",
+        "image": "镜像",
+        "status": "状态",
+        "mode": "处理方式"
+      }
+    }
   },
   "menu": {
     "mainNav": "主导航",

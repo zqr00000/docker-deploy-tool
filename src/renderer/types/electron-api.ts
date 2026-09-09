@@ -96,6 +96,30 @@ export interface DeployOptions {
   projectPath: string
   templateId?: string
   envVariables?: EnvVariable[]
+  /** 需要在线拉取镜像的服务名列表；为空数组则跳过拉取；不传则拉取全部服务 */
+  pullServices?: string[]
+}
+
+/** 部署前镜像校验：compose 中单个服务的镜像检查结果 */
+export interface ComposeImageCheckItem {
+  /** compose 服务名 */
+  service: string
+  /** 环境变量替换后的镜像引用 */
+  image: string
+  /** compose 中原始的 image 值 */
+  originalImage: string
+  /** 是否为可检查的有效镜像引用 */
+  checked: boolean
+  /** 远端服务器上是否存在该镜像 */
+  exists: boolean
+  /** 检查失败/跳过原因 */
+  reason?: string
+}
+
+export interface CheckComposeImagesResult {
+  success: boolean
+  services: ComposeImageCheckItem[]
+  message?: string
 }
 
 export interface DeployResult {
@@ -805,6 +829,8 @@ export interface ElectronAPI {
     update: (id: string, app: Partial<App>) => Promise<void>
     delete: (id: string) => Promise<void>
     deploy: (options: DeployOptions) => Promise<DeployResult>
+    // 部署前镜像校验：解析 compose 各服务镜像并检查远端是否存在
+    checkImages: (payload: { serverId: string; dockerCompose: string; envVariables?: EnvVariable[] }) => Promise<CheckComposeImagesResult>
     // 部署进度事件（app:deploy 执行期间分阶段推送）
     onDeployProgress: (callback: (payload: { appName: string; percent: number; stage: string; message: string }) => void) => () => void
     start: (appId: string) => Promise<{ success: boolean; message: string }>
@@ -838,6 +864,7 @@ export interface ElectronAPI {
     import: (serverId: string, localFilePath: string) => Promise<{ success: boolean; message: string }>
     showSaveDialog: (defaultName?: string) => Promise<DialogResult>
     showOpenDialog: () => Promise<DialogResult>
+    showOpenDialogMulti: () => Promise<DialogResult>
     getUsedImageNames: (serverId: string) => Promise<string[]>
   }
   security: {
