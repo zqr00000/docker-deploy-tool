@@ -976,7 +976,7 @@ export interface ElectronAPI {
   opsAgent: {
     setConfig: (config: any) => Promise<{ success: boolean; error?: string }>
     getConfig: () => Promise<{ success: boolean; data?: any; error?: string }>
-    chat: (requestId: string, options: { serverId?: string; serverName?: string; userInput: string; threadId?: string; historySummary?: string; temperature?: number }) => Promise<{ success: boolean; requestId?: string; error?: string }>
+    chat: (requestId: string, options: { serverId?: string; serverName?: string; userInput: string; threadId?: string; temperature?: number }) => Promise<{ success: boolean; requestId?: string; error?: string }>
     cancel: (requestId: string) => Promise<{ success: boolean; error?: string }>
     approval: (id: string, approved: boolean) => Promise<{ success: boolean }>
     // AI 建议命令执行前的风控门禁：黑名单拒绝 + 高危命令统一审批
@@ -986,7 +986,7 @@ export interface ElectronAPI {
     onToolCall: (callback: (payload: { requestId: string; toolName: string; args: any; toolCallId?: string }) => void) => () => void
     onToolResult: (callback: (payload: { requestId: string; toolName: string; success: boolean; output: any; toolCallId?: string }) => void) => () => void
     onError: (callback: (payload: { requestId: string; error: string }) => void) => () => void
-    onDone: (callback: (payload: { requestId: string }) => void) => () => void
+    onDone: (callback: (payload: { requestId: string; truncated?: boolean }) => void) => () => void
     onApprovalRequest: (callback: (payload: { id: string; action: string; riskLevel: string }) => void) => () => void
     onRoute: (callback: (payload: { requestId: string; route: string }) => void) => () => void
     onUsage: (callback: (payload: { requestId: string; usage: { input: number; output: number } }) => void) => () => void

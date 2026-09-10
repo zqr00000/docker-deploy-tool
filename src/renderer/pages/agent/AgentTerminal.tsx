@@ -98,9 +98,12 @@ const CONFIG_KEY = 'agentOpsModelConfig'
 
 // ==================== 上下文压缩策略常量 ====================
 // 与发送逻辑（doSendMessage）共用同一组策略，保证可视化展示与实际压缩行为一致
-const HISTORY_KEEP = 8        // 保留最近 N 条消息完整传递
-const SUMMARY_PER_MSG_MAX = 300 // 被压缩的早期消息，单条摘要上限（字符）
-const SUMMARY_TOTAL_MAX = 4000  // 摘要总长度上限（字符）
+// 与后端 Mastra Memory 的 lastMessages 保持一致（唯一历史注入来源）：
+// 最近 N 条消息由 Memory 完整注入上下文，更早消息已持久化存档但不注入
+const MEMORY_LAST = 12
+// system prompt + 工具定义（30+ 个工具的 JSON Schema）的固定开销粗估（tokens）
+// 仅在无真实 usage 数据时用于兜底估算
+const SYSTEM_TOOLS_OVERHEAD_TOKENS = 4000
 const DEFAULT_CONTEXT_WINDOW = 8192 // 未配置 contextWindow 时的兜底估算窗口（tokens）
 
 // 粗略估算 token 数（中英混合约 2 字符 ≈ 1 token，标注"估算"；参数为字符串或字符数）
@@ -118,24 +121,18 @@ const fmtTokens = (n: number): string => {
   return `${(n / (1024 * 1024 * 1024)).toFixed(1)}G`
 }
 
-// 计算当前会话的上下文压缩状态（与 doSendMessage 的压缩判定保持一致）
+// 计算当前会话的上下文状态（与后端 Memory lastMessages 对齐）：
+// 最近 MEMORY_LAST 条由 Memory 完整注入；更早消息已存档不注入
 const computeContextState = (msgs: ChatMessage[]) => {
   const total = msgs.length
-  const keptFull = Math.min(total, HISTORY_KEEP)                    // 完整传递条数
-  const compressedCount = Math.max(0, total - HISTORY_KEEP)         // 被压缩条数
-  let summaryChars = 0
-  if (compressedCount > 0) {
-    for (let i = 0; i < compressedCount; i++) summaryChars += Math.min((msgs[i].content || '').length, SUMMARY_PER_MSG_MAX)
-    summaryChars = Math.min(summaryChars, SUMMARY_TOTAL_MAX)
-  }
-  const fullChars = msgs.slice(-keptFull).reduce((sum, m) => sum + (m.content || '').length, 0)
+  const keptFull = Math.min(total, MEMORY_LAST)
+  const archivedCount = Math.max(0, total - MEMORY_LAST)
+  const recentChars = msgs.slice(-MEMORY_LAST).reduce((sum, m) => sum + (m.content || '').length + (m.reasoning ? Math.min(m.reasoning.length, 4000) : 0), 0)
   return {
     total,
     keptFull,
-    compressedCount,
-    fullTokens: estimateTokens(fullChars),
-    summaryTokens: estimateTokens(summaryChars),
-    summaryChars
+    archivedCount,
+    estimateTokens: estimateTokens(recentChars) + SYSTEM_TOOLS_OVERHEAD_TOKENS
   }
 }
 
@@ -144,7 +141,8 @@ const computeContextState = (msgs: ChatMessage[]) => {
 // Markdown简单渲染（优化版）
 const renderMarkdown = (content: string): string => {
   return content
-    .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre style="background:#000000;padding:12px;border-radius:6px;overflow:auto;border:1px solid #48484a;margin:8px 0;"><code style="color:#f5f5f7;font-family:monospace;font-size:12px;">$2</code></pre>')
+    // 代码块 pre 必须自动换行（pre-wrap）并对无空格长 token 断词（break-all），否则长命令会横向溢出被截断
+    .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre style="background:#000000;padding:12px;border-radius:6px;overflow:auto;border:1px solid #48484a;margin:8px 0;white-space:pre-wrap;word-break:break-all;"><code style="color:#f5f5f7;font-family:monospace;font-size:12px;">$2</code></pre>')
     .replace(/`([^`]+)`/g, '<code style="background:#3a3a3c;padding:2px 6px;border-radius:4px;color:#f5f5f7;font-family:monospace;font-size:12px;">$1</code>')
     .replace(/\*\*([^*]+)\*\*/g, '<strong style="color:#fff;">$1</strong>')
     .replace(/\*([^*]+)\*/g, '<em style="color:#aeaeb2;">$1</em>')
@@ -164,6 +162,57 @@ const getRiskColor = (level: string) => {
   }
 }
 
+// 清洗命令文本：剥离模型输出中常见的装饰性前缀（CMD: / cmd: / Bash: / $ / # 等），
+// 避免复制/执行时把前缀一并带上导致命令无法运行（如 "CMD: yum install ..."）
+const cleanCommandText = (raw: string): string => {
+  let c = raw.trim()
+  // 多行命令逐行剥离行首前缀（如 "CMD: apt-get update \n CMD: apt-get install"）
+  c = c.split('\n').map(line => {
+    let l = line.trim()
+    // 循环剥离多个前缀（如 "$ CMD: xxx"）
+    for (let i = 0; i < 3; i++) {
+      const m = l.match(/^(?:CMD|cmd|Cmd|BASH|Bash|PS|POWERSHELL|PowerShell)\s*[:>]\s*/)
+      if (m) { l = l.slice(m[0].length).trim(); continue }
+      const sp = l.match(/^[$#]\s+/)
+      if (sp && l.length > 2) { l = l.slice(sp[0].length).trim(); continue }
+      break
+    }
+    return l
+  }).filter(l => l.length > 0).join('\n')
+  return c.trim()
+}
+
+// 常见 shell 命令动词集合：用于判断"无语言标记代码块"是否为可执行命令
+// （AI 常用无标记代码块展示工具输出解读，如 "ExitCode: 0 ← 正常退出"，这类内容不应出现"在终端执行"按钮）
+const COMMAND_FIRST_WORDS = new Set([
+  'ls', 'cd', 'cat', 'echo', 'grep', 'egrep', 'docker', 'docker-compose', 'kubectl', 'systemctl', 'service',
+  'journalctl', 'dmesg', 'yum', 'dnf', 'apt', 'apt-get', 'git', 'curl', 'wget', 'tar', 'zip', 'unzip', 'gzip',
+  'find', 'chmod', 'chown', 'chattr', 'mv', 'cp', 'rm', 'rmdir', 'mkdir', 'touch', 'ln', 'sed', 'awk', 'cut',
+  'sort', 'uniq', 'wc', 'ping', 'ssh', 'scp', 'rsync', 'sftp', 'top', 'htop', 'ps', 'df', 'du', 'free', 'uname',
+  'uptime', 'who', 'w', 'last', 'lastb', 'netstat', 'ss', 'ip', 'ifconfig', 'iptables', 'firewall-cmd', 'ufw',
+  'nginx', 'mysql', 'mysqldump', 'redis-cli', 'mongo', 'psql', 'sqlite3', 'node', 'npm', 'npx', 'pnpm', 'yarn',
+  'python', 'python3', 'pip', 'pip3', 'go', 'cargo', 'make', 'cmake', 'bash', 'sh', 'sudo', 'su', 'head', 'tail',
+  'less', 'more', 'vi', 'vim', 'nano', 'tee', 'xargs', 'nohup', 'export', 'env', 'source', 'openssl', 'dig',
+  'nslookup', 'traceroute', 'tracepath', 'mtr', 'crontab', 'kill', 'killall', 'pkill', 'pgrep', 'lsof', 'iostat',
+  'vmstat', 'sar', 'systemd-analyze', 'lscpu', 'lsblk', 'lsmod', 'lspci', 'lsusb', 'mount', 'umount', 'fdisk',
+  'parted', 'mkfs', 'fsck', 'dd', 'sync', 'swapon', 'swapoff', 'useradd', 'userdel', 'usermod', 'groupadd',
+  'passwd', 'chmod', 'date', 'timedatectl', 'hostnamectl', 'hostname', 'sleep', 'watch', 'clear', 'history',
+  'type', 'which', 'whereis', 'locate', 'file', 'stat', 'md5sum', 'sha256sum', 'base64', 'openssl', 'seq', 'expr',
+  'test', 'printf', 'readlink', 'realpath', 'dirname', 'basename', 'diff', 'patch', 'dos2unix', 'unix2dos'
+])
+
+// 判断无语言标记的代码块内容是否"每行都像 shell 命令"（注释行跳过）；
+// 用于过滤 AI 用代码块展示的结果解读/字段说明等非命令内容
+const looksLikeCommand = (code: string): boolean => {
+  const lines = code.split('\n').map(l => l.trim()).filter(Boolean)
+  if (lines.length === 0) return false
+  return lines.every(l => {
+    if (l.startsWith('#')) return true
+    const first = l.split(/\s+/)[0].toLowerCase().replace(/[:：]$/, '')
+    return COMMAND_FIRST_WORDS.has(first)
+  })
+}
+
 // 从 AI 回复中提取可执行/可复制的命令（代码块 + 行首 $ 命令 + 工具调用命令）
 const buildCommandList = (
   text: string,
@@ -171,7 +220,7 @@ const buildCommandList = (
 ): Array<{ command: string; riskLevel: RiskLevel }> => {
   const out: Array<{ command: string; riskLevel: RiskLevel }> = []
   const push = (cmd: string) => {
-    const c = cmd.trim()
+    const c = cleanCommandText(cmd)
     if (!c) return
     // 诊断并跳过不完整的 find -exec 片段（AI 容易只抽子命令段丢前缀）
     // 常见情况：truncate -s 0 {} \; （缺失 find 前缀）、exec truncate ... （缺失 find 前缀）、... -exec （缺失子命令）
@@ -189,12 +238,17 @@ const buildCommandList = (
     }
     if (!out.some(o => o.command === c)) out.push({ command: c, riskLevel: 'low' })
   }
-  // bash/sh/shell 代码块整体作为一条命令
-  const blockRe = /```(?:bash|sh|shell)?\s*\n([\s\S]*?)```/gi
+  // bash/sh/shell 语言标记的代码块整体作为命令；无标记代码块仅当内容"每行都像命令"才提取
+  // （过滤 AI 用 ``` 包裹的结果解读/字段说明等非命令内容）
+  const blockRe = /```([a-zA-Z]*)[ \t]*\n([\s\S]*?)```/g
   let m: RegExpExecArray | null
   while ((m = blockRe.exec(text)) !== null) {
-    const block = m[1].replace(/\n\s*$/, '').trim()
-    if (block) push(block)
+    const lang = (m[1] || '').toLowerCase()
+    const block = m[2].replace(/\n\s*$/, '').trim()
+    if (!block) continue
+    if (/^(bash|sh|shell|console|terminal)$/.test(lang) || (!lang && looksLikeCommand(block))) {
+      push(block)
+    }
   }
   // 行首 `$ ` 命令
   const lineRe = /^\s*\$ ([^\n]+)/gm
@@ -217,20 +271,38 @@ const renderRichSegment = (
 ): React.ReactNode[] => {
   const parts = text.split(/(```[\s\S]*?```)/g)
   return parts.map((part, i) => {
-    const m = part.match(/^```(?:bash|sh|shell)?\s*\n([\s\S]*?)```$/)
-    if (m && m[1].trim()) {
-      const cmd = m[1].replace(/\n\s*$/, '').trim()
-      return (
-        <div key={i} className="inline-cmd" style={{ margin: '6px 0' }}>
-          <pre style={{ margin: 0, padding: 10, borderRadius: 6, background: '#000000', border: '1px solid #3a3a3c', fontSize: 12, color: '#30D158', overflow: 'auto', fontFamily: 'Consolas, monospace', whiteSpace: 'pre-wrap' }}>{cmd}</pre>
-          <div style={{ display: 'flex', gap: 4, marginTop: 6 }}>
-            <Button size="small" type="text" icon={<CopyOutlined />} onClick={() => onCopy && onCopy(cmd)} style={{ color: '#aeaeb2' }}>{i18n.t('agent.copy')}</Button>
-            {onExecute && (
-              <Button size="small" type="text" icon={<PlayCircleOutlined />} disabled={!canExecute} onClick={() => onExecute(cmd)} style={{ color: '#0A84FF' }}>{i18n.t('agent.execInTerminal')}</Button>
-            )}
+    // 代码块手工解析（trim 后判断首尾 ```），比严格锚点正则更宽容：
+    // 漏判会导致代码块落入 renderMarkdown 分支且缺少换行样式，长命令被横向截断
+    const trimmed = part.trim()
+    if (trimmed.startsWith('```') && trimmed.endsWith('```') && trimmed.length > 6) {
+      const inner = trimmed.slice(3, -3)
+      const nl = inner.indexOf('\n')
+      const firstLine = (nl >= 0 ? inner.slice(0, nl) : inner).trim()
+      // 首行若为纯字母（如 bash/sh）视为语言标记，否则整个内容都是命令体
+      let lang = ''
+      let body = inner
+      if (/^[a-zA-Z]*$/.test(firstLine)) {
+        lang = firstLine.toLowerCase()
+        body = nl >= 0 ? inner.slice(nl + 1) : ''
+      }
+      if (body.trim()) {
+        const isShellLang = /^(bash|sh|shell|console|terminal)$/.test(lang)
+        // 清洗装饰性前缀（CMD: / $ 等），显示与复制/执行的都是干净命令
+        const cmd = cleanCommandText(body)
+        // 无语言标记且内容不像命令（如结果解读、字段说明）→ 仅保留复制按钮，不提供"在终端执行"
+        const executable = isShellLang || (!lang && looksLikeCommand(body))
+        return (
+          <div key={i} className="inline-cmd" style={{ margin: '4px 0', minWidth: 0 }}>
+            <pre style={{ margin: 0, padding: 8, borderRadius: 6, background: '#000000', border: '1px solid #3a3a3c', fontSize: 12, color: '#30D158', overflow: 'auto', fontFamily: 'Consolas, monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{cmd}</pre>
+            <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
+              <Button size="small" type="text" icon={<CopyOutlined />} onClick={() => onCopy && onCopy(cmd)} style={{ color: '#aeaeb2' }}>{i18n.t('agent.copy')}</Button>
+              {onExecute && executable && (
+                <Button size="small" type="text" icon={<PlayCircleOutlined />} disabled={!canExecute} onClick={() => onExecute(cmd)} style={{ color: '#0A84FF' }}>{i18n.t('agent.execInTerminal')}</Button>
+              )}
+            </div>
           </div>
-        </div>
-      )
+        )
+      }
     }
     if (!part.trim()) return null
     return <div key={i} dangerouslySetInnerHTML={{ __html: renderMarkdown(part) }} />
@@ -255,12 +327,32 @@ const ToolCallCard: React.FC<{ tc: ToolCallRecord }> = ({ tc }) => {
   // 可收藏的命令（工具参数中含 command 的命令类工具）
   const favCommand = typeof tc.params?.command === 'string' ? tc.params.command : undefined
   const [favorited, setFavorited] = useState(() => favCommand ? isFavoriteCommand(favCommand) : false)
+  // 执行中实时计时：从卡片挂载（=工具开始执行）起累计秒数，让用户明确知道工具在跑而非卡死
+  const [elapsed, setElapsed] = useState(0)
+  useEffect(() => {
+    if (!isRunning) return
+    const started = Date.now()
+    setElapsed(0)
+    const timer = setInterval(() => setElapsed(Math.floor((Date.now() - started) / 1000)), 1000)
+    return () => clearInterval(timer)
+  }, [isRunning])
+  // 执行中参数摘要：展示工具正在执行的关键内容（命令/容器/路径等），长命令与等待审批期间可见
+  const runningSummary = useMemo(() => {
+    if (!isRunning) return ''
+    const p = (tc.params || {}) as Record<string, unknown>
+    if (typeof p.command === 'string' && p.command.trim()) return p.command
+    return Object.entries(p)
+      .filter(([k, v]) => k !== 'serverId' && v !== undefined && v !== null && String(v).trim())
+      .map(([k, v]) => `${k}: ${String(typeof v === 'string' ? v : JSON.stringify(v)).slice(0, 80)}`)
+      .join('\n')
+  }, [isRunning, tc.params])
   return (
-    <div className="tool-card" style={{ background: 'rgba(0,0,0,0.6)', padding: 10, borderRadius: 10, border: '1px solid #3a3a3c' }}>
+    <div className="tool-card" style={{ background: 'rgba(0,0,0,0.6)', padding: 8, borderRadius: 10, border: isRunning ? '1px solid rgba(10,132,255,0.5)' : '1px solid #3a3a3c' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         {icon}
         <CodeOutlined style={{ color: '#0A84FF' }} />
         <Text style={{ color: '#0A84FF', fontSize: 12, flex: 1, fontFamily: 'SF Mono, Consolas, monospace' }}>{tc.name}</Text>
+        {isRunning && elapsed > 0 && <Text type="secondary" style={{ fontSize: 11, color: '#8e8e93' }}>{elapsed}s</Text>}
         {tc.duration !== undefined && !isRunning && <Text type="secondary" style={{ fontSize: 11 }}>{tc.duration}ms</Text>}
         {favCommand && (
           <Tooltip title={favorited ? i18n.t('agent.unfavorite') : i18n.t('agent.favoriteCmd')}>
@@ -271,11 +363,16 @@ const ToolCallCard: React.FC<{ tc: ToolCallRecord }> = ({ tc }) => {
         )}
         <Tag color={tagColor} style={{ fontSize: 10, margin: 0, borderRadius: 999 }}>{tagText}</Tag>
       </div>
+      {isRunning && runningSummary && (
+        <pre style={{ margin: '6px 0 0 0', maxHeight: 100, overflow: 'auto', fontSize: 11, color: '#aeaeb2', background: 'rgba(28,28,30,0.5)', padding: 8, borderRadius: 6, whiteSpace: 'pre-wrap', border: '1px solid #3a3a3c' }}>
+          {runningSummary}
+        </pre>
+      )}
       {!isRunning && tc.result && typeof tc.result === 'string' && (
         <ResourceBars text={tc.result} />
       )}
       {!isRunning && (
-        <pre style={{ margin: '8px 0 0 0', maxHeight: 160, overflow: 'auto', fontSize: 11, color: '#aeaeb2', background: 'rgba(28,28,30,0.5)', padding: 8, borderRadius: 6, whiteSpace: 'pre-wrap', border: '1px solid #3a3a3c' }}>
+        <pre style={{ margin: '6px 0 0 0', maxHeight: 140, overflow: 'auto', fontSize: 11, color: '#aeaeb2', background: 'rgba(28,28,30,0.5)', padding: 8, borderRadius: 6, whiteSpace: 'pre-wrap', border: '1px solid #3a3a3c' }}>
           {tc.result}
         </pre>
       )}
@@ -846,7 +943,7 @@ const AgentTerminalPage: React.FC = () => {
       if (rid !== requestId) return
       // 截断超长结果，避免渲染大段文本
       const raw = typeof output === 'string' ? output : JSON.stringify(output, null, 2)
-      const summary = raw.length > 2000 ? `${raw.slice(0, 2000)}\n... t('agent.truncatedChars', { count: raw.length - 2000 })` : raw
+      const summary = raw.length > 2000 ? `${raw.slice(0, 2000)}\n...${t('agent.truncatedChars', { count: raw.length - 2000 })}` : raw
       const now = Date.now()
       // 按 toolCallId 精确配对（无 id 时回退"同名且执行中"），更新对应分段
       for (const seg of segments) {
@@ -873,13 +970,34 @@ const AgentTerminalPage: React.FC = () => {
         })
       : () => {}
 
-    // 思维过程（reasoning）流式累积，展示为"思考过程"折叠块
-    let reasoningBuf = ''
+    // 思维过程（reasoning）：作为独立分段（thinking）按真实顺序与文本/工具调用交错展示，
+    // 不再集中堆在消息顶部。与 onChunk 相同采用 50ms 节流合并增量，避免每条 delta 全列表重渲染
+    let pendingReasoning = ''
+    let reasoningTimer: ReturnType<typeof setTimeout> | null = null
+    const flushPendingReasoning = () => {
+      if (reasoningTimer) {
+        clearTimeout(reasoningTimer)
+        reasoningTimer = null
+      }
+      if (!pendingReasoning) return
+      const delta = pendingReasoning
+      pendingReasoning = ''
+      // 追加到最后一个思考分段；若最后一段是文本/工具调用则新建思考分段（保持真实交错顺序）
+      const last = segments[segments.length - 1]
+      if (last && last.type === 'thinking') {
+        last.text += delta
+      } else {
+        segments.push({ type: 'thinking', text: delta })
+      }
+      syncSegments()
+    }
     const removeReasoning = window.electronAPI.opsAgent.onReasoning
       ? window.electronAPI.opsAgent.onReasoning(({ requestId: rid, delta }) => {
           if (rid !== requestId) return
-          reasoningBuf += delta
-          setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, reasoning: reasoningBuf } : m))
+          pendingReasoning += delta
+          if (!reasoningTimer) {
+            reasoningTimer = setTimeout(flushPendingReasoning, 50)
+          }
         })
       : () => {}
 
@@ -911,10 +1029,18 @@ const AgentTerminalPage: React.FC = () => {
       setSavePending(true)
     })
 
-    const removeDone = window.electronAPI.opsAgent.onDone(({ requestId: rid }) => {
+    const removeDone = window.electronAPI.opsAgent.onDone(({ requestId: rid, truncated }) => {
       if (rid !== requestId) return
-      // 完成：先 flush 节流缓冲，确保 segments 含全部增量，再提取工具调用记录
+      // 完成：先 flush 节流缓冲，确保 segments 与 reasoning 含全部增量，再提取工具调用记录
       flushPendingDelta()
+      flushPendingReasoning()
+      // 输出因达到 maxTokens 上限被截断：在回复末尾追加提示，让用户知道内容不完整及解决办法
+      if (truncated) {
+        const notice = '\n\n> ⚠️ ' + t('agent.genTruncated')
+        const last = segments[segments.length - 1]
+        if (last && last.type === 'text') last.text += notice
+        else segments.push({ type: 'text', text: notice.trim() })
+      }
       const toolCalls = segments.filter(s => s.type === 'tool').map(s => s.toolCall)
       const fullText = segments.filter(s => s.type === 'text').map(s => s.text).join('')
       const commands = buildCommandList(fullText, toolCalls)
@@ -923,6 +1049,7 @@ const AgentTerminalPage: React.FC = () => {
           ? {
               ...m,
               status: 'success' as const,
+              content: truncated && m.content ? `${m.content}\n\n> ⚠️ ${t('agent.genTruncated')}` : m.content,
               segments: [...segments],
               toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
               commands: commands.length > 0
@@ -940,6 +1067,7 @@ const AgentTerminalPage: React.FC = () => {
       if (currentRequestIdRef.current === requestId) currentRequestIdRef.current = null
       // 清理前 flush 节流缓冲，避免中断路径丢失末尾增量
       flushPendingDelta()
+      flushPendingReasoning()
       toolCallStartTimes.clear()
       removeChunk()
       removeReasoning()
@@ -951,30 +1079,14 @@ const AgentTerminalPage: React.FC = () => {
       removeDone()
     }
 
-    // 上下文自动压缩：较早对话压缩为摘要传给后端，避免上下文超长导致模型遗忘
-    // 策略与顶部常量一致（HISTORY_KEEP / SUMMARY_PER_MSG_MAX / SUMMARY_TOTAL_MAX）
-    let historySummary: string | undefined
-    if (messages.length > HISTORY_KEEP) {
-      const older = messages.slice(0, messages.length - HISTORY_KEEP)
-      const parts: string[] = []
-      for (const m of older) {
-        const role = m.role === 'user' ? t('agent.roleUser') : m.role === 'system' ? t('agent.roleSystem') : t('agent.roleAssistant')
-        const content = (m.content || '').replace(/\s+/g, ' ').trim().slice(0, SUMMARY_PER_MSG_MAX)
-        if (content) parts.push(`${role}: ${content}`)
-      }
-      historySummary = parts.join('\n')
-      if (historySummary.length > SUMMARY_TOTAL_MAX) {
-        historySummary = `${historySummary.slice(0, SUMMARY_TOTAL_MAX)}\n... t('agent.historyOmitted')`
-      }
-    }
-
+    // 历史上下文完全由后端 Memory（lastMessages=12）注入，前端不再拼接压缩摘要
+    // （旧摘要机制与 Memory 注入重叠双份发送，且摘要随消息存档会滚雪球膨胀，已移除）
     try {
       const result = await window.electronAPI.opsAgent.chat(requestId, {
         serverId: selectedServer,
         serverName: server?.name,
         userInput,
         threadId,
-        historySummary,
         temperature: sessionTemp
       })
       if (!result.success) {
@@ -1216,13 +1328,21 @@ const AgentTerminalPage: React.FC = () => {
   // 当前激活档案（扁平字段为激活档案的镜像）
   const profiles = modelConfig.providerProfiles || []
 
-  // 上下文压缩策略可视化：估算当前会话的 token 占用与压缩状态
+  // 上下文策略可视化：优先使用模型返回的真实 input token（含 system prompt、工具定义与
+  // Memory 注入的全部历史，最准确）；尚未产生 usage 时回退字符粗估
   const ctxState = useMemo(() => computeContextState(messages), [messages])
   const contextWindow = useMemo(() => {
     const active = profiles.find(p => p.id === modelConfig.activeProfileId) || profiles[0]
     return active?.contextWindow || DEFAULT_CONTEXT_WINDOW
   }, [profiles, modelConfig.activeProfileId])
-  const ctxUsage = ctxState.fullTokens + ctxState.summaryTokens
+  const lastRealInputUsage = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const u = messages[i]?.metadata?.usage
+      if (u && u.input > 0) return u.input
+    }
+    return null
+  }, [messages])
+  const ctxUsage = lastRealInputUsage ?? ctxState.estimateTokens
   const ctxPct = Math.min(100, Math.round((ctxUsage / contextWindow) * 100))
   const ctxColor = ctxPct >= 80 ? '#FF3B30' : ctxPct >= 60 ? '#FF9500' : '#0A84FF'
 
@@ -1677,9 +1797,11 @@ const AgentTerminalPage: React.FC = () => {
               <Tooltip
                 title={<div style={{ fontSize: 11, lineHeight: 1.8 }}>
                   <div style={{ fontWeight: 600, marginBottom: 4 }}>{t('agent.ctxPolicyTitle')}</div>
-                  <div>• {t('agent.ctxPolicyKeep', { n: HISTORY_KEEP })}</div>
-                  <div>• {t('agent.ctxPolicySummary', { per: SUMMARY_PER_MSG_MAX, total: SUMMARY_TOTAL_MAX })}</div>
-                  <div>• {t('agent.ctxPolicyCurrent', { kept: ctxState.keptFull, full: fmtTokens(ctxState.fullTokens), compressed: ctxState.compressedCount, summary: fmtTokens(ctxState.summaryTokens) })}</div>
+                  <div>• {t('agent.ctxPolicyKeep', { n: MEMORY_LAST })}</div>
+                  <div>• {t('agent.ctxPolicyCurrent', { kept: ctxState.keptFull, archived: ctxState.archivedCount })}</div>
+                  <div>• {lastRealInputUsage !== null
+                    ? t('agent.ctxPolicyReal', { tokens: fmtTokens(lastRealInputUsage) })
+                    : t('agent.ctxPolicyEstimate', { tokens: fmtTokens(ctxState.estimateTokens) })}</div>
                   <div style={{ color: '#8e8e93', marginTop: 4 }}>{t('agent.ctxPolicyWindow', { window: fmtTokens(contextWindow) })}</div>
                 </div>}
                 placement="bottom"
@@ -1687,10 +1809,10 @@ const AgentTerminalPage: React.FC = () => {
                 <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3, cursor: 'help' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, lineHeight: '12px', whiteSpace: 'nowrap', gap: 8 }}>
                     <span style={{ color: '#aeaeb2', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {t('agent.context')} <span style={{ color: ctxColor, fontWeight: 600 }}>≈{fmtTokens(ctxUsage)}</span>/{fmtTokens(contextWindow)} · <span style={{ color: ctxColor }}>{ctxPct}%</span>
+                      {t('agent.context')} <span style={{ color: ctxColor, fontWeight: 600 }}>{lastRealInputUsage !== null ? '' : '≈'}{fmtTokens(ctxUsage)}</span>/{fmtTokens(contextWindow)} · <span style={{ color: ctxColor }}>{ctxPct}%</span>
                     </span>
-                    <span style={{ color: ctxState.compressedCount > 0 ? '#FF9500' : '#6e6e73', flexShrink: 0 }}>
-                      {ctxState.compressedCount > 0 ? t('agent.ctxCompressed', { n: ctxState.compressedCount }) : t('agent.ctxFull', { n: ctxState.total })}
+                    <span style={{ color: ctxState.archivedCount > 0 ? '#FF9500' : '#6e6e73', flexShrink: 0 }}>
+                      {ctxState.archivedCount > 0 ? t('agent.ctxArchived', { n: ctxState.archivedCount }) : t('agent.ctxFull', { n: ctxState.total })}
                     </span>
                   </div>
                   <div style={{ height: 3, borderRadius: 2, background: '#3a3a3c', overflow: 'hidden' }}>
@@ -1723,12 +1845,12 @@ const AgentTerminalPage: React.FC = () => {
                 </div>
               ) : (
                 messages.map(msg => (
-                  <div key={msg.id} style={{ marginBottom: 16, display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
+                  <div key={msg.id} style={{ marginBottom: 10, display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
                     {/* 用户消息 */}
                     {msg.role === 'user' && (
-                      <div className="user-msg-bubble" style={{ maxWidth: '85%', padding: '10px 14px', background: 'linear-gradient(135deg, #0A84FF 0%, #0051D5 100%)', color: '#fff' }}>
+                      <div className="user-msg-bubble" style={{ maxWidth: '85%', padding: '7px 12px', background: 'linear-gradient(135deg, #0A84FF 0%, #0051D5 100%)', color: '#fff' }}>
                         <div style={{ fontSize: 13, whiteSpace: 'pre-wrap' }}>{msg.content}</div>
-                        <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.6)', marginTop: 4 }}>{new Date(msg.timestamp).toLocaleTimeString()}</div>
+                        <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.6)', marginTop: 2 }}>{new Date(msg.timestamp).toLocaleTimeString()}</div>
                       </div>
                     )}
                     
@@ -1737,20 +1859,28 @@ const AgentTerminalPage: React.FC = () => {
                       <div style={{ maxWidth: '92%', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
                         <div className="ai-avatar"><RobotOutlined style={{ color: '#fff', fontSize: 13 }} /></div>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                        <div className="ai-msg-bubble" style={{ padding: msg.status === 'running' ? '10px 14px' : '12px 14px' }}>
-                          {/* 思维过程（reasoning）折叠展示 */}
-                          {!!msg.reasoning && msg.reasoning.trim().length > 0 && (
+                        <div className="ai-msg-bubble" style={{ padding: msg.status === 'running' ? '8px 12px' : '9px 12px' }}>
+                          {/* 旧消息兼容：无 thinking 分段的 reasoning 全文（历史会话保存的数据）折叠兜底展示 */}
+                          {!!msg.reasoning && msg.reasoning.trim().length > 0 && !(msg.segments && msg.segments.some(s => s.type === 'thinking')) && (
                             <Collapse
                               size="small"
-                              style={{ marginBottom: 8, background: 'rgba(0,0,0,0.45)' }}
+                              style={{ marginBottom: 6, background: 'rgba(0,0,0,0.45)', borderRadius: 8 }}
                               items={[{
                                 key: 'reasoning',
-                                label: <span style={{ fontSize: 11, color: '#8e8e93' }}>💭 {t('agent.reasoning')}</span>,
-                                children: <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: 12, color: '#aeaeb2' }}>{msg.reasoning}</pre>
+                                label: (
+                                  <span style={{ fontSize: 11, color: '#8e8e93', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    <span>💭 {t('agent.reasoning')}</span>
+                                    {msg.status === 'running' && <span className="typing-dots"><i /><i /><i /></span>}
+                                    <span style={{ opacity: 0.6 }}>({msg.reasoning.length})</span>
+                                  </span>
+                                ),
+                                children: (
+                                  <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: 12, lineHeight: 1.6, color: '#aeaeb2', maxHeight: 150, overflow: 'auto' }}>{msg.reasoning}</pre>
+                                )
                               }]}
                             />
                           )}
-                          {/* 分段内容：文本 / 工具调用 按真实执行顺序交错 */}
+                          {/* 分段内容：思考 / 文本 / 工具调用 按真实执行顺序交错 */}
                           {msg.segments && msg.segments.length > 0 ? (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                               {msg.segments.map((seg, idx) => (
@@ -1759,12 +1889,36 @@ const AgentTerminalPage: React.FC = () => {
                                     <div style={{ fontSize: 13, lineHeight: 1.65, color: '#f5f5f7' }}>
                                         {renderRichSegment(seg.text, (cmd) => { navigator.clipboard.writeText(cmd); message.success(t('agent.copied')) }, executeCommandInTerminal, !!activeTerminalTab)}
                                       </div>
+                                  ) : seg.type === 'thinking' ? (
+                                    <Collapse
+                                      size="small"
+                                      defaultActiveKey={[]}
+                                      style={{ background: 'rgba(0,0,0,0.45)', borderRadius: 8 }}
+                                      items={[{
+                                        key: 'thinking',
+                                        label: (
+                                          <span style={{ fontSize: 11, color: '#8e8e93', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                            <span>💭 {t('agent.reasoning')}</span>
+                                            {/* 三点动画仅在该思考段正处于流式累积（最后一段且仍在 running）时显示，思考完进入后续段落即停止 */}
+                                            {msg.status === 'running' && idx === (msg.segments?.length ?? 0) - 1 && <span className="typing-dots"><i /><i /><i /></span>}
+                                            <span style={{ opacity: 0.6 }}>({seg.text.length})</span>
+                                          </span>
+                                        ),
+                                        children: (
+                                          <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: 12, lineHeight: 1.6, color: '#aeaeb2', maxHeight: 150, overflow: 'auto' }}>{seg.text}</pre>
+                                        )
+                                      }]}
+                                    />
                                   ) : (
                                     <ToolCallCard tc={seg.toolCall} />
                                   )}
                                 </div>
                               ))}
-                              {msg.status === 'running' && <span className="typing-dots"><i /><i /><i /></span>}
+                              {/* 底部三点仅在最后一段是文本/思考（正在流式输出）时显示；工具执行阶段由工具卡片自身状态承载 */}
+                              {msg.status === 'running' && (() => {
+                                const last = msg.segments?.[msg.segments.length - 1]
+                                return last && (last.type === 'text' || last.type === 'thinking')
+                              })() && <span className="typing-dots"><i /><i /><i /></span>}
                             </div>
                           ) : (
                             <>
@@ -1778,7 +1932,7 @@ const AgentTerminalPage: React.FC = () => {
                                 </div>
                               </div>
                               {msg.toolCalls && msg.toolCalls.length > 0 && (
-                                <Space direction="vertical" size={6} style={{ width: '100%', marginTop: 12 }}>
+                                <Space direction="vertical" size={6} style={{ width: '100%', marginTop: 8 }}>
                                   {msg.toolCalls.map((tc, idx) => <ToolCallCard key={idx} tc={tc} />)}
                                 </Space>
                               )}
@@ -1786,7 +1940,7 @@ const AgentTerminalPage: React.FC = () => {
                           )}
 
                           {/* 时间戳 + 操作 */}
-                          <div style={{ fontSize: 10, color: '#8e8e93', marginTop: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <div style={{ fontSize: 10, color: '#8e8e93', marginTop: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
                             {new Date(msg.timestamp).toLocaleTimeString()}
                             {msg.metadata?.executionTime && <span>⏱ {msg.metadata.executionTime}ms</span>}
                             {msg.metadata?.usage && !!(msg.metadata.usage.input + msg.metadata.usage.output) && (

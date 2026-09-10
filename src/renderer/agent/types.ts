@@ -117,9 +117,10 @@ export interface ChatMessage {
   reasoning?: string
 }
 
-// 消息分段：文本或工具调用，渲染时按数组顺序展示
+// 消息分段：文本 / 思考 / 工具调用，渲染时按数组顺序展示（思考与工具执行按真实顺序交错）
 export type MessageSegment =
   | { type: 'text'; text: string }
+  | { type: 'thinking'; text: string }
   | { type: 'tool'; toolCall: ToolCallRecord }
 
 // Function Calling 工具调用记录（用于展示）

@@ -50,7 +50,8 @@ export interface ChatCallbacks {
   onToolCall?: (toolName: string, args: any, toolCallId?: string) => void
   onToolResult?: (toolName: string, success: boolean, output: any, toolCallId?: string) => void
   onError?: (error: string) => void
-  onDone?: () => void
+  /** 对话完成；truncated=true 表示回复因达到最大输出长度(maxTokens)被截断 */
+  onDone?: (info?: { truncated?: boolean }) => void
   /** 路由通知：本次对话实际使用的路由档位（execution/thinking/critique/vision） */
   onRoute?: (route: string) => void
   /** 思维过程（reasoning）增量文本，供前端折叠展示 */
@@ -99,7 +100,11 @@ export function getAgentConfig(): AgentModelConfig | null {
 // 回复语言/风格指令：追加到系统提示词末尾（不覆盖用户自定义提示词，仅追加约束）
 function buildReplyDirectives(cfg?: AgentModelConfig | null): string {
   const parts: string[] = []
-  if (cfg?.replyLanguage === 'zh') parts.push('Always respond in Simplified Chinese (简体中文回复).')
+  if (cfg?.replyLanguage === 'zh') {
+    parts.push('Always respond in Simplified Chinese (简体中文回复).')
+    // 思维过程同样尽量用中文（部分模型 reasoning 默认英文；此指令对支持 reasoning instruction 的模型有效）
+    parts.push('Your thinking/reasoning process should also be written in Simplified Chinese whenever possible.')
+  }
   else if (cfg?.replyLanguage === 'en') parts.push('Always respond in English.')
   // replyLanguage=auto 时不追加语言指令，跟随用户输入语言
   if (cfg?.replyStyle === 'concise') {
@@ -340,6 +345,124 @@ async function createOpsTools(): Promise<Record<string, any>> {
         const ok = await requestApproval(`重启容器: ${container}`, 'medium')
         if (!ok) return { success: false, output: '用户拒绝了此操作', exitCode: -1 }
         return exec(serverId, `docker restart ${container}`, 30000)
+      }
+    }),
+
+    // 容器状态诊断（只读）：排查容器反复重启/异常退出/OOM 被杀
+    docker_state: mk({
+      id: 'docker_state',
+      description: '诊断容器运行状态：退出码/OOMKilled/重启次数/健康检查/启动与退出时间。用于排查容器反复重启、异常退出、被 OOM 杀掉等问题',
+      inputSchema: srv({ container: z.string().describe('容器名称或ID') }),
+      execute: async ({ serverId, container }) => {
+        const invalid = validateDockerRef(container, '容器名称或ID')
+        if (invalid) return { success: false, output: invalid, exitCode: -1 }
+        return exec(
+          serverId,
+          `docker inspect ${container} --format '{{.Name}} | ExitCode:{{.State.ExitCode}} | OOMKilled:{{.State.OOMKilled}} | Error:{{.State.Error}} | RestartCount:{{.RestartCount}} | Health:{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}} | StartedAt:{{.State.StartedAt}} | FinishedAt:{{.State.FinishedAt}}'`,
+          15000
+        )
+      }
+    }),
+
+    // 容器内进程（只读）
+    docker_top: mk({
+      id: 'docker_top',
+      description: '查看容器内正在运行的进程列表（ps 视图），排查容器内进程异常',
+      inputSchema: srv({ container: z.string().describe('容器名称或ID') }),
+      execute: async ({ serverId, container }) => {
+        const invalid = validateDockerRef(container, '容器名称或ID')
+        if (invalid) return { success: false, output: invalid, exitCode: -1 }
+        return exec(serverId, `docker top ${container}`, 15000)
+      }
+    }),
+
+    // 停止/启动容器（变更，需审批）
+    docker_stop: mk({
+      id: 'docker_stop',
+      description: '停止Docker容器（需要用户审批）',
+      inputSchema: srv({ container: z.string().describe('容器名称或ID') }),
+      execute: async ({ serverId, container }) => {
+        const invalid = validateDockerRef(container, '容器名称或ID')
+        if (invalid) return { success: false, output: invalid, exitCode: -1 }
+        const ok = await requestApproval(`停止容器: ${container}`, 'medium')
+        if (!ok) return { success: false, output: '用户拒绝了此操作', exitCode: -1 }
+        return exec(serverId, `docker stop ${container}`, 30000)
+      }
+    }),
+
+    docker_start: mk({
+      id: 'docker_start',
+      description: '启动已停止的Docker容器（需要用户审批）',
+      inputSchema: srv({ container: z.string().describe('容器名称或ID') }),
+      execute: async ({ serverId, container }) => {
+        const invalid = validateDockerRef(container, '容器名称或ID')
+        if (invalid) return { success: false, output: invalid, exitCode: -1 }
+        const ok = await requestApproval(`启动容器: ${container}`, 'medium')
+        if (!ok) return { success: false, output: '用户拒绝了此操作', exitCode: -1 }
+        return exec(serverId, `docker start ${container}`, 30000)
+      }
+    }),
+
+    // 系统日志（只读）：journalctl 查询，排查服务启动失败/系统级错误
+    system_journal: mk({
+      id: 'system_journal',
+      description: '查询 systemd 系统日志（journalctl）。可按服务单元过滤、按优先级过滤、指定行数。排查服务启动失败、系统级错误、容器之外的进程问题',
+      inputSchema: srv({
+        unit: z.string().optional().describe('服务单元名（如 sshd、nginx、docker），留空查全部'),
+        lines: z.number().optional().describe('最后N行，默认50'),
+        priority: z.enum(['emerg', 'alert', 'crit', 'err', 'warning', 'info']).optional().describe('按日志优先级过滤')
+      }),
+      execute: async ({ serverId, unit, lines, priority }) => {
+        const n = Math.min(Math.max(Math.floor(lines || 50), 1), 500)
+        let cmd = `journalctl --no-pager -n ${n}`
+        if (unit && unit.trim()) {
+          // 服务单元名白名单（systemd unit 可含字母数字 . _ @ -）
+          if (!/^[a-zA-Z0-9_.@-]+$/.test(unit.trim())) {
+            return { success: false, output: `服务单元名含非法字符: ${unit}`, exitCode: -1 }
+          }
+          cmd += ` -u ${unit.trim()}`
+        }
+        if (priority) cmd += ` -p ${priority}`
+        return exec(serverId, cmd, 20000)
+      }
+    }),
+
+    // 登录安全审计（只读）：排查暴力破解/异常登录
+    login_audit: mk({
+      id: 'login_audit',
+      description: '登录安全审计：当前在线用户(who)、最近登录记录(last)、失败登录尝试(lastb)、SSH 失败登录来源 IP 统计 TOP10。排查暴力破解、异常登录',
+      inputSchema: srv({ lines: z.number().optional().describe('每种记录显示的行数，默认15') }),
+      execute: async ({ serverId, lines }) => {
+        const n = Math.min(Math.max(Math.floor(lines || 15), 1), 100)
+        return exec(serverId, [
+          'echo "=== 当前在线 ==="; who 2>/dev/null || echo "无"',
+          `echo "=== 最近登录(last) ==="; last -n ${n} 2>/dev/null | head -${n} || echo "不支持"`,
+          `echo "=== 失败登录(lastb) ==="; lastb -n ${n} 2>/dev/null | head -${n} || echo "无权限或无记录"`,
+          'echo "=== SSH失败登录来源IP TOP10 ==="; grep "Failed password" /var/log/secure /var/log/auth.log 2>/dev/null | grep -oE "from [0-9a-fA-F:.]+" | sort | uniq -c | sort -rn | head -10 || echo "无记录"'
+        ].join('\n'), 20000)
+      }
+    }),
+
+    // 证书有效期检查（只读）
+    ssl_cert_check: mk({
+      id: 'ssl_cert_check',
+      description: '检查 HTTPS 站点的 TLS 证书：有效期（起止时间）/签发者/subject。用于排查证书过期、证书链问题',
+      inputSchema: srv({
+        host: z.string().describe('域名或 IP'),
+        port: z.number().optional().describe('端口，默认443')
+      }),
+      execute: async ({ serverId, host, port }) => {
+        const h = (host || '').trim()
+        // 域名/IP 白名单（字母数字点横线，不以 - 开头，防参数注入）
+        if (!h || !/^[a-zA-Z0-9][a-zA-Z0-9.-]*$/.test(h)) {
+          return { success: false, output: `非法的主机名: ${host}`, exitCode: -1 }
+        }
+        const p = Math.min(Math.max(Math.floor(port || 443), 1), 65535)
+        return exec(
+          serverId,
+          `echo | openssl s_client -connect ${h}:${p} -servername ${h} 2>/dev/null | openssl x509 -noout -subject -issuer -dates 2>/dev/null || echo "openssl 检查失败（端口未开放或非 TLS 服务）"`,
+          20000
+        )
       }
     }),
 
@@ -757,6 +880,7 @@ const DEFAULT_INSTRUCTIONS = `你是一个专业的服务器运维 AI 助手，�
 5. 排查问题时可组合多个工具交叉验证（如磁盘占用 + 容器状态 + 日志），一步步缩小范围
 6. 支持多轮工具调用：根据上一步结果决定下一步，直到定位根因或完成任务
 7. 工具执行失败时（网络错误、权限不足、容器不存在等），先分析错误信息，尝试改用其他工具或修正命令参数后重试，不要直接放弃；同一命令失败超过 2 次才报告错误
+8. 命令展示格式：在代码块中给出可直接复制运行的命令原文，禁止添加任何前缀或装饰（如 "CMD: "、"Bash: "、行首 "$ "、"#" 等），注释必须放在命令之外单独一行
 
 安全规则：
 - 读取/查询类操作直接执行
@@ -820,7 +944,10 @@ async function getAgent(route: AgentRoute = 'execution'): Promise<any> {
   if (!memoryInstance) {
     const memoryDomain = await createSqliteMemoryStorage(memoryDb)
     const storage = new MastraCompositeStore({ id: 'sqlite-memory', domains: { memory: memoryDomain } })
-    memoryInstance = new Memory({ storage, options: { lastMessages: 30 } })
+    // Memory 是唯一的历史注入来源：每轮召回最近 12 条（6 轮对话）注入上下文，
+    // 更早消息持久化存档但不注入。前端不再拼接压缩摘要（此前与 Memory 注入重叠，
+    // 造成历史双份发送 + 摘要随消息存入 Memory 滚雪球膨胀）
+    memoryInstance = new Memory({ storage, options: { lastMessages: 12 } })
   }
 
   const agent = new Agent({
@@ -844,12 +971,10 @@ export async function chatWithAgent(params: {
   threadId: string
   callbacks: ChatCallbacks
   signal?: AbortSignal
-  /** 上下文自动压缩：前端传入的早期对话摘要，超长历史时由前端压缩为简短文本 */
-  historySummary?: string
   /** 会话级温度覆盖（0~2），未传时使用全局配置 */
   temperature?: number
 }): Promise<void> {
-  const { serverId, serverName, userInput, threadId, callbacks, signal, historySummary, temperature } = params
+  const { serverId, serverName, userInput, threadId, callbacks, signal, temperature } = params
   // 多模型路由：按输入特征选择档位（未开启路由或档位未配置时回退主模型）
   const route = detectRoute(userInput)
   const agent = await getAgent(route)
@@ -857,6 +982,8 @@ export async function chatWithAgent(params: {
   callbacks.onRoute?.(route)
   log.info(`[ops-agent] 对话开始: thread=${threadId}, route=${route}, server=${serverName || serverId || '(未选择)'}, input=${userInput.slice(0, 80)}`)
 
+  // 历史上下文完全由 Memory（lastMessages）注入，此处不再接收前端压缩摘要，
+  // 避免与 Memory 召回的历史重叠双份发送、以及摘要随消息存档导致的滚雪球膨胀
   const contextBlocks: string[] = []
   if (serverId) {
     // 智能上下文感知：注入服务器标识，帮助 AI 精准定位目标主机
@@ -864,10 +991,6 @@ export async function chatWithAgent(params: {
     // messages 最前，叠加 Memory 恢复的历史后手插 system 会触发
     // "System message must be at the beginning" (400)。这里改为作为用户上下文前缀发送。
     contextBlocks.push(`[服务器上下文] 当前目标服务器: ${serverName || '未命名'} (ID: ${serverId})。执行任何远程操作时，工具参数中的 serverId 必须填 ${serverId}。`)
-  }
-  if (historySummary) {
-    // 早期对话压缩摘要（避免上下文超长导致遗忘），同样以用户上下文前缀形式发送
-    contextBlocks.push(`[历史对话摘要] 以下是本次会话较早对话的压缩摘要，供参考：\n${historySummary}`)
   }
   const userMessageContent = contextBlocks.length > 0
     ? contextBlocks.join('\n\n') + '\n\n' + userInput
@@ -888,6 +1011,8 @@ export async function chatWithAgent(params: {
     })
     // 本次对话的 token 用量累计器（usage_update 为每步增量，需累计后再转发）
     const usageAccumulator = { input: 0, output: 0 }
+    // 完成原因（finish chunk）：length 表示输出达到 maxTokens 上限被截断
+    let finishReason = ''
     for await (const chunk of result.fullStream) {
       if (signal?.aborted) break
       switch (chunk.type) {
@@ -931,12 +1056,19 @@ export async function chatWithAgent(params: {
         case 'error':
           callbacks.onError?.(errMessage(chunk.payload?.error) || 'Agent 执行出错')
           break
+        case 'finish':
+          // 捕获完成原因：length = 输出达到 maxTokens 上限被截断，前端需提示用户
+          finishReason = String(chunk.payload?.finishReason || chunk.finishReason || '').toLowerCase()
+          break
         default:
           break
       }
     }
-    log.info(`[ops-agent] 对话完成: thread=${threadId}`)
-    callbacks.onDone?.()
+    if (finishReason === 'length') {
+      log.warn(`[ops-agent] 回复因达到最大输出长度(maxTokens=${cfg?.maxTokens || '默认'})被截断: thread=${threadId}`)
+    }
+    log.info(`[ops-agent] 对话完成: thread=${threadId}, finishReason=${finishReason || 'unknown'}`)
+    callbacks.onDone?.({ truncated: finishReason === 'length' })
   } catch (error) {
     const err = error as Error
     if (err.name === 'AbortError' || /abort|cancel/i.test(err.message || '')) {

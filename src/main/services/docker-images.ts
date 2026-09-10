@@ -426,8 +426,9 @@ class DockerImagesService {
   }
 
   /**
-   * 获取被容器使用的镜像 ID 集合（权威：docker inspect 取每个容器的真实镜像 ID）
-   * 兜底：inspect 失败时回退 docker ps 的 name/ID 引用
+   * 获取「使用中」镜像集合（容器真实引用的镜像 ID / 名称）。
+   * 权威来源为 docker inspect 的 {{.Image}}（64 位镜像 ID），避免同仓库多代镜像被名称引用误判。
+   * 采用分批 inspect + 宽容失败：任一容器失效导致单批失败时，不丢弃其他批次已取到的结果。
    */
   async getUsedImageNames(serverId: string): Promise<Set<string>> {
     try {
@@ -443,22 +444,36 @@ class DockerImagesService {
       )
       if (idsRes.success && idsRes.stdout.trim()) {
         const ids = idsRes.stdout.trim().split(/\s+/).filter(Boolean)
-        const insp = await sshService.executeCommand(
-          serverId,
-          `docker inspect ${ids.join(' ')} --format '{{.Image}}'`,
-          0,
-          500,
-          20000
-        )
-        if (insp.success) {
-          for (const line of insp.stdout.trim().split('\n')) {
-            const v = line.trim().replace(/^sha256:/, '')
-            if (v && v !== '<none>' && v !== 'N/A') usedImages.add(v)
+        log.info(`getUsedImageNames: ${ids.length} containers found on server ${serverId}`)
+
+        // 分批 inspect：单批内任一容器失效只影响该批，成功批次的结果照常收集
+        const BATCH_SIZE = 30
+        let successBatches = 0
+        for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+          const batch = ids.slice(i, i + BATCH_SIZE)
+          const insp = await sshService.executeCommand(
+            serverId,
+            `docker inspect ${batch.join(' ')} --format '{{.Image}}'`,
+            0,
+            500,
+            20000
+          )
+          if (insp.success) {
+            successBatches += 1
+            for (const line of insp.stdout.trim().split('\n')) {
+              const v = line.trim().replace(/^sha256:/, '')
+              if (v && v !== '<none>' && v !== 'N/A') usedImages.add(v)
+            }
+          } else {
+            log.warn(
+              `getUsedImageNames: inspect batch ${i}-${Math.min(i + BATCH_SIZE, ids.length)} failed (${insp.stderr || insp.stdout || 'no output'}), batch skipped`
+            )
           }
         }
+        log.info(`getUsedImageNames: inspect succeeded in ${successBatches}/${Math.ceil(ids.length / BATCH_SIZE)} batches, got ${usedImages.size} image ids`)
       }
 
-      // 兜底：inspect 失败时回退 name/ID 引用
+      // 兜底：主路径完全未取得结果（如无容器 / inspect 全部失败）时回退名称/ID 引用
       if (usedImages.size === 0) {
         const result = await sshService.executeCommand(
           serverId,
@@ -475,10 +490,14 @@ class DockerImagesService {
               usedImages.add(image)
             }
           }
+          log.info(`getUsedImageNames: fallback by image reference, got ${usedImages.size} used images`)
+        } else {
+          log.warn(`getUsedImageNames: fallback docker ps failed: ${result.stderr}`)
         }
+      } else {
+        log.info(`getUsedImageNames: authoritative image-id result, total ${usedImages.size} used images on server ${serverId}`)
       }
 
-      log.info(`Found ${usedImages.size} used images on server ${serverId}`)
       return usedImages
     } catch (error) {
       log.error('getUsedImageNames error:', error)

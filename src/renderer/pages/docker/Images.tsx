@@ -84,10 +84,16 @@ const Images: React.FC = () => {
     try {
       const [data, usedNamesArr] = await Promise.all([
         window.electronAPI.image.getAll(selectedServerId),
-        window.electronAPI.image.getUsedImageNames(selectedServerId).catch(() => [])
+        // null 表示后端查询失败：避免静默把所有镜像误标为「未使用」
+        window.electronAPI.image.getUsedImageNames(selectedServerId).catch(() => null)
       ])
       setImages(data)
-      setUsedImageNames(new Set(usedNamesArr))
+      if (usedNamesArr === null) {
+        message.warning(t('image.usedCheckFailed'))
+        setUsedImageNames(new Set())
+      } else {
+        setUsedImageNames(new Set(usedNamesArr))
+      }
     } catch (error) {
       const err = error as Error
       message.error(err.message || t('common.error'))

@@ -246,7 +246,7 @@ const DeployForm: React.FC<DeployFormProps> = ({
       appName: string
       templateId?: string
       dockerCompose: string
-      projectPath: string
+      projectPath?: string
     },
     pullServices: string[]
   ) => {

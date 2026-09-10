@@ -272,7 +272,7 @@ const electronAPI: ElectronAPI = {
   opsAgent: {
     setConfig: (config: any): Promise<{ success: boolean; error?: string }> => ipcRenderer.invoke('opsAgent:setConfig', config),
     getConfig: (): Promise<{ success: boolean; data?: any; error?: string }> => ipcRenderer.invoke('opsAgent:getConfig'),
-    chat: (requestId: string, options: { serverId?: string; serverName?: string; userInput: string; threadId?: string; historySummary?: string }): Promise<{ success: boolean; requestId?: string; error?: string }> => ipcRenderer.invoke('opsAgent:chat', requestId, options),
+    chat: (requestId: string, options: { serverId?: string; serverName?: string; userInput: string; threadId?: string; temperature?: number }): Promise<{ success: boolean; requestId?: string; error?: string }> => ipcRenderer.invoke('opsAgent:chat', requestId, options),
     cancel: (requestId: string): Promise<{ success: boolean; error?: string }> => ipcRenderer.invoke('opsAgent:cancel', requestId),
     approval: (id: string, approved: boolean): Promise<{ success: boolean }> => ipcRenderer.invoke('opsAgent:approval', id, approved),
     // AI 建议命令执行前的风控门禁：黑名单拒绝 + 高危命令统一审批
@@ -302,8 +302,8 @@ const electronAPI: ElectronAPI = {
       ipcRenderer.on('opsAgent:error', listener)
       return () => { ipcRenderer.removeListener('opsAgent:error', listener) }
     },
-    onDone: (callback: (payload: { requestId: string }) => void): (() => void) => {
-      const listener = (_e: any, payload: { requestId: string }) => callback(payload)
+    onDone: (callback: (payload: { requestId: string; truncated?: boolean }) => void): (() => void) => {
+      const listener = (_e: any, payload: { requestId: string; truncated?: boolean }) => callback(payload)
       ipcRenderer.on('opsAgent:done', listener)
       return () => { ipcRenderer.removeListener('opsAgent:done', listener) }
     },

@@ -2784,7 +2784,6 @@ function registerIpcHandlers(): void {
         serverName: options?.serverName,
         userInput: options?.userInput,
         threadId: options?.threadId || `thread-${Date.now()}`,
-        historySummary: options?.historySummary,
         temperature: options?.temperature,
         signal: controller.signal,
         callbacks: {
@@ -2793,7 +2792,7 @@ function registerIpcHandlers(): void {
           onToolCall: (toolName, args, toolCallId) => sendEvent('opsAgent:toolCall', { requestId, toolName, args, toolCallId }),
           onToolResult: (toolName, success, output, toolCallId) => sendEvent('opsAgent:toolResult', { requestId, toolName, success, output, toolCallId }),
           onError: (error) => sendEvent('opsAgent:error', { requestId, error }),
-          onDone: () => sendEvent('opsAgent:done', { requestId }),
+          onDone: (info) => sendEvent('opsAgent:done', { requestId, truncated: info?.truncated === true }),
           onRoute: (route) => sendEvent('opsAgent:route', { requestId, route }),
           onUsage: (usage) => sendEvent('opsAgent:usage', { requestId, usage })
         }
