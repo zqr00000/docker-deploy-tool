@@ -122,6 +122,19 @@ const AiModelConfigPanel: React.FC<AiModelConfigPanelProps> = ({ selectedServer 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modelConfig])
 
+  // 跨 origin 恢复：localStorage 无配置（安装版/file:// 首次启动）时，从主进程持久化文件恢复
+  // （模型配置原本仅存 localStorage，dev 与打包版 origin 不同导致互不可见）
+  useEffect(() => {
+    if (localStorage.getItem(CONFIG_KEY)) return
+    window.electronAPI.opsAgent.getPersistedConfig().then(r => {
+      if (!r.success || !r.data) return
+      const parsed = { ...DEFAULT_MODEL_CONFIG, ...r.data }
+      localStorage.setItem(CONFIG_KEY, JSON.stringify(parsed))
+      setModelConfig(ensureProfiles(parsed))
+    }).catch(() => { /* 恢复失败保持默认配置 */ })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // 解密本地加密存储的 API Key（safeStorage 密文以 enc: 前缀标记；扁平 + 所有档案）
   useEffect(() => {
     const decryptAll = async () => {
@@ -234,6 +247,8 @@ const AiModelConfigPanel: React.FC<AiModelConfigPanelProps> = ({ selectedServer 
     }
     localStorage.setItem(CONFIG_KEY, JSON.stringify({ ...modelConfig, apiKey: storedKey, providerProfiles: profiles }))
     window.electronAPI.opsAgent.setConfig(modelConfig)
+    // 同步写入主进程持久化文件（跨 origin 共享：安装版/file:// 首次启动时从此恢复）
+    window.electronAPI.opsAgent.savePersistedConfig({ ...modelConfig, apiKey: storedKey, providerProfiles: profiles }).catch(() => { /* 持久化失败不影响保存 */ })
     setConfigSaved(true)
     message.success('配置已保存')
     setTimeout(() => setConfigSaved(false), 2000)

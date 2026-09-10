@@ -2730,13 +2730,46 @@ function registerIpcHandlers(): void {
     }
   })
 
-  // 设置 Agent 模型配置（配置变化时重建 Agent）
+  // Agent 模型配置的跨 origin 持久化文件（userData 下）：
+  // localStorage 按页面 origin 隔离（dev=http://localhost:5173，打包版=file://），
+  // 导致开发环境的模型配置在安装版读不到；此文件由两版共享，用于首次启动恢复
+  const agentConfigFile = () => join(app.getPath('userData'), 'agent-model-config.json')
+
+  // 设置 Agent 模型配置（配置变化时重建 Agent，并同步写入持久化文件）
   ipcMain.handle('opsAgent:setConfig', (_, config: any) => {
     try {
       setAgentModelConfig(config)
+      // 顺带落盘（与渲染层 localStorage 内容保持同步，供另一 origin/新环境恢复）
+      writeFile(agentConfigFile(), JSON.stringify(config), 'utf-8').catch((e) => {
+        log.warn('[ops-agent] 模型配置持久化失败:', (e as Error).message)
+      })
       return { success: true }
     } catch (error) {
       return { success: false, error: (error as Error).message }
+    }
+  })
+
+  // 显式保存持久化配置（渲染层"保存配置"时调用，内容为加密后的配置）
+  ipcMain.handle('opsAgent:savePersistedConfig', async (_, config: any) => {
+    try {
+      await writeFile(agentConfigFile(), JSON.stringify(config), 'utf-8')
+      return { success: true }
+    } catch (error) {
+      log.warn('[ops-agent] 模型配置持久化失败:', (error as Error).message)
+      return { success: false, error: (error as Error).message }
+    }
+  })
+
+  // 读取持久化配置（渲染层 localStorage 无数据时恢复用）
+  ipcMain.handle('opsAgent:getPersistedConfig', async () => {
+    try {
+      const file = agentConfigFile()
+      if (!fs.existsSync(file)) return { success: true, data: null }
+      const raw = await readFile(file, 'utf-8')
+      return { success: true, data: JSON.parse(raw) }
+    } catch (error) {
+      log.warn('[ops-agent] 读取持久化模型配置失败:', (error as Error).message)
+      return { success: false, error: (error as Error).message, data: null }
     }
   })
 

@@ -976,6 +976,9 @@ export interface ElectronAPI {
   opsAgent: {
     setConfig: (config: any) => Promise<{ success: boolean; error?: string }>
     getConfig: () => Promise<{ success: boolean; data?: any; error?: string }>
+    /** 模型配置跨 origin 持久化（userData/agent-model-config.json），供安装版/dev 共享恢复 */
+    savePersistedConfig: (config: any) => Promise<{ success: boolean; error?: string }>
+    getPersistedConfig: () => Promise<{ success: boolean; data?: any; error?: string }>
     chat: (requestId: string, options: { serverId?: string; serverName?: string; userInput: string; threadId?: string; temperature?: number }) => Promise<{ success: boolean; requestId?: string; error?: string }>
     cancel: (requestId: string) => Promise<{ success: boolean; error?: string }>
     approval: (id: string, approved: boolean) => Promise<{ success: boolean }>

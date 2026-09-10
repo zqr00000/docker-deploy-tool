@@ -549,6 +549,19 @@ const AgentTerminalPage: React.FC = () => {
     return ensureProfiles(parsed)
   })
 
+  // 跨 origin 恢复：localStorage 无配置（安装版/file:// 首次启动）时，从主进程持久化文件恢复
+  // （模型配置原本仅存 localStorage，dev 与打包版 origin 不同导致互不可见）
+  useEffect(() => {
+    if (localStorage.getItem(CONFIG_KEY)) return
+    window.electronAPI.opsAgent.getPersistedConfig().then(r => {
+      if (!r.success || !r.data) return
+      const parsed = { ...DEFAULT_MODEL_CONFIG, ...r.data }
+      localStorage.setItem(CONFIG_KEY, JSON.stringify(parsed))
+      setModelConfig(ensureProfiles(parsed))
+    }).catch(() => { /* 恢复失败保持默认配置 */ })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // Terminal state
   const [terminalTabs, setTerminalTabs] = useState<TerminalTab[]>([])
   const [activeTerminalTab, setActiveTerminalTab] = useState<string>('')
