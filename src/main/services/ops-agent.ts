@@ -5,14 +5,17 @@
 import { z } from 'zod'
 import { app } from 'electron'
 import { join } from 'path'
+import { tmpdir } from 'os'
+import { statSync } from 'fs'
+import { mkdtemp, rm } from 'fs/promises'
 import Database from 'better-sqlite3'
 import log from 'electron-log'
-import { validateDockerRef } from '../utils/shell'
+import { validateDockerRef, validatePath } from '../utils/shell'
 import { sshService } from '../ssh'
 import { createAIModel } from './ai-model'
 import { createSqliteMemoryStorage } from './sqlite-memory-store'
 import { auditLogService } from './audit-log'
-import { appQueries } from '../database'
+import { appQueries, serverQueries } from '../database'
 import { appDeployService } from './app-deploy'
 import { shellScriptService } from './shell-scripts'
 import { securityScanService } from './security-scan'
@@ -248,6 +251,61 @@ async function createOpsTools(): Promise<Record<string, any>> {
   const srv = (extra?: any) => z.object({ serverId: z.string().describe('服务器ID'), ...(extra || {}) })
 
   toolsInstance = {
+    // 连接服务器：AI 直接复用应用已保存的连接配置（凭证）建立 SSH 连接，
+    // 无需用户手动连接；清单中离线的服务器先调用本工具即可继续操作
+    server_connect: mk({
+      id: 'server_connect',
+      description: '使用应用已保存的连接配置直接连接指定服务器（含凭证，无需用户手动输入）。跨服务器操作前若目标服务器离线，先调用本工具建立连接，之后即可对该服务器执行其他工具。已连接的服务器调用会直接返回成功。',
+      inputSchema: srv({ serverId: z.string().describe('要连接的服务器ID（见可用服务器清单）') }),
+      execute: async ({ serverId }) => {
+        const server = serverQueries.getById(serverId)
+        if (!server) {
+          return { success: false, output: `服务器不存在: ${serverId}`, exitCode: -1 }
+        }
+        if (sshService.isConnected(serverId)) {
+          return { success: true, output: `服务器 ${server.name} (${server.host}) 已处于连接状态，可直接操作`, exitCode: 0 }
+        }
+        // ServerRow 的 password/privateKey 为 string|null，SSHServerConfig 要求 string|undefined，需归一化
+        const result = await sshService.connect({
+          id: server.id,
+          host: server.host,
+          port: server.port,
+          username: server.username,
+          authType: server.authType,
+          password: server.password ?? undefined,
+          privateKey: server.privateKey ?? undefined
+        })
+        if (result.success) {
+          serverQueries.updateStatus(serverId, 'online')
+          if (!result.alreadyConnected && !result.duplicate) {
+            auditLogService.log({
+              action: 'server_connect',
+              targetType: 'server',
+              targetId: server.id,
+              targetName: server.name,
+              status: 'success',
+              details: `AI 发起连接: ${server.host}:${server.port}`,
+              serverId: server.id
+            })
+          }
+          return { success: true, output: `服务器 ${server.name} (${server.host}) 连接成功，现在可以对该服务器执行其他工具调用`, exitCode: 0 }
+        }
+        if (!result.duplicate) {
+          serverQueries.updateStatus(serverId, 'error')
+          auditLogService.log({
+            action: 'server_connect',
+            targetType: 'server',
+            targetId: server.id,
+            targetName: server.name,
+            status: 'failure',
+            details: `AI 发起连接失败: ${result.message}`,
+            serverId: server.id
+          })
+        }
+        return { success: false, output: `连接 ${server.name} (${server.host}) 失败: ${result.message}`, exitCode: -1 }
+      }
+    }),
+
     // 通用命令执行（危险命令需审批）
     shell_execute: mk({
       id: 'shell_execute',
@@ -740,6 +798,80 @@ async function createOpsTools(): Promise<Record<string, any>> {
       }
     }),
 
+    // 跨服务器文件传输（中转模式）：两台服务器之间没有互信凭证时，
+    // 应用本机作为桥梁（持有两台凭证）：A 下载到本机临时目录 → 上传到 B，传输完自动清理
+    server_to_server_file_transfer: mk({
+      id: 'server_to_server_file_transfer',
+      description: '在两台服务器之间传输文件（中转模式：从源服务器下载到本机临时目录再上传到目标服务器，两台服务器之间无需互信凭证）。仅支持单个文件；目标服务器未连接时会失败，需先调用 server_connect。',
+      inputSchema: srv({
+        sourceServerId: z.string().describe('源服务器ID（文件所在）'),
+        sourcePath: z.string().describe('源文件绝对路径'),
+        targetServerId: z.string().describe('目标服务器ID（接收方）'),
+        targetPath: z.string().describe('目标路径：完整文件路径，或以 / 结尾表示目录（保留源文件名）')
+      }),
+      execute: async ({ sourceServerId, sourcePath, targetServerId, targetPath }) => {
+        if (sourceServerId === targetServerId) {
+          return { success: false, output: '源与目标是同一台服务器，直接在该服务器上执行 cp 命令即可，无需跨机传输', exitCode: -1 }
+        }
+        const src = serverQueries.getById(sourceServerId)
+        const dst = serverQueries.getById(targetServerId)
+        if (!src) return { success: false, output: `源服务器不存在: ${sourceServerId}`, exitCode: -1 }
+        if (!dst) return { success: false, output: `目标服务器不存在: ${targetServerId}`, exitCode: -1 }
+        if (!sshService.isConnected(sourceServerId)) {
+          return { success: false, output: `源服务器 ${src.name} 未连接，请先调用 server_connect 建立连接`, exitCode: -1 }
+        }
+        if (!sshService.isConnected(targetServerId)) {
+          return { success: false, output: `目标服务器 ${dst.name} 未连接，请先调用 server_connect 建立连接`, exitCode: -1 }
+        }
+        // 远程路径安全校验（防注入/路径穿越）
+        const srcInvalid = validatePath(sourcePath, '源文件路径')
+        if (srcInvalid) return { success: false, output: srcInvalid, exitCode: -1 }
+        const dstInvalid = validatePath(targetPath, '目标路径')
+        if (dstInvalid) return { success: false, output: dstInvalid, exitCode: -1 }
+
+        const fileName = sourcePath.split('/').filter(Boolean).pop() || 'transfer-file'
+        const finalTarget = targetPath.endsWith('/') ? `${targetPath.replace(/\/+$/, '')}/${fileName}` : targetPath
+        const ok = await requestApproval(`跨服务器传输文件: ${src.name}:${sourcePath} → ${dst.name}:${finalTarget}（经本机中转）`, 'medium')
+        if (!ok) return { success: false, output: '用户拒绝了此操作', exitCode: -1 }
+
+        let tmpDir: string | null = null
+        const started = Date.now()
+        try {
+          tmpDir = await mkdtemp(join(tmpdir(), 'ddt-xfer-'))
+          const tmpFile = join(tmpDir, fileName)
+          const down = await sshService.downloadFile(sourceServerId, sourcePath, tmpFile)
+          if (!down.success) {
+            return { success: false, output: `从源服务器 ${src.name} 下载失败: ${down.message}`, exitCode: -1 }
+          }
+          const size = statSync(tmpFile).size
+          const up = await sshService.uploadFileStream(targetServerId, tmpFile, finalTarget)
+          if (!up.success) {
+            return { success: false, output: `上传到目标服务器 ${dst.name} 失败: ${up.message}`, exitCode: -1 }
+          }
+          auditLogService.log({
+            action: 'file_transfer',
+            targetType: 'server',
+            targetId: targetServerId,
+            targetName: dst.name,
+            status: 'success',
+            details: `跨服务器传输: ${src.name}:${sourcePath} → ${dst.name}:${finalTarget} (${size} bytes)`,
+            serverId: targetServerId
+          })
+          return {
+            success: true,
+            output: `传输完成: ${src.name}:${sourcePath} → ${dst.name}:${finalTarget}（${(size / 1024).toFixed(1)} KB，耗时 ${((Date.now() - started) / 1000).toFixed(1)}s，经本机中转，两台服务器间无需互信）`,
+            exitCode: 0
+          }
+        } catch (transferError) {
+          return { success: false, output: `跨服务器传输失败: ${(transferError as Error).message}`, exitCode: -1 }
+        } finally {
+          if (tmpDir) {
+            try { await rm(tmpDir, { recursive: true, force: true }) } catch { /* 临时目录清理失败忽略 */ }
+          }
+        }
+      }
+    }),
+
     // ==================== 日志分析增强 ====================
 
     log_stats: mk({
@@ -886,7 +1018,8 @@ const DEFAULT_INSTRUCTIONS = `你是一个专业的服务器运维 AI 助手，�
 - 读取/查询类操作直接执行
 - 删除、格式化、重启、停止服务等破坏性操作必须谨慎，说明原因
 - 不确定的命令先查询再执行
-- 批量/高影响操作前先向用户说明影响范围`
+- 批量/高影响操作前先向用户说明影响范围
+- 输出纪律：回复中严禁输出 "user"、"assistant"、"system" 等角色标记或任何对话分隔符，不要续写对话格式，只输出面向用户的内容本身`
 
 let memoryDb: Database.Database | null = null
 let memoryInstance: any = null
@@ -990,7 +1123,23 @@ export async function chatWithAgent(params: {
     // 注意：不使用 system 角色。部分 OpenAI 兼容模型（如 Agnes 2.5 Pro）要求 system 必须位于
     // messages 最前，叠加 Memory 恢复的历史后手插 system 会触发
     // "System message must be at the beginning" (400)。这里改为作为用户上下文前缀发送。
-    contextBlocks.push(`[服务器上下文] 当前目标服务器: ${serverName || '未命名'} (ID: ${serverId})。执行任何远程操作时，工具参数中的 serverId 必须填 ${serverId}。`)
+    contextBlocks.push(`[服务器上下文] 当前目标服务器: ${serverName || '未命名'} (ID: ${serverId})。未特别指定服务器时，工具参数中的 serverId 默认填 ${serverId}。`)
+  }
+  // 注入所有已配置服务器清单：AI 可跨服务器调用工具（批量巡检、跨机诊断对比等），
+  // serverId 参数填清单中任意一台；在线状态实时判定（SSH 连接）
+  try {
+    const allServers = serverQueries.getAll()
+    if (allServers.length > 0) {
+      const currentId = serverId
+      const lines = allServers.map(s => {
+        const online = sshService.isConnected(s.id)
+        return `- ${s.name || s.host} | ${s.host}:${s.port} | serverId=${s.id} | ${online ? (s.id === currentId ? '在线（当前目标）' : '在线') : '离线'}`
+      })
+      const onlineCount = allServers.filter(s => sshService.isConnected(s.id)).length
+      contextBlocks.push(`[可用服务器清单] 共 ${allServers.length} 台（在线 ${onlineCount} 台）。你可以对其中任意服务器执行工具调用（工具参数 serverId 填对应值），批量巡检/跨机对比时逐台调用。标记【离线】的服务器请先调用 server_connect 工具建立连接（复用应用已保存的凭证），成功后即可正常操作：\n${lines.join('\n')}`)
+    }
+  } catch (listError) {
+    log.warn(`[ops-agent] 服务器清单注入失败: ${(listError as Error).message}`)
   }
   const userMessageContent = contextBlocks.length > 0
     ? contextBlocks.join('\n\n') + '\n\n' + userInput
@@ -1057,9 +1206,19 @@ export async function chatWithAgent(params: {
           callbacks.onError?.(errMessage(chunk.payload?.error) || 'Agent 执行出错')
           break
         case 'finish':
-          // 捕获完成原因：length = 输出达到 maxTokens 上限被截断，前端需提示用户
-          finishReason = String(chunk.payload?.finishReason || chunk.finishReason || '').toLowerCase()
+        case 'finish-step':
+        case 'step-finish': {
+          // 完成原因兜底提取（不同封装层字段名不一）：
+          // AI SDK finish → payload.finishReason；finish-step → payload.stepResult.reason；
+          // Mastra workflow finish → payload.stepResult.reason（见 @mastra/core agent dist）
+          const fr = chunk.payload?.finishReason
+            ?? chunk.finishReason
+            ?? chunk.payload?.stepResult?.reason
+            ?? chunk.stepResult?.reason
+            ?? chunk.payload?.reason
+          if (fr) finishReason = String(fr).toLowerCase()
           break
+        }
         default:
           break
       }

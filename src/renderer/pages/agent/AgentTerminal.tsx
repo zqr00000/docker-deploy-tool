@@ -1056,6 +1056,22 @@ const AgentTerminalPage: React.FC = () => {
       }
       const toolCalls = segments.filter(s => s.type === 'tool').map(s => s.toolCall)
       const fullText = segments.filter(s => s.type === 'text').map(s => s.text).join('')
+      // 元话语回声清理：flash 级模型在工具调用接续生成时，可能把对话元信息
+      // （角色标记 user/assistant、空消息占位 empty message、chatml 特殊 token 等）
+      // 当作正文输出。整条消息仅为元话语且无工具调用 → 直接移除该消息；
+      // 有工具调用的消息末尾出现孤立元话语段 → 仅删除该文本段（保留工具卡片）
+      const META_ECHO_RE = /^(?:user|assistant|system|human|ai|model|tool|empty\s*message|no\s*message|empty|无消息|空消息|空白消息)\s*[::]?\s*$|^(?:<\|[a-z_-]+\|>|\[\/?(?:inst|sys)\])+\s*$/i
+      if (toolCalls.length === 0 && META_ECHO_RE.test(fullText.trim())) {
+        setMessages(prev => prev.filter(m => m.id !== assistantId))
+        setSavePending(true)
+        setLoading(false)
+        cleanup()
+        return
+      }
+      if (toolCalls.length > 0 && segments.length > 0) {
+        const last = segments[segments.length - 1]
+        if (last.type === 'text' && META_ECHO_RE.test(last.text.trim())) segments.pop()
+      }
       const commands = buildCommandList(fullText, toolCalls)
       setMessages(prev => prev.map(m =>
         m.id === assistantId

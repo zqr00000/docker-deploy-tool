@@ -30,6 +30,7 @@ export type AuditAction =
   | 'scheduled_task_delete'
   | 'scheduled_task_toggle'
   | 'scheduled_task_execute'
+  | 'file_transfer'
 
 export type AuditTargetType =
   | 'server'
