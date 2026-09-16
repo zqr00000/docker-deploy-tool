@@ -360,8 +360,11 @@ body {
 }
 
 /* Agent Terminal Page - 独立滚动 */
+/* 高度取父容器 100%：高度链 app-content-wrapper(calc) → app-tabbar(38px) → app-content(flex:1)
+   → KeepAlive div(100%) 已正确传递。此前用 calc(100vh - 64px) 会比父容器高出一个标签条(38px)，
+   在 no-scroll 裁剪下底部输入行（Enter 发送提示）永久不可见 */
 .agent-terminal-page {
-  height: calc(100vh - 64px) !important;
+  height: 100% !important;
   overflow: hidden !important;
   padding: 0 !important;
   display: flex !important;

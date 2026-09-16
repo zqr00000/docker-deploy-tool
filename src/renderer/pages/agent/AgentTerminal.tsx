@@ -1240,8 +1240,20 @@ const AgentTerminalPage: React.FC = () => {
           return
         }
       }
-      // 发送命令到终端（添加换行符执行）
-      await window.electronAPI.terminal.write(activeTerminalTab, command + '\n')
+      // 先敲一次回车让 shell 输出全新提示符，并等待其渲染完成。
+      // 若直接写命令，可能与尚未到齐的提示符分片交错，导致提示符被吞字（如 [root@localcurl ...）
+      await window.electronAPI.terminal.write(activeTerminalTab, '\r')
+      await new Promise(r => setTimeout(r, 300))
+      // 发送命令到终端（\r 触发执行，命令与输出由 PTY 回显）
+      const execTerm = terminalInstancesRef.current.get(activeTerminalTab)
+      await window.electronAPI.terminal.write(activeTerminalTab, command + '\r')
+      // 命令已发出：渲染完成后滚到终端底部并聚焦，确保用户能看到命令执行过程
+      if (execTerm) {
+        execTerm.write('', () => {
+          execTerm.scrollToBottom()
+          execTerm.focus()
+        })
+      }
       message.success(t('agent.cmdSent'))
     } catch (error) {
       message.error(t('agent.sendFailed', { msg: (error as Error).message }))
@@ -1510,6 +1522,11 @@ const AgentTerminalPage: React.FC = () => {
         term.onData(data => {
           window.electronAPI.terminal.write(tab.sessionId, data)
         })
+        // 尺寸变化同步 PTY：fitAndFill 微调 cols / 窗口缩放 / rows 自愈后，
+        // 必须让远端 shell 知道新的行列数，否则前后端布局错位
+        term.onResize(({ cols, rows }) => {
+          window.electronAPI.terminal.resize(tab.sessionId, cols, rows).catch(() => { /* PTY 同步失败忽略 */ })
+        })
       }
     })
 
@@ -1547,7 +1564,26 @@ const AgentTerminalPage: React.FC = () => {
       terminalReadyRef.current.set(sessionId, true)
       const term = terminalInstancesRef.current.get(sessionId)
       if (term) {
-        term.write(data)
+        // 关键：term.write 是异步缓冲的，滚动必须放在 write 的渲染完成回调里。
+        // 这里做两件事：
+        // 1) rows 自愈：fit 的容器高度测量残差可能使 rows 大于实际可视行数，
+        //    xterm 屏幕区比可视区高 → 即使滚到底，底部提示符也在可视区外（"看不到输入"的元凶）。
+        //    用 DOM 实测行高反推可视行数，偏差时修正（onResize 会同步 PTY）。
+        // 2) 光标拉入视口：把光标（输入位置）所在行滚动到视口底部附近，保证输入可见；
+        //    只向下滚，用户向上翻阅历史时不打扰。
+        term.write(data, () => {
+          const el = term.element
+          const screen = el?.querySelector('.xterm-screen') as HTMLElement | null
+          if (el && screen && screen.offsetHeight > 0 && term.rows > 0) {
+            const cellH = screen.offsetHeight / term.rows
+            const visibleRows = Math.max(1, Math.floor(el.clientHeight / cellH))
+            if (term.rows > visibleRows) term.resize(term.cols, visibleRows)
+          }
+          const buf = term.buffer.active
+          const cursorAbsY = Math.max(0, buf.length - term.rows) + buf.cursorY
+          const targetTop = Math.max(0, cursorAbsY - term.rows + 1)
+          if (buf.viewportY < targetTop) term.scrollLines(targetTop - buf.viewportY)
+        })
       }
     })
 
@@ -1753,7 +1789,8 @@ const AgentTerminalPage: React.FC = () => {
                       if (containers.length === 0) { message.warning(t('agent.noContainers')); return }
                       setSelectedContainerId(undefined); setOpenNewModal(true)
                     } else {
-                      openNewTerminal('server', t('agent.serverTerminal'), 'server')
+                      // 标签名使用服务器名称（而非通用“服务器终端”），找不到时兜底 i18n
+                      openNewTerminal('server', servers.find(s => s.id === selectedServer)?.name || t('agent.serverTerminal'), 'server')
                     }
                   }}
                   disabled={!selectedServer || (terminalMode === 'container' && containers.length === 0)}
