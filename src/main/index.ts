@@ -69,6 +69,42 @@ function createWindow(): void {
     mainWindow!.show()
   })
 
+  // 安全加固：拦截渲染层发起的外部导航与 window.open（XSS 纵深防御）
+  mainWindow!.webContents.setWindowOpenHandler(({ url }) => {
+    log.warn(`[security] 已拦截 window.open 尝试: ${url}`)
+    return { action: 'deny' }
+  })
+  mainWindow!.webContents.on('will-navigate', (event, url) => {
+    const allowedPrefixes = [
+      process.env.ELECTRON_RENDERER_URL || 'http://localhost:5173',
+      'file://',
+      'devtools://'
+    ]
+    if (!allowedPrefixes.some(p => url.startsWith(p))) {
+      event.preventDefault()
+      log.warn(`[security] 已拦截页面导航尝试: ${url}`)
+    }
+  })
+
+  // 渲染进程崩溃监听：崩溃原因落日志 + 审计（此前仅 console 输出，崩溃后无据可查）
+  mainWindow!.webContents.on('render-process-gone', (_event, details) => {
+    const msg = `渲染进程异常退出: reason=${details.reason}, exitCode=${details.exitCode}`
+    log.error(`[renderer] ${msg}`)
+    try {
+      auditLogService.log({
+        action: 'app_crash',
+        targetType: 'system',
+        status: 'failure',
+        details: msg
+      })
+    } catch { /* 审计失败不影响主流程 */ }
+  })
+
+  // preload 脚本加载失败监听（静默失败会导致 window.electronAPI 缺失，难以排查）
+  mainWindow!.webContents.on('preload-error', (_event, preloadPath, error) => {
+    log.error(`[renderer] preload 脚本错误: ${preloadPath}: ${(error as Error).stack || (error as Error).message}`)
+  })
+
   // Suppress harmless Autofill DevTools protocol errors
   mainWindow!.webContents.on('devtools-opened', () => {
     try {
@@ -132,7 +168,7 @@ app.on('quit', () => {
 })
 
 // ==================== 运维 Agent (Mastra) ====================
-import { setAgentModelConfig, setApprovalSender, chatWithAgent, resolveApproval, getAgentConfig, approveCommandExecution } from './services/ops-agent'
+import { setAgentModelConfig, setApprovalSender, chatWithAgent, resolveApproval, getAgentConfig, approveCommandExecution, isCommandBlocklisted } from './services/ops-agent'
 
 // 流式对话请求（用于取消）
 const opsAgentStreams = new Map<string, AbortController>()
@@ -144,6 +180,15 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('app:name', () => {
     return app.getName()
+  })
+
+  // 渲染层日志/异常转发到 electron-log 落盘（渲染层崩溃仅 console 输出时应用重启后即丢失）
+  ipcMain.handle('app:logMessage', (_, level: string, message: string) => {
+    const msg = `[renderer] ${String(message ?? '').slice(0, 4000)}`
+    if (level === 'error') log.error(msg)
+    else if (level === 'warn') log.warn(msg)
+    else log.info(msg)
+    return { success: true }
   })
 
   // 在文件资源管理器中定位并高亮文件
@@ -331,6 +376,19 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('server:executeCommand', async (_, serverId: string, command: string) => {
     try {
+      // 主进程侧硬门禁：黑名单命令无条件拒绝（即使渲染层被攻破也无法绕过）
+      if (isCommandBlocklisted(command)) {
+        log.warn(`[security] server:executeCommand 命中黑名单，已拒绝: ${String(command).slice(0, 80)}`)
+        auditLogService.log({
+          action: 'server_command',
+          targetType: 'server',
+          targetId: serverId,
+          status: 'failure',
+          details: `命令命中黑名单已拒绝: ${String(command).slice(0, 200)}`,
+          serverId
+        })
+        return { success: false, stdout: '', stderr: '命令命中黑名单，已拒绝执行', exitCode: -1 }
+      }
       return await sshService.executeCommand(serverId, command)
     } catch (error) {
       log.error('server:executeCommand error:', error)
@@ -339,6 +397,28 @@ function registerIpcHandlers(): void {
         stdout: '',
         stderr: (error as Error).message,
         exitCode: -1
+      }
+    }
+  })
+
+  // 带风控门禁的命令执行通道：黑名单硬拒 + 高危命令主进程审批（审批 UI 由渲染层呈现，
+  // 但审批判定与放行均在主进程完成，渲染层无法通过直接调用普通通道语义跳过审批）。
+  // AI 建议命令必须走本通道。
+  ipcMain.handle('server:executeCommandGated', async (_, serverId: string, command: string, riskLevel?: string) => {
+    try {
+      const gate = await approveCommandExecution(command, riskLevel)
+      if (!gate.approved) {
+        return { approved: false, blocked: gate.blocked, riskLevel: gate.riskLevel, result: null }
+      }
+      const result = await sshService.executeCommand(serverId, command)
+      return { approved: true, blocked: false, riskLevel: gate.riskLevel, result }
+    } catch (error) {
+      log.error('server:executeCommandGated error:', error)
+      return {
+        approved: false,
+        blocked: false,
+        riskLevel: 'high',
+        result: { success: false, stdout: '', stderr: (error as Error).message, exitCode: -1 }
       }
     }
   })
@@ -900,6 +980,16 @@ function registerIpcHandlers(): void {
     }
   })
 
+  // 删除容器（与 container:remove 同逻辑；此前 preload 声明了 app.removeContainer 但主进程未注册，批量操作删除容器静默失败）
+  ipcMain.handle('app:removeContainer', async (_, serverId: string, containerId: string) => {
+    try {
+      return await appDeployService.removeContainer(serverId, containerId)
+    } catch (error) {
+      log.error('app:removeContainer error:', error)
+      return { success: false, message: (error as Error).message }
+    }
+  })
+
   // ==================== 容器资源管理 ====================
   // 获取服务器全部容器（docker ps -a）
   ipcMain.handle('container:getAll', async (_, serverId: string) => {
@@ -1206,6 +1296,16 @@ function registerIpcHandlers(): void {
     } catch (error) {
       log.error('volume:getSize error:', error)
       return '-'
+    }
+  })
+
+  // 批量获取卷大小（单次 SSH 往返，替代逐卷 N+1 查询）
+  ipcMain.handle('volume:getSizes', async (_, serverId: string, names: string[]) => {
+    try {
+      return await dockerVolumesService.getVolumeSizes(serverId, Array.isArray(names) ? names : [])
+    } catch (error) {
+      log.error('volume:getSizes error:', error)
+      return {}
     }
   })
 
@@ -2591,7 +2691,7 @@ function registerIpcHandlers(): void {
   })
 
   // AI API 代理 IPC 处理器 - 绕过 CORS 限制
-  ipcMain.handle('ai:getModels', async (_, provider: string, apiKey: string, baseUrl?: string) => {
+  ipcMain.handle('ai:getModels', async (_, provider: string, apiKey: string, baseUrl?: string, allowSelfSignedCerts?: boolean) => {
     try {
       let url: string
       const headers: Record<string, string> = { 'Content-Type': 'application/json' }
@@ -2631,7 +2731,8 @@ function registerIpcHandlers(): void {
           path: urlObj.pathname + urlObj.search,
           method: 'GET',
           headers,
-          rejectUnauthorized: false // 允许自签名证书
+          // TLS 证书校验默认开启；仅在用户显式勾选"允许自签名证书"时放行（防 MITM）
+          rejectUnauthorized: allowSelfSignedCerts === true
         }
 
         const req = https.request(options, (res) => {
@@ -2735,12 +2836,49 @@ function registerIpcHandlers(): void {
   // 导致开发环境的模型配置在安装版读不到；此文件由两版共享，用于首次启动恢复
   const agentConfigFile = () => join(app.getPath('userData'), 'agent-model-config.json')
 
+  // 敏感字段加密（safeStorage，enc: 前缀标记密文；已是密文或加密不可用时原样返回）
+  const encryptSecret = (value: string): string => {
+    if (!value || value.startsWith('enc:')) return value
+    try {
+      if (!safeStorage.isEncryptionAvailable()) return value
+      return `enc:${safeStorage.encryptString(value).toString('base64')}`
+    } catch {
+      return value
+    }
+  }
+
+  // 配置中的全部敏感字段统一加密：扁平 apiKey / providerProfiles[].apiKey / routing 各档 apiKey
+  // （渲染层仅加密了前两者，且 setConfig 会在每次配置变化时明文落盘，故在主进程统一兜底）
+  const encryptConfigSecrets = (config: any): any => {
+    if (!config || typeof config !== 'object') return config
+    const next = { ...config }
+    if (typeof next.apiKey === 'string') next.apiKey = encryptSecret(next.apiKey)
+    if (Array.isArray(next.providerProfiles)) {
+      next.providerProfiles = next.providerProfiles.map((p: any) =>
+        p && typeof p === 'object' && typeof p.apiKey === 'string' ? { ...p, apiKey: encryptSecret(p.apiKey) } : p
+      )
+    }
+    if (next.routing && typeof next.routing === 'object') {
+      next.routing = Object.fromEntries(
+        Object.entries(next.routing).map(([k, v]) => {
+          const r = v as any
+          if (r && typeof r === 'object' && typeof r.apiKey === 'string') {
+            return [k, { ...r, apiKey: encryptSecret(r.apiKey) }]
+          }
+          return [k, v]
+        })
+      )
+    }
+    return next
+  }
+
   // 设置 Agent 模型配置（配置变化时重建 Agent，并同步写入持久化文件）
   ipcMain.handle('opsAgent:setConfig', (_, config: any) => {
     try {
       setAgentModelConfig(config)
-      // 顺带落盘（与渲染层 localStorage 内容保持同步，供另一 origin/新环境恢复）
-      writeFile(agentConfigFile(), JSON.stringify(config), 'utf-8').catch((e) => {
+      // 顺带落盘（与渲染层 localStorage 内容保持同步，供另一 origin/新环境恢复）；
+      // API Key 等敏感字段在主进程统一加密后再写文件，防止明文密钥落盘
+      writeFile(agentConfigFile(), JSON.stringify(encryptConfigSecrets(config)), 'utf-8').catch((e) => {
         log.warn('[ops-agent] 模型配置持久化失败:', (e as Error).message)
       })
       return { success: true }
@@ -2749,10 +2887,10 @@ function registerIpcHandlers(): void {
     }
   })
 
-  // 显式保存持久化配置（渲染层"保存配置"时调用，内容为加密后的配置）
+  // 显式保存持久化配置（渲染层"保存配置"时调用；主进程统一加密敏感字段）
   ipcMain.handle('opsAgent:savePersistedConfig', async (_, config: any) => {
     try {
-      await writeFile(agentConfigFile(), JSON.stringify(config), 'utf-8')
+      await writeFile(agentConfigFile(), JSON.stringify(encryptConfigSecrets(config)), 'utf-8')
       return { success: true }
     } catch (error) {
       log.warn('[ops-agent] 模型配置持久化失败:', (error as Error).message)

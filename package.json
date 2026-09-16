@@ -6,8 +6,9 @@
   "author": "Docker Deploy Tool Team",
   "license": "MIT",
   "scripts": {
-    "dev": "electron-vite dev",
-    "build": "electron-vite build",
+    "dev": "chcp 65001 >nul 2>&1 && electron-vite dev",
+    "build": "node scripts/check-i18n.mjs && electron-vite build",
+    "check:i18n": "node scripts/check-i18n.mjs",
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
     "preview": "electron-vite preview",
     "package": "electron-builder --win --config",

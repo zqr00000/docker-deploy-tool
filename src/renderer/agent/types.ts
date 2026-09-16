@@ -59,6 +59,8 @@ export interface ModelConfig {
   quickMessages?: string[]
   // 审批模式：manual=高危需人工审批（默认）；auto=自动批准高危操作
   approvalMode?: 'manual' | 'auto'
+  // 允许自签名证书（连接自定义 AI 网关时可能需要；默认关闭以启用 TLS 证书校验）
+  allowSelfSignedCerts?: boolean
   // 审批超时（秒），超时未响应自动拒绝，默认 60
   approvalTimeout?: number
   // 启用 Web 搜索工具（AI 可联网查询报错/命令用法）

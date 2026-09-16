@@ -31,6 +31,8 @@ export type AuditAction =
   | 'scheduled_task_toggle'
   | 'scheduled_task_execute'
   | 'file_transfer'
+  | 'server_command'
+  | 'app_crash'
 
 export type AuditTargetType =
   | 'server'

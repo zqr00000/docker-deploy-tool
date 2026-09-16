@@ -11,6 +11,21 @@ import './styles.css'
 
 type ThemeMode = 'system' | 'dark' | 'light'
 
+// 全局异常捕获：渲染层错误/未处理的 Promise 拒绝转发到主进程 electron-log 落盘，
+// 避免仅 console 输出、应用重启后无据可查（ErrorBoundary 只兜组件树内错误）
+const forwardError = (kind: string, detail: string) => {
+  try {
+    window.electronAPI?.logMessage('error', `[${kind}] ${detail}`).catch(() => { /* 转发失败忽略 */ })
+  } catch { /* electronAPI 不可用时忽略 */ }
+}
+window.addEventListener('error', (e) => {
+  forwardError('window.onerror', e.message || String(e.error))
+})
+window.addEventListener('unhandledrejection', (e) => {
+  const reason = e.reason instanceof Error ? (e.reason.stack || e.reason.message) : String(e.reason)
+  forwardError('unhandledrejection', reason)
+})
+
 const getAntdLocale = () => {
   const savedLanguage = localStorage.getItem('language')
   return savedLanguage === 'en-US' ? enUS : zhCN

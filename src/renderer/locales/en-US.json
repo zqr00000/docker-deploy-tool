@@ -373,7 +373,22 @@
     "checkFailed": "Environment Check Failed",
     "recheck": "Recheck",
     "connectFirst": "Please Connect Server First",
-    "connectFirstDescription": "You need to connect to the server before running environment check"
+    "connectFirstDescription": "You need to connect to the server before running environment check",
+    "cores": "cores",
+    "installDependencies": "Install Dependencies Automatically",
+    "installing": "Installing dependencies...",
+    "success": "Success",
+    "failed": "Failed",
+    "close": "Close",
+    "uploadPackage": "Upload Offline Package",
+    "uploadPackageInfo": "Upload Offline Installation Package",
+    "uploadPackageDescription": "If the server has no network access or local package sources, you can upload a pre-downloaded Docker offline installation package (.deb, .rpm, .tar.gz, etc.)",
+    "uploading": "Uploading...",
+    "selectPackage": "Select Package",
+    "supportedFormats": "Supported formats: ",
+    "uploadSuccess": "Upload Successful",
+    "uploadFailed": "Upload Failed",
+    "cancel": "Cancel"
   },
   "template": {
     "title": "App Store",

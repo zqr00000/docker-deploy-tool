@@ -177,6 +177,13 @@ class DockerImagesService {
       if (uniqueIds.length === 0) {
         return { success: false, successCount: 0, failCount: 0, message: '镜像ID不能为空' }
       }
+      // 每个 ID 来自渲染层输入，拼入 shell 前必须逐一校验（防命令注入）
+      for (const id of uniqueIds) {
+        const invalid = validateDockerRef(id, '镜像ID')
+        if (invalid) {
+          return { success: false, successCount: 0, failCount: 0, message: invalid }
+        }
+      }
 
       log.info(`Removing ${uniqueIds.length} images on server ${serverId}`)
 

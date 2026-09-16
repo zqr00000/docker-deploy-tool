@@ -135,7 +135,7 @@ const AiModelConfigPanel: React.FC<AiModelConfigPanelProps> = ({ selectedServer 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // 解密本地加密存储的 API Key（safeStorage 密文以 enc: 前缀标记；扁平 + 所有档案）
+  // 解密本地加密存储的 API Key（safeStorage 密文以 enc: 前缀标记；扁平 + 所有档案 + 路由档）
   useEffect(() => {
     const decryptAll = async () => {
       let cfg = modelConfig
@@ -150,6 +150,19 @@ const AiModelConfigPanel: React.FC<AiModelConfigPanelProps> = ({ selectedServer 
           return { ...p, apiKey: r.success && r.data ? r.data : p.apiKey }
         }))
         cfg = { ...cfg, providerProfiles: profiles }
+      }
+      if (cfg.routing && Object.values(cfg.routing).some((v: any) => typeof v?.apiKey === 'string' && v.apiKey.startsWith('enc:'))) {
+        const routing: Record<string, any> = {}
+        for (const [k, v] of Object.entries(cfg.routing)) {
+          const r0 = v as any
+          if (r0 && typeof r0.apiKey === 'string' && r0.apiKey.startsWith('enc:')) {
+            const r = await window.electronAPI.secure.decrypt(r0.apiKey.slice(4))
+            routing[k] = { ...r0, apiKey: r.success && r.data ? r.data : r0.apiKey }
+          } else {
+            routing[k] = r0
+          }
+        }
+        cfg = { ...cfg, routing }
       }
       setModelConfig(cfg)
     }
@@ -280,7 +293,8 @@ const AiModelConfigPanel: React.FC<AiModelConfigPanelProps> = ({ selectedServer 
       const result = await window.electronAPI.ai.getModels(
         modelConfig.provider,
         modelConfig.apiKey,
-        modelConfig.baseUrl || undefined
+        modelConfig.baseUrl || undefined,
+        modelConfig.allowSelfSignedCerts === true
       )
       if (result.success && result.data) {
         const models = result.data.map((m: any) => m.id || m.name)
@@ -459,6 +473,16 @@ const AiModelConfigPanel: React.FC<AiModelConfigPanelProps> = ({ selectedServer 
                             style={{ background: 'var(--app-bg-color)', border: '1px solid var(--app-border-color)', color: 'var(--app-text-color)', borderRadius: 8 }} />
                         </>
                       )}
+
+                      {/* 允许自签名证书（连接自定义网关时可能需要；默认开启 TLS 校验） */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
+                        <div style={{ minWidth: 0 }}>
+                          <span className="field-label" style={{ marginBottom: 0 }}>允许自签名证书</span>
+                          <Text style={{ color: 'var(--app-text-secondary)', fontSize: 11, display: 'block' }}>仅自建 AI 网关需要；开启会降低传输安全性</Text>
+                        </div>
+                        <Switch size="small" checked={modelConfig.allowSelfSignedCerts === true}
+                          onChange={v => setModelConfig({ ...modelConfig, allowSelfSignedCerts: v })} />
+                      </div>
 
                       {/* Azure 特殊字段 */}
                       {modelConfig.provider === 'azure' && (

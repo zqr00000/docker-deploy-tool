@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 // 类型定义已迁移到 ../renderer/types/electron-api（单一来源），此处仅保留实现与类型 re-export
 import type {
-  ServerFormData, Server, DockerCheckResult, EnvVariableSchema, Template, TemplateFormData,
+  ServerFormData, Server, EnvVariableSchema, Template, TemplateFormData,
   ServerConnectionResult, CommandExecutionResult, App, EnvVariable, DeployOptions, DeployResult,
   ComposeImageCheckItem, CheckComposeImagesResult,
   ContainerInfo, SystemInfo, DiskPartition, HardwareInfo, NetworkInfo, PortInfo,
@@ -23,6 +23,7 @@ export * from '../renderer/types/electron-api'
 const electronAPI: ElectronAPI = {
   getAppVersion: (): Promise<string> => ipcRenderer.invoke('app:version'),
   getAppName: (): Promise<string> => ipcRenderer.invoke('app:name'),
+  logMessage: (level: 'info' | 'warn' | 'error', message: string): Promise<{ success: boolean }> => ipcRenderer.invoke('app:logMessage', level, message),
   showItemInFolder: (filePath: string): Promise<{ success: boolean; message?: string }> => ipcRenderer.invoke('app:showItemInFolder', filePath),
 
   platform: process.platform,
@@ -37,8 +38,8 @@ const electronAPI: ElectronAPI = {
     connect: (server: Server): Promise<ServerConnectionResult> => ipcRenderer.invoke('server:connect', server),
     disconnect: (serverId: string): Promise<void> => ipcRenderer.invoke('server:disconnect', serverId),
     executeCommand: (serverId: string, command: string): Promise<CommandExecutionResult> => ipcRenderer.invoke('server:executeCommand', serverId, command),
+    executeCommandGated: (serverId: string, command: string, riskLevel?: string): Promise<{ approved: boolean; blocked: boolean; riskLevel: string; result: CommandExecutionResult | null }> => ipcRenderer.invoke('server:executeCommandGated', serverId, command, riskLevel),
     getConnectionStatus: (serverId: string): Promise<'online' | 'offline' | 'connecting'> => ipcRenderer.invoke('server:getConnectionStatus', serverId),
-    checkDockerEnvironment: (serverId: string): Promise<DockerCheckResult> => ipcRenderer.invoke('server:checkDockerEnvironment', serverId),
     checkSystemEnvironment: (serverId: string, requirements?: HardwareRequirements): Promise<SystemCheckResult> => ipcRenderer.invoke('server:checkSystemEnvironment', serverId, requirements),
     getSystemInfo: (serverId: string): Promise<SystemInfo | null> => ipcRenderer.invoke('server:getSystemInfo', serverId),
     getHardwareInfo: (serverId: string): Promise<HardwareInfo | null> => ipcRenderer.invoke('server:getHardwareInfo', serverId),
@@ -116,7 +117,8 @@ const electronAPI: ElectronAPI = {
     remove: (serverId: string, name: string, force?: boolean): Promise<{ success: boolean; message: string }> => ipcRenderer.invoke('volume:remove', serverId, name, force),
     prune: (serverId: string, force?: boolean, all?: boolean): Promise<PruneResult> => ipcRenderer.invoke('volume:prune', serverId, force, all),
     getInfo: (serverId: string, name: string): Promise<VolumeDetail | null> => ipcRenderer.invoke('volume:getInfo', serverId, name),
-    getSize: (serverId: string, name: string): Promise<string> => ipcRenderer.invoke('volume:getSize', serverId, name)
+    getSize: (serverId: string, name: string): Promise<string> => ipcRenderer.invoke('volume:getSize', serverId, name),
+    getSizes: (serverId: string, names: string[]): Promise<Record<string, string>> => ipcRenderer.invoke('volume:getSizes', serverId, names)
   },
   network: {
     getAll: (serverId: string): Promise<DockerNetworkInfo[]> => ipcRenderer.invoke('network:getAll', serverId),
@@ -262,7 +264,7 @@ const electronAPI: ElectronAPI = {
     getActiveAlerts: (): Promise<AlertHistoryEntry[]> => ipcRenderer.invoke('alertHistory:getActive')
   },
   ai: {
-    getModels: (provider: string, apiKey: string, baseUrl?: string): Promise<{ success: boolean; data?: any[]; error?: string }> => ipcRenderer.invoke('ai:getModels', provider, apiKey, baseUrl),
+    getModels: (provider: string, apiKey: string, baseUrl?: string, allowSelfSignedCerts?: boolean): Promise<{ success: boolean; data?: any[]; error?: string }> => ipcRenderer.invoke('ai:getModels', provider, apiKey, baseUrl, allowSelfSignedCerts),
     generateScript: (cfg: any, prompt: string): Promise<{ success: boolean; text?: string; error?: string }> => ipcRenderer.invoke('ai:generateScript', cfg, prompt)
   },
   secure: {

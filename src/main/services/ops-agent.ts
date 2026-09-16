@@ -10,7 +10,7 @@ import { statSync } from 'fs'
 import { mkdtemp, rm } from 'fs/promises'
 import Database from 'better-sqlite3'
 import log from 'electron-log'
-import { validateDockerRef, validatePath } from '../utils/shell'
+import { validateDockerRef, validatePath, shQuote } from '../utils/shell'
 import { sshService } from '../ssh'
 import { createAIModel } from './ai-model'
 import { createSqliteMemoryStorage } from './sqlite-memory-store'
@@ -190,6 +190,11 @@ function isBlocklisted(command: string): boolean {
   return list.some(block => block && command.includes(block))
 }
 
+/** 供 IPC 通道做主进程侧硬门禁：黑名单命令无条件拒绝（渲染层不可绕过） */
+export function isCommandBlocklisted(command: string): boolean {
+  return typeof command === 'string' && isBlocklisted(command)
+}
+
 // 危险命令检测
 const HIGH_RISK_PATTERNS = [
   /rm\s+-rf/i, /mkfs/i, /dd\s+if=\/dev\/zero/i, /chmod\s+777/i,
@@ -350,14 +355,26 @@ async function createOpsTools(): Promise<Record<string, any>> {
       id: 'docker_logs',
       description: '获取Docker容器日志',
       inputSchema: srv({ container: z.string().describe('容器名称或ID'), tail: z.number().optional().describe('最后N行，默认100') }),
-      execute: async ({ serverId, container, tail }) => exec(serverId, `docker logs --tail ${tail || 100} ${container}`, 15000)
+      execute: async ({ serverId, container, tail }) => {
+        const invalid = validateDockerRef(container, '容器名称或ID')
+        if (invalid) return { success: false, output: invalid, exitCode: -1 }
+        const n = Math.min(Math.max(Math.floor(tail || 100), 1), 10000)
+        return exec(serverId, `docker logs --tail ${n} ${container}`, 15000)
+      }
     }),
 
     docker_stats: mk({
       id: 'docker_stats',
       description: '查看Docker容器资源占用（CPU/内存）',
       inputSchema: srv({ container: z.string().optional().describe('容器名称或ID，默认全部') }),
-      execute: async ({ serverId, container }) => exec(serverId, `docker stats --no-stream${container ? ` ${container}` : ''}`, 15000)
+      execute: async ({ serverId, container }) => {
+        if (container) {
+          const invalid = validateDockerRef(container, '容器名称或ID')
+          if (invalid) return { success: false, output: invalid, exitCode: -1 }
+          return exec(serverId, `docker stats --no-stream ${container}`, 15000)
+        }
+        return exec(serverId, 'docker stats --no-stream', 15000)
+      }
     }),
 
     docker_images: mk({
@@ -371,7 +388,11 @@ async function createOpsTools(): Promise<Record<string, any>> {
       id: 'docker_inspect',
       description: '查看Docker容器详细配置',
       inputSchema: srv({ container: z.string().describe('容器名称或ID') }),
-      execute: async ({ serverId, container }) => exec(serverId, `docker inspect ${container}`, 15000)
+      execute: async ({ serverId, container }) => {
+        const invalid = validateDockerRef(container, '容器名称或ID')
+        if (invalid) return { success: false, output: invalid, exitCode: -1 }
+        return exec(serverId, `docker inspect ${container}`, 15000)
+      }
     }),
 
     docker_exec: mk({
@@ -390,7 +411,8 @@ async function createOpsTools(): Promise<Record<string, any>> {
           const ok = await requestApproval(`在容器 ${container} 内执行高危命令: ${command}`, 'high')
           if (!ok) return { success: false, output: '用户拒绝了此操作', exitCode: -1 }
         }
-        return exec(serverId, `docker exec ${container} ${command}`, 30000)
+        // sh -c 包裹：命令中的管道/分号等元字符在容器内执行，而非宿主机 shell（防止借 docker exec 在宿主机注入）
+        return exec(serverId, `docker exec ${container} sh -c ${shQuote(command)}`, 30000)
       }
     }),
 
@@ -400,6 +422,8 @@ async function createOpsTools(): Promise<Record<string, any>> {
       description: '重启Docker容器（需要用户审批）',
       inputSchema: srv({ container: z.string().describe('容器名称或ID') }),
       execute: async ({ serverId, container }) => {
+        const invalid = validateDockerRef(container, '容器名称或ID')
+        if (invalid) return { success: false, output: invalid, exitCode: -1 }
         const ok = await requestApproval(`重启容器: ${container}`, 'medium')
         if (!ok) return { success: false, output: '用户拒绝了此操作', exitCode: -1 }
         return exec(serverId, `docker restart ${container}`, 30000)
@@ -548,11 +572,16 @@ async function createOpsTools(): Promise<Record<string, any>> {
         action: z.enum(['start', 'stop', 'restart', 'status', 'enable', 'disable']).describe('操作')
       }),
       execute: async ({ serverId, service, action }) => {
+        // 服务名白名单（systemd unit 可含字母数字 . _ @ -）
+        const svc = (service || '').trim()
+        if (!svc || !/^[a-zA-Z0-9_.@-]+$/.test(svc)) {
+          return { success: false, output: `服务名含非法字符: ${service}`, exitCode: -1 }
+        }
         if (action !== 'status') {
-          const ok = await requestApproval(`${action} 服务: ${service}`, 'medium')
+          const ok = await requestApproval(`${action} 服务: ${svc}`, 'medium')
           if (!ok) return { success: false, output: '用户拒绝了此操作', exitCode: -1 }
         }
-        return exec(serverId, `systemctl ${action} ${service}`, 30000)
+        return exec(serverId, `systemctl ${action} ${svc}`, 30000)
       }
     }),
 
@@ -564,12 +593,20 @@ async function createOpsTools(): Promise<Record<string, any>> {
         target: z.string().optional().describe('目标主机/URL（ping等需要）')
       }),
       execute: async ({ serverId, type, target }) => {
+        const t = (target || '').trim()
+        // 主机名/IP 白名单（字母数字点横线冒号，不以 - 开头，防参数注入）；netstat 无需目标
+        if (type !== 'netstat') {
+          if (!t || !/^[a-zA-Z0-9][a-zA-Z0-9.:\-]*$/.test(t)) {
+            return { success: false, output: `非法的目标主机: ${target}`, exitCode: -1 }
+          }
+        }
         const cmds: Record<string, string> = {
-          ping: `ping -c 4 ${target}`,
-          traceroute: `traceroute ${target}`,
+          ping: `ping -c 4 ${t}`,
+          traceroute: `traceroute ${t}`,
           netstat: 'netstat -tuln',
-          curl: `curl -I --connect-timeout 5 ${target}`,
-          dig: `dig ${target}`
+          // URL 可能含 : / ? = & 等字符，用单引号转义防逃逸
+          curl: `curl -I --connect-timeout 5 ${shQuote(t)}`,
+          dig: `dig ${t}`
         }
         return exec(serverId, cmds[type], 20000)
       }
@@ -584,13 +621,19 @@ async function createOpsTools(): Promise<Record<string, any>> {
         name: z.string().optional().describe('进程名（list可按名过滤）')
       }),
       execute: async ({ serverId, action, pid, name }) => {
-        if (action === 'kill') {
-          const ok = await requestApproval(`杀死进程 PID ${pid}`, 'medium')
-          if (!ok) return { success: false, output: '用户拒绝了此操作', exitCode: -1 }
-          return exec(serverId, `kill -9 ${pid}`, 15000)
+        // PID 强校验：必须是 1~4194304 的整数（防 `${pid}` 注入其他内容）
+        const p = Math.floor(Number(pid))
+        if ((action === 'kill' || action === 'info') && (!Number.isInteger(p) || p < 1 || p > 4194304)) {
+          return { success: false, output: `无效的进程 ID: ${pid}`, exitCode: -1 }
         }
-        if (action === 'info') return exec(serverId, `ps -p ${pid} -o pid,ppid,user,%cpu,%mem,command`)
-        return exec(serverId, name ? `ps aux | grep -i "${name}" | grep -v grep` : 'ps aux --sort=-%mem | head -20', 15000)
+        if (action === 'kill') {
+          const ok = await requestApproval(`杀死进程 PID ${p}`, 'medium')
+          if (!ok) return { success: false, output: '用户拒绝了此操作', exitCode: -1 }
+          return exec(serverId, `kill -9 ${p}`, 15000)
+        }
+        if (action === 'info') return exec(serverId, `ps -p ${p} -o pid,ppid,user,%cpu,%mem,command`)
+        // 进程名过滤词用单引号转义（grep -i）
+        return exec(serverId, name ? `ps aux | grep -i ${shQuote(name)} | grep -v grep` : 'ps aux --sort=-%mem | head -20', 15000)
       }
     }),
 
@@ -602,14 +645,17 @@ async function createOpsTools(): Promise<Record<string, any>> {
         lines: z.number().optional().describe('分析最后N行，默认100'),
         pattern: z.string().optional().describe('过滤正则，默认 error|warn|fatal|failed')
       }),
-      execute: async ({ serverId, logPath, lines, pattern }) => exec(serverId, `tail -n ${lines || 100} "${logPath}" | grep -iE "${pattern || 'error|warn|fatal|failed'}" | tail -50`, 15000)
+      execute: async ({ serverId, logPath, lines, pattern }) => {
+        const ln = Math.min(Math.max(Math.floor(lines || 100), 1), 10000)
+        return exec(serverId, `tail -n ${ln} ${shQuote(logPath)} | grep -iE ${shQuote(pattern || 'error|warn|fatal|failed')} | tail -50`, 15000)
+      }
     }),
 
     file_read: mk({
       id: 'file_read',
       description: '读取服务器上的文件',
       inputSchema: srv({ path: z.string().describe('文件路径') }),
-      execute: async ({ serverId, path }) => exec(serverId, `cat "${path}"`, 15000)
+      execute: async ({ serverId, path }) => exec(serverId, `cat ${shQuote(path)}`, 15000)
     }),
 
     // 文件内容搜索（grep）
@@ -636,9 +682,12 @@ async function createOpsTools(): Promise<Record<string, any>> {
       id: 'port_check',
       description: '排查端口占用情况，可指定端口查看监听进程',
       inputSchema: srv({ port: z.number().optional().describe('端口号，不填则列出全部监听端口') }),
-      execute: async ({ serverId, port }) => exec(serverId, port
-        ? `ss -tlnp | grep -E "(:${port}\\s)" || (lsof -i:${port} 2>/dev/null || echo "端口 ${port} 未被占用")`
-        : 'ss -tlnp | head -40', 15000)
+      execute: async ({ serverId, port }) => {
+        if (!port) return exec(serverId, 'ss -tlnp | head -40', 15000)
+        const p = Math.floor(port)
+        if (!Number.isInteger(p) || p < 1 || p > 65535) return { success: false, output: '端口号必须在 1-65535 范围内', exitCode: -1 }
+        return exec(serverId, `ss -tlnp | grep -E "(:${p}\\s)" || (lsof -i:${p} 2>/dev/null || echo "端口 ${p} 未被占用")`, 15000)
+      }
     }),
 
     // Docker Compose 管理（变更需审批）
@@ -651,10 +700,17 @@ async function createOpsTools(): Promise<Record<string, any>> {
         service: z.string().optional().describe('服务名（可选，针对单个服务）')
       }),
       execute: async ({ serverId, action, projectPath, service }) => {
-        const svc = service ? ` ${service}` : ''
+        const pathInvalid = validatePath(projectPath, 'projectPath')
+        if (pathInvalid) return { success: false, output: pathInvalid, exitCode: -1 }
+        let svc = ''
+        if (service) {
+          const svcInvalid = validateDockerRef(service, 'service')
+          if (svcInvalid) return { success: false, output: svcInvalid, exitCode: -1 }
+          svc = ` ${shQuote(service)}`
+        }
         // 兼容 Compose V1（docker-compose）与 V2（docker compose 插件）
         const c = (cmd: string) =>
-          `cd ${projectPath} && (docker compose -f docker-compose.yml ${cmd} 2>/dev/null || docker-compose -f docker-compose.yml ${cmd})`
+          `cd ${shQuote(projectPath)} && (docker compose -f docker-compose.yml ${cmd} 2>/dev/null || docker-compose -f docker-compose.yml ${cmd})`
         if (action === 'up') {
           const ok = await requestApproval(`启动 Compose 项目: ${projectPath}${svc}`, 'medium')
           if (!ok) return { success: false, output: '用户拒绝了此操作', exitCode: -1 }
@@ -680,7 +736,12 @@ async function createOpsTools(): Promise<Record<string, any>> {
       id: 'docker_network',
       description: '查看 Docker 网络（list/inspect）',
       inputSchema: srv({ network: z.string().optional().describe('网络名称，不填则列出全部') }),
-      execute: async ({ serverId, network }) => exec(serverId, network ? `docker network inspect ${network}` : 'docker network ls', 15000)
+      execute: async ({ serverId, network }) => {
+        if (!network) return exec(serverId, 'docker network ls', 15000)
+        const invalid = validateDockerRef(network, 'network')
+        if (invalid) return { success: false, output: invalid, exitCode: -1 }
+        return exec(serverId, `docker network inspect ${shQuote(network)}`, 15000)
+      }
     }),
 
     // Docker 数据卷
@@ -732,7 +793,11 @@ async function createOpsTools(): Promise<Record<string, any>> {
       id: 'file_list',
       description: '列出服务器上的目录内容（含权限/大小/修改时间）',
       inputSchema: srv({ path: z.string().describe('目录路径，默认当前用户家目录') }),
-      execute: async ({ serverId, path }) => exec(serverId, path ? `ls -lah "${path}"` : 'ls -lah ~', 15000)
+      execute: async ({ serverId, path }) => {
+        const invalid = validatePath(path, 'path')
+        if (invalid) return { success: false, output: invalid, exitCode: -1 }
+        return exec(serverId, path ? `ls -lah ${shQuote(path)}` : 'ls -lah ~', 15000)
+      }
     }),
 
     file_write: mk({
@@ -759,7 +824,9 @@ async function createOpsTools(): Promise<Record<string, any>> {
       }),
       execute: async ({ serverId, path, recursive }) => {
         if (!path) return { success: false, output: '无效的路径', exitCode: -1 }
-        const cmd = recursive ? `rm -rf "${path}"` : `rm -f "${path}"`
+        const invalid = validatePath(path, 'path')
+        if (invalid) return { success: false, output: invalid, exitCode: -1 }
+        const cmd = recursive ? `rm -rf ${shQuote(path)}` : `rm -f ${shQuote(path)}`
         // 黑名单兜底：即使 approvalMode=auto 也拦截 rm -rf / 等危险路径
         if (isBlocklisted(cmd)) {
           return { success: false, output: '命令被黑名单拦截，已拒绝执行', exitCode: -1 }
@@ -883,8 +950,8 @@ async function createOpsTools(): Promise<Record<string, any>> {
         keyword: z.string().optional().describe('额外关键词过滤，如容器名/服务名')
       }),
       execute: async ({ serverId, logPath, since, keyword }) => {
-        const kw = keyword ? ` | grep -i "${keyword}"` : ''
-        const sinceArg = since ? `--since "${since}"` : ''
+        const kw = keyword ? ` | grep -i ${shQuote(keyword)}` : ''
+        const sinceArg = since ? `--since ${shQuote(since)}` : ''
         if (logPath === 'system') {
           // journalctl 输出无级别列，改用 -p 优先级分别计数
           const count = (p: string) => `echo "${p}: $(journalctl -p ${p} ${sinceArg} --no-pager 2>/dev/null | wc -l)"`
@@ -896,12 +963,14 @@ async function createOpsTools(): Promise<Record<string, any>> {
             `journalctl -p err ${sinceArg} --no-pager 2>/dev/null | tail -5 || echo "无错误"`
           ].join('\n'), 30000)
         }
+        const pathInvalid = validatePath(logPath, 'logPath')
+        if (pathInvalid) return { success: false, output: pathInvalid, exitCode: -1 }
         // 关键词在源头过滤，保证级别分布与错误样本都生效
-        const src = keyword ? `grep -i "${keyword}" "${logPath}"` : `cat "${logPath}"`
+        const src = keyword ? `grep -i ${shQuote(keyword)} ${shQuote(logPath)}` : `cat ${shQuote(logPath)}`
         return exec(serverId, [
-          `echo "== 日志统计: ${logPath} =="`,
+          `echo "== 日志统计: $(basename ${shQuote(logPath)}) =="`,
           `echo "-- 级别分布:"; ${src} | grep -oE "\\[(ERROR|WARN|INFO|DEBUG|FATAL)\\]" | tr -d '[]' | sort | uniq -c | sort -rn | head -10 || echo "无匹配"`,
-          `echo "-- 错误样本:"; tail -n 5000 "${logPath}" 2>/dev/null | grep -iE "error|fatal|exception"${kw} | tail -20 || echo "无错误"`
+          `echo "-- 错误样本:"; tail -n 5000 ${shQuote(logPath)} 2>/dev/null | grep -iE "error|fatal|exception"${kw} | tail -20 || echo "无错误"`
         ].join('\n'), 20000)
       }
     })

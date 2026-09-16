@@ -78,21 +78,11 @@ const Volumes: React.FC = () => {
       const data = await window.electronAPI.volume.getAll(selectedServerId)
       setVolumes(data)
 
-      // 并发加载每个卷的大小（串行会导致卷越多越慢）
-      const sizePairs = await Promise.all(
-        data.map(async vol => {
-          try {
-            const size = await window.electronAPI.volume.getSize(selectedServerId, vol.name)
-            return [vol.name, size] as [string, string]
-          } catch {
-            return [vol.name, '-'] as [string, string]
-          }
-        })
-      )
-      const sizes: VolumeSizeMap = {}
-      for (const [name, size] of sizePairs) {
-        sizes[name] = size
-      }
+      // 批量获取卷大小（单次 SSH 往返，替代逐卷 N+1 查询）
+      const names = data.map(vol => vol.name).filter(Boolean)
+      const sizes = names.length > 0
+        ? await window.electronAPI.volume.getSizes(selectedServerId, names)
+        : {}
       setVolumeSizes(sizes)
     } catch (error) {
       console.error('Failed to load volumes:', error)

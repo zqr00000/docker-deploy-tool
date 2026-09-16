@@ -298,6 +298,37 @@ class DockerVolumesService {
       return '-'
     }
   }
+
+  /**
+   * 批量获取数据卷大小（单次 SSH 往返，替代逐卷调用的 N+1 网络往返）
+   * 远端对每个挂载点执行 du（不启动容器）；无权限/失败的卷返回 '-'
+   */
+  async getVolumeSizes(serverId: string, names: string[]): Promise<Record<string, string>> {
+    const out: Record<string, string> = {}
+    const valid = (names || []).filter(n => n && !validateDockerRef(n, '数据卷名称'))
+    if (valid.length === 0) return out
+    for (const n of valid) out[n] = '-'
+    try {
+      // 单次 SSH 往返：远端按挂载点逐个 du，输出 "name|size" 行
+      const nameArgs = valid.map(n => shQuote(n)).join(' ')
+      const cmd =
+        `docker volume inspect -f '{{.Name}}|{{.Mountpoint}}' ${nameArgs} 2>/dev/null` +
+        ` | while IFS='|' read -r n p; do printf '%s|%s\\n' "$n" "$(du -sh "$p" 2>/dev/null | cut -f1)"; done`
+      const r = await sshService.executeCommand(serverId, cmd)
+      if (r.success && r.stdout.trim()) {
+        for (const line of r.stdout.split('\n')) {
+          const idx = line.indexOf('|')
+          if (idx <= 0) continue
+          const n = line.slice(0, idx)
+          const size = line.slice(idx + 1).trim()
+          if (n && size) out[n] = size
+        }
+      }
+    } catch {
+      // 保持默认 '-'
+    }
+    return out
+  }
 }
 
 export const dockerVolumesService = new DockerVolumesService()

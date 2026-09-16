@@ -138,9 +138,15 @@ const computeContextState = (msgs: ChatMessage[]) => {
 
 // ==================== 工具函数 ====================
 
+// HTML 实体转义：模型输出含用户可控内容（工具输出/服务器数据），注入 innerHTML 前必须转义，
+// 否则形如 <img src=x onerror=...> 的内容会演变为渲染层 XSS（Electron 下可升级为任意 IPC 调用）
+const escapeHtml = (s: string): string =>
+  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+
 // Markdown简单渲染（优化版）
 const renderMarkdown = (content: string): string => {
-  return content
+  // 第一步统一转义全部 HTML，后续 Markdown 替换仅注入固定安全的标签结构
+  return escapeHtml(content)
     // 代码块 pre 必须自动换行（pre-wrap）并对无空格长 token 断词（break-all），否则长命令会横向溢出被截断
     .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre style="background:#000000;padding:12px;border-radius:6px;overflow:auto;border:1px solid #48484a;margin:8px 0;white-space:pre-wrap;word-break:break-all;"><code style="color:#f5f5f7;font-family:monospace;font-size:12px;">$2</code></pre>')
     .replace(/`([^`]+)`/g, '<code style="background:#3a3a3c;padding:2px 6px;border-radius:4px;color:#f5f5f7;font-family:monospace;font-size:12px;">$1</code>')
@@ -816,7 +822,7 @@ const AgentTerminalPage: React.FC = () => {
     }
   }, [savePending, messages, persistSession])
 
-  // 解密本地加密存储的 API Key（safeStorage 密文以 enc: 前缀标记；扁平 + 所有档案）
+  // 解密本地加密存储的 API Key（safeStorage 密文以 enc: 前缀标记；扁平 + 所有档案 + 路由档）
   useEffect(() => {
     const decryptAll = async () => {
       let cfg = modelConfig
@@ -831,6 +837,19 @@ const AgentTerminalPage: React.FC = () => {
           return { ...p, apiKey: r.success && r.data ? r.data : p.apiKey }
         }))
         cfg = { ...cfg, providerProfiles: profiles }
+      }
+      if (cfg.routing && Object.values(cfg.routing).some((v: any) => typeof v?.apiKey === 'string' && v.apiKey.startsWith('enc:'))) {
+        const routing: Record<string, any> = {}
+        for (const [k, v] of Object.entries(cfg.routing)) {
+          const r0 = v as any
+          if (r0 && typeof r0.apiKey === 'string' && r0.apiKey.startsWith('enc:')) {
+            const r = await window.electronAPI.secure.decrypt(r0.apiKey.slice(4))
+            routing[k] = { ...r0, apiKey: r.success && r.data ? r.data : r0.apiKey }
+          } else {
+            routing[k] = r0
+          }
+        }
+        cfg = { ...cfg, routing }
       }
       setModelConfig(cfg)
     }
@@ -1149,15 +1168,15 @@ const AgentTerminalPage: React.FC = () => {
       message.warning(t('agent.selectServerFirst'))
       return null
     }
-    // AI 建议命令：执行前必须通过风控门禁（黑名单直接拒绝，高危命令走统一审批）
-    const gate = await window.electronAPI.opsAgent.approveCommand(command, riskLevel)
-    if (!gate.approved) {
-      if (gate.blocked) message.error(t('agent.cmdBlocked'))
+    // 审批在主进程完成（黑名单硬拒 + 高危统一审批），渲染层无法绕过
+    const gated = await window.electronAPI.server.executeCommandGated(selectedServer, command, riskLevel)
+    if (!gated.approved || !gated.result) {
+      if (gated.blocked) message.error(t('agent.cmdBlocked'))
       else message.warning(t('agent.cmdNotApproved'))
       return null
     }
+    const result = gated.result
     const startTime = Date.now()
-    const result = await window.electronAPI.server.executeCommand(selectedServer, command)
     const executedCommand: ExecutedCommand = {
       command,
       output: result.success ? result.stdout : result.stderr,
@@ -1539,6 +1558,21 @@ const AgentTerminalPage: React.FC = () => {
       }
     })
   }, [terminalTabs])
+
+  // 页面卸载：释放全部 xterm 实例并关闭远端 PTY 会话，防止实例与 PTY 泄漏。
+  // 注意：必须是独立的无依赖 effect——放在上面依赖 terminalTabs 的 effect 里会在
+  // 每次标签增减时误执行清理，把所有活跃终端一起关掉。
+  useEffect(() => {
+    return () => {
+      terminalInstancesRef.current.forEach((term, sessionId) => {
+        try { term.dispose() } catch { /* ignore */ }
+        window.electronAPI.terminal.close(sessionId).catch(() => { /* 会话已关闭则忽略 */ })
+      })
+      terminalInstancesRef.current.clear()
+      fitAddonsRef.current.clear()
+      terminalReadyRef.current.clear()
+    }
+  }, [])
 
   // 终端内容区尺寸变化或切换激活终端时，重新 fit 当前激活终端（保证 xterm 填满容器）
   useEffect(() => {

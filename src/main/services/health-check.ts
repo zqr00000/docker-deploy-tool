@@ -61,6 +61,8 @@ class HealthCheckService {
   private checkInterval: NodeJS.Timeout | null = null
   private checkIntervalMs = 60000 // 默认60秒检查一次
   private isRunning = false
+  /** 重入锁：performHealthCheck 执行期间为 true，防止手动/周期检查并发重入 */
+  private checkInFlight = false
   private cleanupTimer: NodeJS.Timeout | null = null
 
   /**
@@ -450,17 +452,23 @@ class HealthCheckService {
    * 执行健康检查并自动修复
    */
   async performHealthCheck(appId?: string): Promise<AppHealthStatus[]> {
+    // 重入锁：上一次检查未完成时跳过本次触发（手动检查与周期检查并发会导致重复历史记录/双重自动重启）
+    if (this.checkInFlight) {
+      log.warn('[health-check] 上一次健康检查仍在进行中，跳过本次触发')
+      return []
+    }
+    this.checkInFlight = true
     const results: AppHealthStatus[] = []
-    
+
     try {
-      const apps = appId 
+      const apps = appId
         ? appQueries.getAll().filter(a => a.id === appId)
         : appQueries.getAll()
 
       for (const app of apps) {
         try {
           const health = await this.getAppHealth(app.serverId, app.projectPath)
-          
+
           // 记录健康检查历史
           for (const container of health.containers) {
             healthCheckHistoryQueries.insert({
@@ -492,6 +500,8 @@ class HealthCheckService {
       }
     } catch (error) {
       log.error('Failed to perform health check:', error)
+    } finally {
+      this.checkInFlight = false
     }
 
     return results

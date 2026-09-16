@@ -22,15 +22,6 @@ export interface Server extends ServerFormData {
   updatedAt: string
 }
 
-export interface DockerCheckResult {
-  dockerInstalled: boolean
-  dockerRunning: boolean
-  dockerVersion: string
-  composeInstalled: boolean
-  composeVersion: string
-  error?: string
-}
-
 export interface EnvVariableSchema {
   name: string
   defaultValue?: string
@@ -792,6 +783,8 @@ export type UpdaterStatus = 'idle' | 'checking' | 'downloading' | 'downloaded' |
 export interface ElectronAPI {
   getAppVersion: () => Promise<string>
   getAppName: () => Promise<string>
+  /** 渲染层日志/异常转发到主进程 electron-log 落盘 */
+  logMessage: (level: 'info' | 'warn' | 'error', message: string) => Promise<{ success: boolean }>
   showItemInFolder: (filePath: string) => Promise<{ success: boolean; message?: string }>
   platform: string
   arch: string
@@ -804,8 +797,14 @@ export interface ElectronAPI {
     connect: (server: Server) => Promise<ServerConnectionResult>
     disconnect: (serverId: string) => Promise<void>
     executeCommand: (serverId: string, command: string) => Promise<CommandExecutionResult>
+    /** 带风控门禁的命令执行：黑名单硬拒 + 高危命令主进程审批（AI 建议命令必须走此通道） */
+    executeCommandGated: (serverId: string, command: string, riskLevel?: string) => Promise<{
+      approved: boolean
+      blocked: boolean
+      riskLevel: string
+      result: CommandExecutionResult | null
+    }>
     getConnectionStatus: (serverId: string) => Promise<'online' | 'offline' | 'connecting'>
-    checkDockerEnvironment: (serverId: string) => Promise<DockerCheckResult>
     checkSystemEnvironment: (serverId: string, requirements?: HardwareRequirements) => Promise<SystemCheckResult>
     getSystemInfo: (serverId: string) => Promise<SystemInfo | null>
     getHardwareInfo: (serverId: string) => Promise<HardwareInfo | null>
@@ -878,6 +877,8 @@ export interface ElectronAPI {
     prune: (serverId: string, force?: boolean, all?: boolean) => Promise<PruneResult>
     getInfo: (serverId: string, name: string) => Promise<VolumeDetail | null>
     getSize: (serverId: string, name: string) => Promise<string>
+    /** 批量获取卷大小（单次 SSH 往返） */
+    getSizes: (serverId: string, names: string[]) => Promise<Record<string, string>>
   }
   network: {
     getAll: (serverId: string) => Promise<DockerNetworkInfo[]>
@@ -966,7 +967,7 @@ export interface ElectronAPI {
     getActiveAlerts: () => Promise<AlertHistoryEntry[]>
   }
   ai: {
-    getModels: (provider: string, apiKey: string, baseUrl?: string) => Promise<{ success: boolean; data?: any[]; error?: string }>
+    getModels: (provider: string, apiKey: string, baseUrl?: string, allowSelfSignedCerts?: boolean) => Promise<{ success: boolean; data?: any[]; error?: string }>
     generateScript: (cfg: any, prompt: string) => Promise<{ success: boolean; text?: string; error?: string }>
   }
   secure: {
