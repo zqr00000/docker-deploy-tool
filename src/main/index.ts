@@ -5,6 +5,7 @@ import fs from 'fs'
 import path from 'path'
 import os from 'os'
 import https from 'https'
+import http from 'http'
 import { URL } from 'url'
 import log from 'electron-log'
 import { initDatabase, closeDatabase, serverQueries, templateQueries, appQueries, initDefaultTemplates, initDefaultShellScripts, configQueries, scheduledTaskQueries, serverGroupQueries } from './database'
@@ -2725,9 +2726,10 @@ function registerIpcHandlers(): void {
 
       return new Promise((resolve) => {
         const urlObj = new URL(url)
+        const isHttps = urlObj.protocol === 'https:'
         const options = {
           hostname: urlObj.hostname,
-          port: urlObj.port || (urlObj.protocol === 'https:' ? 443 : 80),
+          port: urlObj.port || (isHttps ? 443 : 80),
           path: urlObj.pathname + urlObj.search,
           method: 'GET',
           headers,
@@ -2735,7 +2737,9 @@ function registerIpcHandlers(): void {
           rejectUnauthorized: allowSelfSignedCerts === true
         }
 
-        const req = https.request(options, (res) => {
+        // 按协议选择请求模块：对 http:// 服务用 https 会触发 TLS 握手错误（WRONG_VERSION_NUMBER）
+        const client = isHttps ? https : http
+        const req = client.request(options, (res) => {
           let data = ''
           res.on('data', (chunk) => { data += chunk })
           res.on('end', () => {
