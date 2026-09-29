@@ -43,9 +43,14 @@ interface ConnectionEntry {
 
 class SSHService {
   private connections: Map<string, ConnectionEntry> = new Map()
+  // 最近一次连接配置缓存：连接断开后由上层操作按需触发重连（仅显式 disconnect 时清除）
+  private cachedConfigs: Map<string, SSHServerConfig> = new Map()
   // 进行中的拨号请求：同一服务器的并发 connect 合并为一次真实拨号（防 StrictMode 双调用/双击产生双连接）
   private pendingConnects: Map<string, Promise<{ success: boolean; message: string; alreadyConnected?: boolean; duplicate?: boolean }>> = new Map()
   private connectionTimeout = 30000
+  // 操作前的重连参数：先等待自动重连窗口，仍未恢复则主动重连一次（短超时，避免请求长时间挂起）
+  private reconnectWaitMs = 2500
+  private onDemandConnectTimeout = 10000
   private maxConcurrentCommands = 5
   private commandQueues: Map<string, Array<() => void>> = new Map()
   private activeCommands: Map<string, number> = new Map()
@@ -141,12 +146,12 @@ class SSHService {
     return new Client()
   }
 
-  private getConnectConfig(config: SSHServerConfig): ConnectConfig {
+  private getConnectConfig(config: SSHServerConfig, readyTimeout = this.connectionTimeout): ConnectConfig {
     const connectConfig: ConnectConfig = {
       host: config.host,
       port: config.port,
       username: config.username,
-      readyTimeout: this.connectionTimeout,
+      readyTimeout,
       keepaliveInterval: 30000,
       keepaliveCountMax: 3
     }
@@ -160,17 +165,21 @@ class SSHService {
     return connectConfig
   }
 
-  async connect(config: SSHServerConfig): Promise<{ success: boolean; message: string; alreadyConnected?: boolean; duplicate?: boolean }> {
+  async connect(config: SSHServerConfig, readyTimeout?: number): Promise<{ success: boolean; message: string; alreadyConnected?: boolean; duplicate?: boolean }> {
     const { id: serverId } = config
 
     if (this.connections.has(serverId)) {
       const existing = this.connections.get(serverId)!
       if (existing.authenticated) {
+        this.cachedConfigs.set(serverId, { ...config })
         // 已认证的重复连接请求直接复用（alreadyConnected 供上层跳过重复审计日志）
         return { success: true, message: 'Already connected', alreadyConnected: true }
       }
       this.disconnect(serverId)
     }
+
+    // 缓存连接配置，供后续连接断开时按需自动重连
+    this.cachedConfigs.set(serverId, { ...config })
 
     // 并发去重：同一服务器正在进行拨号时，后续请求等待同一结果并标记 duplicate（跳过审计日志）
     const pending = this.pendingConnects.get(serverId)
@@ -178,19 +187,19 @@ class SSHService {
       return pending.then(r => ({ ...r, duplicate: true }))
     }
 
-    const p = this.doConnect(config).finally(() => {
+    const p = this.doConnect(config, readyTimeout).finally(() => {
       this.pendingConnects.delete(serverId)
     })
     this.pendingConnects.set(serverId, p)
     return p
   }
 
-  private doConnect(config: SSHServerConfig): Promise<{ success: boolean; message: string }> {
+  private doConnect(config: SSHServerConfig, readyTimeout = this.connectionTimeout): Promise<{ success: boolean; message: string }> {
     const { id: serverId } = config
 
     return new Promise((resolve) => {
       const client = this.createClient(config)
-      const connectConfig = this.getConnectConfig(config)
+      const connectConfig = this.getConnectConfig(config, readyTimeout)
 
       const entry: ConnectionEntry = {
         client,
@@ -210,7 +219,7 @@ class SSHService {
         client.end()
         this.connections.delete(serverId)
         resolve({ success: false, message: 'Connection timeout' })
-      }, this.connectionTimeout)
+      }, readyTimeout)
 
       client.on('ready', () => {
         clearTimeout(timeout)
@@ -274,6 +283,39 @@ class SSHService {
       this.commandQueues.delete(serverId)
     }
     this.activeCommands.delete(serverId)
+    // 显式断开（或删除服务器）后不再保留配置，避免上层操作触发意料之外的重连
+    this.cachedConfigs.delete(serverId)
+  }
+
+  /**
+   * 操作前确保连接可用：发现连接已断开时，先等待进行中的自动重连窗口，
+   * 仍未恢复则用缓存的服务器配置主动重连一次，避免对可连通的服务器误报未连接。
+   */
+  private async ensureConnected(serverId: string): Promise<boolean> {
+    if (this.isConnected(serverId)) return true
+
+    // 连接可能正处于"断开→自动重连"的空窗，短暂等待其恢复
+    const deadline = Date.now() + this.reconnectWaitMs
+    while (Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 150))
+      if (this.isConnected(serverId)) return true
+    }
+
+    // 仍未恢复：有缓存配置则主动重连一次
+    const config = this.cachedConfigs.get(serverId)
+    if (!config) return false
+
+    log.info(`SSH connection lost for server ${serverId}, reconnecting before operation`)
+    try {
+      const result = await this.connect(config, this.onDemandConnectTimeout)
+      if (!result.success) {
+        log.warn(`SSH reconnect before operation failed for server ${serverId}: ${result.message}`)
+      }
+      return this.isConnected(serverId)
+    } catch (error) {
+      log.error(`SSH reconnect before operation error for server ${serverId}:`, error)
+      return false
+    }
   }
 
   private clearTimers(entry: ConnectionEntry): void {
@@ -395,17 +437,8 @@ class SSHService {
     retryDelay = 1000,
     timeout = 30000
   ): Promise<{ success: boolean; stdout: string; stderr: string; exitCode: number }> {
-    let entry = this.connections.get(serverId)
-    if (!entry || !entry.authenticated) {
-      // 连接可能正处于"断开→自动重连"的空窗，短暂等待其就绪，避免对在线服务器误报未连接
-      const deadline = Date.now() + 2500
-      while (Date.now() < deadline) {
-        await new Promise(resolve => setTimeout(resolve, 150))
-        entry = this.connections.get(serverId)
-        if (entry && entry.authenticated) break
-      }
-    }
-    if (!entry || !entry.authenticated) {
+    // 若连接已断开，先等待自动重连窗口，仍未恢复则主动重连一次
+    if (!(await this.ensureConnected(serverId))) {
       return {
         success: false,
         stdout: '',
@@ -413,6 +446,8 @@ class SSHService {
         exitCode: -1
       }
     }
+
+    const entry = this.connections.get(serverId)!
 
     await this.acquireCommandSlot(serverId)
 
@@ -497,10 +532,11 @@ class SSHService {
     localPath: string,
     remotePath: string
   ): Promise<{ success: boolean; message: string }> {
-    const entry = this.connections.get(serverId)
-    if (!entry || !entry.authenticated) {
+    // 若连接已断开，先等待自动重连窗口，仍未恢复则主动重连一次
+    if (!(await this.ensureConnected(serverId))) {
       return { success: false, message: 'Not connected to server' }
     }
+    const entry = this.connections.get(serverId)!
 
     if (!existsSync(localPath)) {
       return { success: false, message: `Local file not found: ${localPath}` }
@@ -541,10 +577,11 @@ class SSHService {
     content: string | Buffer,
     remotePath: string
   ): Promise<{ success: boolean; message: string }> {
-    const entry = this.connections.get(serverId)
-    if (!entry || !entry.authenticated) {
+    // 若连接已断开，先等待自动重连窗口，仍未恢复则主动重连一次
+    if (!(await this.ensureConnected(serverId))) {
       return { success: false, message: 'Not connected to server' }
     }
+    const entry = this.connections.get(serverId)!
 
     return new Promise((resolve) => {
       entry.client.sftp((err, sftp) => {
@@ -587,10 +624,11 @@ class SSHService {
     onError: (data: string) => void,
     onClose: (code: number) => void
   ): Promise<{ success: boolean; message: string }> {
-    const entry = this.connections.get(serverId)
-    if (!entry || !entry.authenticated) {
+    // 若连接已断开，先等待自动重连窗口，仍未恢复则主动重连一次
+    if (!(await this.ensureConnected(serverId))) {
       return { success: false, message: 'Not connected to server' }
     }
+    const entry = this.connections.get(serverId)!
 
     return new Promise((resolve) => {
       try {
@@ -630,10 +668,11 @@ class SSHService {
     remotePath: string,
     onProgress?: (transferred: number, total: number) => void
   ): Promise<{ success: boolean; message: string }> {
-    const entry = this.connections.get(serverId)
-    if (!entry || !entry.authenticated) {
+    // 若连接已断开，先等待自动重连窗口，仍未恢复则主动重连一次
+    if (!(await this.ensureConnected(serverId))) {
       return { success: false, message: 'Not connected to server' }
     }
+    const entry = this.connections.get(serverId)!
 
     if (!existsSync(localPath)) {
       return { success: false, message: `Local file not found: ${localPath}` }
@@ -674,10 +713,11 @@ class SSHService {
     localPath: string,
     onProgress?: (transferred: number, total: number) => void
   ): Promise<{ success: boolean; message: string }> {
-    const entry = this.connections.get(serverId)
-    if (!entry || !entry.authenticated) {
+    // 若连接已断开，先等待自动重连窗口，仍未恢复则主动重连一次
+    if (!(await this.ensureConnected(serverId))) {
       return { success: false, message: 'Not connected to server' }
     }
+    const entry = this.connections.get(serverId)!
 
     return new Promise((resolve) => {
       entry.client.sftp((err, sftp) => {
@@ -712,10 +752,11 @@ class SSHService {
     serverId: string,
     remotePath: string
   ): Promise<{ success: boolean; content?: string; message?: string }> {
-    const entry = this.connections.get(serverId)
-    if (!entry || !entry.authenticated) {
+    // 若连接已断开，先等待自动重连窗口，仍未恢复则主动重连一次
+    if (!(await this.ensureConnected(serverId))) {
       return { success: false, message: 'Not connected to server' }
     }
+    const entry = this.connections.get(serverId)!
 
     return new Promise((resolve) => {
       entry.client.sftp((err, sftp) => {
@@ -761,10 +802,11 @@ class SSHService {
     serverId: string,
     remotePath: string
   ): Promise<{ success: boolean; entries?: RemoteDirEntry[]; message?: string }> {
-    const entry = this.connections.get(serverId)
-    if (!entry || !entry.authenticated) {
+    // 若连接已断开，先等待自动重连窗口，仍未恢复则主动重连一次
+    if (!(await this.ensureConnected(serverId))) {
       return { success: false, message: 'Not connected to server' }
     }
+    const entry = this.connections.get(serverId)!
 
     return new Promise((resolve) => {
       entry.client.sftp((err, sftp) => {
@@ -804,10 +846,11 @@ class SSHService {
     target: string,
     to?: string
   ): Promise<{ success: boolean; message: string }> {
-    const entry = this.connections.get(serverId)
-    if (!entry || !entry.authenticated) {
+    // 若连接已断开，先等待自动重连窗口，仍未恢复则主动重连一次
+    if (!(await this.ensureConnected(serverId))) {
       return { success: false, message: 'Not connected to server' }
     }
+    const entry = this.connections.get(serverId)!
 
     return new Promise((resolve) => {
       entry.client.sftp((err, sftp) => {
@@ -868,10 +911,11 @@ class SSHService {
     remotePath: string,
     onFile?: (info: { local: string; remote: string; status: 'start' | 'done' | 'error'; message?: string }) => void
   ): Promise<{ success: boolean; message: string; fileCount: number }> {
-    const entry = this.connections.get(serverId)
-    if (!entry || !entry.authenticated) {
+    // 若连接已断开，先等待自动重连窗口，仍未恢复则主动重连一次
+    if (!(await this.ensureConnected(serverId))) {
       return { success: false, message: 'Not connected to server', fileCount: 0 }
     }
+    const entry = this.connections.get(serverId)!
     if (!existsSync(localPath)) {
       return { success: false, message: `Local path not found: ${localPath}`, fileCount: 0 }
     }
@@ -971,10 +1015,11 @@ class SSHService {
     localPath: string,
     onFile?: (info: { local: string; remote: string; status: 'start' | 'done' | 'error'; message?: string }) => void
   ): Promise<{ success: boolean; message: string; fileCount: number }> {
-    const entry = this.connections.get(serverId)
-    if (!entry || !entry.authenticated) {
+    // 若连接已断开，先等待自动重连窗口，仍未恢复则主动重连一次
+    if (!(await this.ensureConnected(serverId))) {
       return { success: false, message: 'Not connected to server', fileCount: 0 }
     }
+    const entry = this.connections.get(serverId)!
 
     return new Promise((resolve) => {
       entry.client.sftp((err, sftp) => {

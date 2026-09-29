@@ -27,6 +27,7 @@ import {
   Progress,
   Collapse
 } from 'antd'
+import type { InputRef } from 'antd'
 import {
   RobotOutlined,
   PlayCircleOutlined,
@@ -166,6 +167,88 @@ const getRiskColor = (level: string) => {
     case 'medium': return '#FF9500'
     default: return '#34C759'
   }
+}
+
+// ==================== AI 提问回复卡片 ====================
+
+// 解析 AI 回复中向用户发起的提问（如「请回复：用哪个项目名？（componet / isds / iot / 其他）」）。
+// 匹配「请回复/请选择/请确认…：」引导词开头的行；带括号时括号内按 / 、 , 分隔为选项，无括号时仅提供自由输入。
+// 仅在消息流式结束后调用（running 中文本可能不完整，避免误匹配）。
+const QUESTION_PREFIX_RE = /(?:^|[\n>])\s*(?:[#*\->]+\s*)?(?:请回复|请回答|请选择|请确认|请告知|请提供|please reply|please specify|please choose|please confirm|reply)\s*[：:]\s*/i
+const parseAiQuestion = (text: string): { question: string; options: string[] } | null => {
+  if (!text) return null
+  const m = QUESTION_PREFIX_RE.exec(text)
+  if (!m) return null
+  const line = text.slice(m.index + m[0].length).split('\n')[0]
+  if (!line.trim()) return null
+  const bracket = line.match(/^(.*?)[（(]([^）)]+)[）)]/)
+  if (bracket) {
+    const question = bracket[1].replace(/[？?：:\s]+$/, '').trim()
+    const options = bracket[2].split(/\s*[/、,，]\s*/).map(s => s.trim()).filter(Boolean)
+    return { question: question || line.trim(), options }
+  }
+  return { question: line.replace(/[？?]+$/, '').trim(), options: [] }
+}
+
+// 提问回复卡片：AI 向用户提问时渲染。选项点选直接发送；「其他」类开放选项聚焦输入框；
+// 已回复后变为绿色已答状态（回复记录随会话持久化，刷新/切换会话不重复提问）。
+const QuestionReplyCard: React.FC<{
+  question: string
+  options: string[]
+  replied?: string
+  disabled?: boolean
+  onReply: (answer: string) => void
+}> = ({ question, options, replied, disabled, onReply }) => {
+  const { t } = useTranslation()
+  const [inputVal, setInputVal] = useState('')
+  const inputRef = useRef<InputRef>(null)
+
+  if (replied) {
+    return (
+      <div style={{ marginTop: 8, padding: '8px 11px', borderRadius: 8, background: 'rgba(52,199,89,0.08)', border: '1px solid rgba(52,199,89,0.3)', display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+        <CheckCircleOutlined style={{ color: '#34C759', fontSize: 13, flexShrink: 0 }} />
+        <span style={{ fontSize: 12, color: '#34C759', flexShrink: 0 }}>{t('agent.questionReplied')}</span>
+        <span style={{ fontSize: 12, color: '#f5f5f7', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{replied}</span>
+      </div>
+    )
+  }
+
+  const send = () => {
+    const v = inputVal.trim()
+    if (!v || disabled) return
+    onReply(v)
+    setInputVal('')
+  }
+
+  return (
+    <div style={{ marginTop: 8, padding: '9px 11px', borderRadius: 8, background: 'rgba(10,132,255,0.07)', border: '1px solid rgba(10,132,255,0.32)' }}>
+      <div style={{ fontSize: 12, color: '#c7c7cc', marginBottom: 8, lineHeight: 1.5 }}>
+        <span style={{ marginRight: 5 }}>🙋</span>{question}
+      </div>
+      {options.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+          {options.map(opt => (
+            <Button key={opt} size="small" disabled={disabled}
+              style={{ fontSize: 11, height: 24, borderRadius: 6, background: 'rgba(0,0,0,0.35)', borderColor: 'rgba(10,132,255,0.4)', color: '#79b8ff', padding: '0 10px' }}
+              onClick={() => {
+                // 「其他/other」类开放选项不直接发送，聚焦输入框让用户补充说明
+                if (/^(其他|其它|other|others)$/i.test(opt)) { inputRef.current?.focus(); return }
+                onReply(opt)
+              }}>{opt}</Button>
+          ))}
+        </div>
+      )}
+      <Space.Compact style={{ width: '100%' }}>
+        <Input ref={inputRef} size="small" value={inputVal} disabled={disabled}
+          placeholder={t('agent.questionInputPlaceholder')}
+          onChange={e => setInputVal(e.target.value)}
+          onPressEnter={send}
+          style={{ fontSize: 12, background: 'rgba(0,0,0,0.4)', borderColor: 'rgba(255,255,255,0.14)', color: '#f5f5f7' }} />
+        <Button size="small" type="primary" disabled={disabled || !inputVal.trim()} onClick={send} icon={<SendOutlined />}
+          style={{ fontSize: 11 }} />
+      </Space.Compact>
+    </div>
+  )
 }
 
 // 清洗命令文本：剥离模型输出中常见的装饰性前缀（CMD: / cmd: / Bash: / $ / # 等），
@@ -864,6 +947,17 @@ const AgentTerminalPage: React.FC = () => {
     setMessages([])
     setSavePending(true)
     message.success(t('agent.chatCleared'))
+  }
+
+  // 回复 AI 提问：记录到消息的 questionReplies（随会话持久化，刷新后显示已答状态），
+  // 并把答案作为新的用户消息发送（走同一会话上下文，AI 可衔接继续）
+  const replyToQuestion = (msgId: string, segKey: string, answer: string) => {
+    if (loading) return
+    setMessages(prev => prev.map(m => m.id === msgId
+      ? { ...m, questionReplies: { ...(m.questionReplies || {}), [segKey]: answer } }
+      : m))
+    setSavePending(true)
+    doSendMessage(answer)
   }
 
   const sendMessage = async () => {
@@ -1988,7 +2082,18 @@ const AgentTerminalPage: React.FC = () => {
                                   {seg.type === 'text' ? (
                                     <div style={{ fontSize: 13, lineHeight: 1.65, color: '#f5f5f7' }}>
                                         {renderRichSegment(seg.text, (cmd) => { navigator.clipboard.writeText(cmd); message.success(t('agent.copied')) }, executeCommandInTerminal, !!activeTerminalTab)}
-                                      </div>
+                                      {/* AI 向用户提问（如「请回复：用哪个项目名？（A / B / 其他）」）：渲染交互式回复框 */}
+                                      {msg.status !== 'running' && (() => {
+                                        const q = parseAiQuestion(seg.text)
+                                        if (!q) return null
+                                        const segKey = `s${idx}`
+                                        return (
+                                          <QuestionReplyCard question={q.question} options={q.options}
+                                            replied={msg.questionReplies?.[segKey]} disabled={loading}
+                                            onReply={(answer) => replyToQuestion(msg.id, segKey, answer)} />
+                                        )
+                                      })()}
+                                    </div>
                                   ) : seg.type === 'thinking' ? (
                                     <Collapse
                                       size="small"
@@ -2024,11 +2129,21 @@ const AgentTerminalPage: React.FC = () => {
                             <>
                               {/* 旧消息（无 segments）兼容：纯文本 + 工具调用列表 */}
                               <div style={{ display: 'flex', alignItems: 'flex-start' }}>
-                                <div style={{ flex: 1 }}>
+                                <div style={{ flex: 1, minWidth: 0 }}>
                                   <Text style={{ color: '#f5f5f7', fontSize: 13, whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
                                     {msg.content || t('agent.thinking')}
                                     {msg.status === 'running' && <span className="typing-dots"><i /><i /><i /></span>}
                                   </Text>
+                                  {/* AI 向用户提问（旧消息无 segments 的兼容分支） */}
+                                  {msg.status !== 'running' && (() => {
+                                    const q = parseAiQuestion(msg.content || '')
+                                    if (!q) return null
+                                    return (
+                                      <QuestionReplyCard question={q.question} options={q.options}
+                                        replied={msg.questionReplies?.c} disabled={loading}
+                                        onReply={(answer) => replyToQuestion(msg.id, 'c', answer)} />
+                                    )
+                                  })()}
                                 </div>
                               </div>
                               {msg.toolCalls && msg.toolCalls.length > 0 && (

@@ -117,6 +117,8 @@ export interface ChatMessage {
   segments?: MessageSegment[]
   /** 思维过程（reasoning）全文，可折叠展示 */
   reasoning?: string
+  /** AI 提问的回复记录：分段 key → 用户回复内容（提问回复框的已答状态，随会话持久化） */
+  questionReplies?: Record<string, string>
 }
 
 // 消息分段：文本 / 思考 / 工具调用，渲染时按数组顺序展示（思考与工具执行按真实顺序交错）
