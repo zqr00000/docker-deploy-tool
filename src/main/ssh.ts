@@ -146,6 +146,26 @@ class SSHService {
     return new Client()
   }
 
+  // 将 ssh2 的底层异常转换为用户可读的提示（保留原始信息供日志排查）
+  private friendlyConnectError(msg: string): string {
+    if (msg.includes('All configured authentication methods failed')) {
+      return 'SSH 认证失败：用户名、密码或私钥不正确（服务器已拒绝所提供的凭据，或该认证方式未启用）'
+    }
+    if (msg.includes('ETIMEDOUT') || /timed?\s?out/i.test(msg)) {
+      return '连接超时：请检查网络连通性、服务器防火墙与安全组规则'
+    }
+    if (msg.includes('ECONNREFUSED')) {
+      return '连接被拒绝：请检查端口是否正确，或服务器 SSH 服务是否运行'
+    }
+    if (msg.includes('EHOSTUNREACH') || msg.includes('ENETUNREACH')) {
+      return '网络不可达：请检查服务器地址与本地网络'
+    }
+    if (msg.includes('Protocol handshake') || msg.includes('handshake')) {
+      return 'SSH 协议握手失败：目标端口可能不是 SSH 服务'
+    }
+    return msg
+  }
+
   private getConnectConfig(config: SSHServerConfig, readyTimeout = this.connectionTimeout): ConnectConfig {
     const connectConfig: ConnectConfig = {
       host: config.host,
@@ -218,7 +238,7 @@ class SSHService {
       const timeout = setTimeout(() => {
         client.end()
         this.connections.delete(serverId)
-        resolve({ success: false, message: 'Connection timeout' })
+        resolve({ success: false, message: this.friendlyConnectError('Connection timeout') })
       }, readyTimeout)
 
       client.on('ready', () => {
@@ -240,7 +260,7 @@ class SSHService {
         clearTimeout(timeout)
         log.error(`SSH connection error for ${config.host}: ${err.message}`)
         this.connections.delete(serverId)
-        resolve({ success: false, message: err.message })
+        resolve({ success: false, message: this.friendlyConnectError(err.message) })
       })
 
       client.on('close', () => {
@@ -261,7 +281,7 @@ class SSHService {
         clearTimeout(timeout)
         const error = err as Error
         log.error(`SSH connect error: ${error.message}`)
-        resolve({ success: false, message: error.message })
+        resolve({ success: false, message: this.friendlyConnectError(error.message) })
       }
     })
   }

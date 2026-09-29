@@ -45,7 +45,7 @@ import type { Server } from '../../types/server'
 // Monaco 本地化配置（side-effect：配置 loader 与 worker，必须在编辑器挂载前执行）
 import '../../components/monaco-setup'
 import Editor from '@monaco-editor/react'
-import * as monaco from 'monaco-editor/esm/vs/editor/editor.api.js'
+import * as monaco from 'monaco-editor/editor/editor.api.js'
 import * as yaml from 'js-yaml'
 
 const { Text, Title } = Typography
